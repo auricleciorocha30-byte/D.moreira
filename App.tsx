@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import Header from './components/Header';
 import MenuItem from './components/MenuItem';
@@ -12,8 +11,7 @@ const App: React.FC = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
-  // Lista de categorias incluindo Combos
-  const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Bebidas', 'Lanches', 'Conveniência'];
+  const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
 
   const filteredItems = useMemo(() => {
     if (selectedCategory === 'Todos') return MENU_ITEMS;
@@ -28,8 +26,6 @@ const App: React.FC = () => {
       }
       return [...prev, { ...product, quantity: 1 }];
     });
-    // Feedback visual opcional: abrir o carrinho ou mostrar toast? 
-    // Por enquanto, apenas atualizamos o estado.
   };
 
   const updateQuantity = (id: string, delta: number) => {
@@ -47,32 +43,33 @@ const App: React.FC = () => {
   };
 
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
+  const cartTotal = cartItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
 
   return (
-    <div className="min-h-screen pb-24 bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col font-sans antialiased">
       <Header />
 
-      <main className="max-w-4xl mx-auto px-6 -mt-8 relative z-20">
+      <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
         {/* Category Selector */}
-        <div className="flex overflow-x-auto gap-3 pb-6 no-scrollbar mask-fade">
+        <div className="flex overflow-x-auto gap-3 pb-8 no-scrollbar mask-fade scroll-smooth">
           {categories.map(cat => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`whitespace-nowrap px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-md ${
+              className={`whitespace-nowrap px-7 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 ${
                 selectedCategory === cat 
                 ? 'bg-black text-white' 
-                : 'bg-white text-gray-700 hover:bg-gray-100'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-100'
               }`}
             >
               {cat}
-              {cat === 'Combos' && <span className="ml-2">🔥</span>}
+              {cat === 'Combos' && <span className="ml-1">🔥</span>}
             </button>
           ))}
         </div>
 
         {/* Menu Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredItems.map(item => (
             <MenuItem 
               key={item.id} 
@@ -83,31 +80,36 @@ const App: React.FC = () => {
         </div>
 
         {filteredItems.length === 0 && (
-          <div className="text-center py-20 text-gray-400">
-            Nenhum item encontrado nesta categoria.
+          <div className="text-center py-20 bg-white rounded-[2.5rem] shadow-sm border border-gray-100">
+             <div className="text-4xl mb-4">🔍</div>
+             <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Nenhum item encontrado</p>
           </div>
         )}
       </main>
 
-      {/* Cart Floating Action Button */}
+      {/* Floating Cart UI */}
       {cartCount > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-sm px-6 z-30">
+        <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 z-40 pointer-events-none">
           <button 
             onClick={() => setIsCartOpen(true)}
-            className="w-full bg-black text-white rounded-2xl p-4 flex items-center justify-between shadow-2xl hover:scale-105 transition-transform active:scale-95 ring-4 ring-yellow-400 ring-opacity-20"
+            className="pointer-events-auto w-full max-w-md bg-black text-white rounded-[2rem] p-5 flex items-center justify-between shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:scale-[1.02] transition-all active:scale-95 ring-4 ring-yellow-400/30"
           >
-            <div className="flex items-center gap-3">
-              <div className="bg-yellow-400 text-black px-2.5 py-1 rounded-lg text-sm font-black">
+            <div className="flex items-center gap-4">
+              <div className="bg-yellow-400 text-black w-8 h-8 flex items-center justify-center rounded-xl text-sm font-black shadow-inner">
                 {cartCount}
               </div>
-              <span className="font-bold">Revisar Pedido</span>
+              <span className="font-black text-sm uppercase tracking-[0.2em]">Ver Sacola</span>
             </div>
-            <CartIcon className="w-6 h-6 text-yellow-400" />
+            <div className="flex items-center gap-3">
+               <span className="font-black text-yellow-400 text-xl">
+                R$ {cartTotal.toFixed(2).replace('.', ',')}
+               </span>
+               <CartIcon className="w-6 h-6 text-yellow-400" size={24} />
+            </div>
           </button>
         </div>
       )}
 
-      {/* Cart Sidebar */}
       <Cart 
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
@@ -115,15 +117,6 @@ const App: React.FC = () => {
         onUpdateQuantity={updateQuantity}
         onRemove={removeFromCart}
       />
-      
-      {/* Global CSS for no-scrollbar */}
-      <style>{`
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .mask-fade {
-          mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        }
-      `}</style>
     </div>
   );
 };
