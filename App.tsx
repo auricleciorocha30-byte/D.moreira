@@ -116,6 +116,7 @@ const App: React.FC = () => {
         items={cartItems}
         onUpdateQuantity={updateQuantity}
         onRemove={removeFromCart}
+        onAdd={addToCart}
       />
     </div>
   );
