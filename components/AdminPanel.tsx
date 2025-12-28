@@ -22,18 +22,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSoundEnabled, setIsSoundEnabled] = useState(true);
 
-  // Referência para contar mesas ocupadas na última atualização
   const occupiedCount = tables.filter(t => t.status === 'occupied').length;
   const lastOccupiedCountRef = useRef(occupiedCount);
 
-  // Alerta Sonoro
   const playNotification = () => {
     if (!isSoundEnabled) return;
     const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     audio.play().catch(e => console.log("Áudio aguardando interação do usuário."));
   };
 
-  // Sincronização automática e detecção de novos pedidos
   useEffect(() => {
     if (!selectedTable && !showSalesReport) {
       const interval = setInterval(() => {
@@ -43,7 +40,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
     }
   }, [selectedTable, showSalesReport, onRefreshData]);
 
-  // Efeito para tocar som quando o número de mesas ocupadas aumenta
   useEffect(() => {
     if (occupiedCount > lastOccupiedCountRef.current) {
       playNotification();
@@ -68,6 +64,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
     const printWindow = window.open('', '_blank', 'width=600,height=800');
     if (!printWindow) return alert('Habilite pop-ups para imprimir.');
 
+    const dateStr = new Date(order.timestamp).toLocaleString('pt-BR', {
+      day: '2-digit', 
+      month: '2-digit', 
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).replace(',', '');
+
     const content = `
       <!DOCTYPE html>
       <html>
@@ -75,66 +79,81 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
           <title>D.Moreira - Pedido ${order.id}</title>
           <style>
             @page { margin: 0; }
-            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            * { 
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important; 
+              color: #000 !important;
+              box-sizing: border-box;
+            }
             body { 
               font-family: 'Courier New', Courier, monospace; 
               width: ${printConfig.width === '58mm' ? '54mm' : '76mm'}; 
               margin: 0; 
-              padding: 4mm; 
-              font-size: 13px; 
-              color: #000; 
+              padding: 2mm; 
+              font-size: 14px; 
+              font-weight: bold;
               background: #fff;
-              line-height: 1.3;
+              line-height: 1.2;
             }
             .center { text-align: center; }
-            .line { border-bottom: 2px solid #000; margin: 8px 0; }
-            .flex { display: flex; justify-content: space-between; align-items: flex-start; }
-            .bold { font-weight: 900; font-size: 15px; }
-            .header { margin-bottom: 12px; }
-            .item-row { margin-bottom: 4px; }
-            .footer { margin-top: 20px; font-size: 11px; }
+            .line { border-bottom: 2px dashed #000; margin: 6px 0; width: 100%; }
+            .flex { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px; }
+            .bold-xl { font-weight: 900; font-size: 18px; }
+            .header { margin-bottom: 10px; }
+            .item-container { margin-bottom: 8px; }
+            .item-header { font-size: 15px; font-weight: 900; margin-bottom: 2px; }
+            .footer { margin-top: 15px; font-size: 12px; }
             h1, h2, h3 { margin: 0; padding: 0; }
           </style>
         </head>
         <body>
           <div class="center header">
-            <h1 class="bold">D. MOREIRA</h1>
+            <h1 class="bold-xl">D. MOREIRA</h1>
             <div style="font-size: 11px;">CONVENIÊNCIA & LANCHES</div>
             <div style="font-size: 11px;">Parada Obrigatória ⛽</div>
           </div>
+          
           <div class="line"></div>
-          <div class="flex"><b>PEDIDO:</b> <span>#${order.id}</span></div>
-          <div class="flex"><b>MESA:</b> <span>${order.tableId}</span></div>
-          <div class="flex"><b>DATA:</b> <span>${new Date(order.timestamp).toLocaleString('pt-BR', {hour: '2-digit', minute:'2-digit', day:'2-digit', month:'2-digit'})}</span></div>
-          <div class="flex"><b>CLIENTE:</b> <span>${order.customerName.toUpperCase()}</span></div>
+          
+          <div class="flex"><span>PEDIDO:</span> <span>#${order.id}</span></div>
+          <div class="flex"><span>MESA:</span> <span>${order.tableId}</span></div>
+          <div class="flex"><span>DATA:</span> <span>${dateStr}</span></div>
+          <div class="flex"><span>CLIENTE:</span> <span>${order.customerName.toUpperCase()}</span></div>
+          
           <div class="line"></div>
-          <div class="bold center" style="margin-bottom: 8px;">DETALHES DO PEDIDO</div>
+          
+          <div class="center" style="font-size: 16px; margin: 8px 0;">DETALHES DO PEDIDO</div>
+          
           ${order.items.map(i => `
-            <div class="item-row">
-              <div class="flex">
-                <span style="font-weight: bold;">${i.quantity}x ${i.name.toUpperCase()}</span>
-              </div>
-              <div class="flex" style="font-size: 11px; padding-left: 10px;">
-                <span>V. Unit: R$ ${i.price.toFixed(2)}</span>
+            <div class="item-container">
+              <div class="item-header">${i.quantity}x ${i.name.toUpperCase()}</div>
+              <div class="flex" style="padding-left: 10px; font-size: 13px;">
+                <span>Unil: R$ ${i.price.toFixed(2)}</span>
                 <span>Sub: R$ ${(i.price * i.quantity).toFixed(2)}</span>
               </div>
             </div>
           `).join('')}
+          
           <div class="line"></div>
-          <div class="flex bold">
+          
+          <div class="flex" style="font-size: 18px; margin-top: 5px;">
             <span>TOTAL:</span>
             <span>R$ ${order.total.toFixed(2)}</span>
           </div>
+          
           <div class="flex" style="margin-top: 5px;">
-            <b>PAGAMENTO:</b>
+            <span>PAGAMENTO:</span>
             <span>${order.paymentMethod.toUpperCase()}</span>
           </div>
+          
           <div class="line"></div>
+          
           <div class="footer center">
-            <div class="bold">*** SEM VALOR FISCAL ***</div>
-            <div>Obrigado pela preferência!</div>
-            <div style="margin-top: 10px; font-size: 9px;">Software de Gestão D.Moreira</div>
+            <div style="font-size: 15px; letter-spacing: 1px;">*** SEM VALOR FISCAL ***</div>
+            <div style="margin-top: 5px;">Obrigado pela preferência!</div>
+            <div style="margin-top: 8px; font-size: 9px; opacity: 0.7;">Software D.Moreira v1.0</div>
           </div>
+
           <script>
             window.onload = function() { 
               window.print(); 
@@ -164,36 +183,36 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
           <title>Relatório de Vendas - D.Moreira</title>
           <style>
             @page { margin: 0; }
+            * { color: #000 !important; }
             body { 
               font-family: 'Courier New', Courier, monospace; 
               width: ${printConfig.width === '58mm' ? '54mm' : '76mm'}; 
-              margin: 0; padding: 5mm; font-size: 13px; color: #000; 
+              margin: 0; padding: 5mm; font-size: 14px; font-weight: bold;
               line-height: 1.4;
             }
             .center { text-align: center; }
-            .bold { font-weight: 900; font-size: 15px; }
-            .line { border-bottom: 2px solid #000; margin: 10px 0; }
+            .line { border-bottom: 2px dashed #000; margin: 10px 0; }
             .flex { display: flex; justify-content: space-between; }
           </style>
         </head>
         <body>
-          <div class="center bold">D.MOREIRA - RELATÓRIO</div>
-          <div class="center" style="font-size: 11px;">FECHAMENTO DE CAIXA</div>
+          <div class="center" style="font-size: 18px;">D.MOREIRA - RELATÓRIO</div>
+          <div class="center">FECHAMENTO DE CAIXA</div>
           <div class="line"></div>
-          <div class="flex"><span>Pedidos Finalizados:</span> <b>${salesHistory.length}</b></div>
+          <div class="flex"><span>Pedidos:</span> <span>${salesHistory.length}</span></div>
           <div class="line"></div>
-          <div class="flex"><span>Total em Pix:</span> <b>R$ ${pixTotal.toFixed(2)}</b></div>
-          <div class="flex"><span>Total em Dinheiro:</span> <b>R$ ${cashTotal.toFixed(2)}</b></div>
-          <div class="flex"><span>Total em Cartão:</span> <b>R$ ${cardTotal.toFixed(2)}</b></div>
+          <div class="flex"><span>Pix:</span> <span>R$ ${pixTotal.toFixed(2)}</span></div>
+          <div class="flex"><span>Dinheiro:</span> <span>R$ ${cashTotal.toFixed(2)}</span></div>
+          <div class="flex"><span>Cartão:</span> <span>R$ ${cardTotal.toFixed(2)}</span></div>
           <div class="line"></div>
-          <div class="flex bold">
-            <span>FATURAMENTO TOTAL:</span>
+          <div class="flex" style="font-size: 16px;">
+            <span>TOTAL:</span>
             <span>R$ ${totalSales.toFixed(2)}</span>
           </div>
           <div class="line"></div>
           <div class="center" style="font-size: 11px;">
-            Gerado em: ${new Date().toLocaleString('pt-BR')}<br>
-            *** DOCUMENTO INTERNO ***
+            Gerado: ${new Date().toLocaleString('pt-BR')}<br>
+            *** DOC. INTERNO ***
           </div>
           <script>window.onload = function() { window.print(); window.close(); };</script>
         </body>
@@ -297,7 +316,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
         ))}
       </div>
 
-      {/* Relatório Modal */}
       {showSalesReport && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
           <div className="bg-white w-full max-w-lg rounded-[3rem] p-8 shadow-2xl relative animate-pop-in">
