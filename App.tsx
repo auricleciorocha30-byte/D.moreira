@@ -29,9 +29,25 @@ const App: React.FC = () => {
     return INITIAL_TABLES;
   });
 
+  const [salesHistory, setSalesHistory] = useState<Order[]>(() => {
+    const savedHistory = localStorage.getItem('dmoreira_sales');
+    if (savedHistory) {
+      try {
+        return JSON.parse(savedHistory);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+
   useEffect(() => {
     localStorage.setItem('dmoreira_tables', JSON.stringify(tables));
   }, [tables]);
+
+  useEffect(() => {
+    localStorage.setItem('dmoreira_sales', JSON.stringify(salesHistory));
+  }, [salesHistory]);
 
   const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
 
@@ -72,16 +88,36 @@ const App: React.FC = () => {
   };
 
   const updateTable = (tableId: number, status: 'free' | 'occupied', order: Order | null = null) => {
+    if (status === 'free') {
+      const table = tables.find(t => t.id === tableId);
+      if (table?.currentOrder) {
+        setSalesHistory(prev => [...prev, table.currentOrder!]);
+      }
+    }
     setTables(prev => prev.map(t => 
       t.id === tableId ? { ...t, status, currentOrder: order } : t
     ));
   };
 
-  // Função para o atendente adicionar itens a um pedido existente
   const handleAddToOrder = (tableId: number, product: Product) => {
     setTables(prev => prev.map(t => {
-      if (t.id === tableId && t.currentOrder) {
-        const existingItems = [...t.currentOrder.items];
+      if (t.id === tableId) {
+        let currentOrder = t.currentOrder;
+        
+        // Se a mesa estiver livre, inicia um novo pedido
+        if (!currentOrder) {
+          currentOrder = {
+            id: Math.random().toString(36).substr(2, 6).toUpperCase(),
+            customerName: `Mesa ${tableId}`,
+            items: [],
+            total: 0,
+            paymentMethod: 'Pix',
+            timestamp: new Date(),
+            tableId: tableId
+          };
+        }
+
+        const existingItems = [...currentOrder.items];
         const itemIdx = existingItems.findIndex(i => i.id === product.id);
         
         if (itemIdx > -1) {
@@ -97,8 +133,9 @@ const App: React.FC = () => {
         
         return {
           ...t,
+          status: 'occupied' as const,
           currentOrder: {
-            ...t.currentOrder,
+            ...currentOrder,
             items: existingItems,
             total: newTotal
           }
@@ -120,6 +157,7 @@ const App: React.FC = () => {
           tables={tables} 
           onUpdateTable={updateTable}
           onAddToOrder={handleAddToOrder}
+          salesHistory={salesHistory}
           onLogout={() => { setIsAdmin(false); setIsLoggedIn(false); }}
         />
       </div>
