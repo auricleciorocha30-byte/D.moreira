@@ -22,7 +22,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSoundEnabled, setIsSoundEnabled] = useState(true);
 
-  // Busca os dados atualizados da mesa selecionada a cada ciclo de renderização
   const currentTableData = useMemo(() => 
     tables.find(t => t.id === selectedTable?.id), 
     [tables, selectedTable]
@@ -75,6 +74,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
       hour: '2-digit', minute: '2-digit'
     }).replace(',', '');
 
+    // Reduzimos de 54mm para 48mm para garantir margem de segurança física
+    const paperWidth = printConfig.width === '58mm' ? '48mm' : '72mm';
+
     const content = `
       <!DOCTYPE html>
       <html>
@@ -82,46 +84,114 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
           <title>D.Moreira - Pedido ${order.id}</title>
           <style>
             @page { margin: 0; }
-            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color: #000 !important; font-weight: bold; }
-            body { font-family: 'Courier New', Courier, monospace; width: ${printConfig.width === '58mm' ? '54mm' : '76mm'}; margin: 0; padding: 2mm; font-size: 14px; line-height: 1.2; background: #fff; }
+            * { 
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important; 
+              color: #000 !important; 
+              font-weight: bold;
+              box-sizing: border-box;
+            }
+            body { 
+              font-family: 'Courier New', Courier, monospace; 
+              width: ${paperWidth}; 
+              margin: 0; 
+              padding: 1mm 1mm 5mm 1mm; 
+              font-size: 13px; 
+              line-height: 1.1; 
+              background: #fff;
+              overflow-x: hidden;
+            }
             .center { text-align: center; }
-            .line { border-bottom: 2px dashed #000; margin: 6px 0; }
-            .flex { display: flex; justify-content: space-between; }
-            .bold-xl { font-size: 18px; font-weight: 900; }
-            .item-container { margin-bottom: 6px; }
-            .footer { margin-top: 15px; font-size: 11px; }
+            .line { border-bottom: 2px dashed #000; margin: 5px 0; width: 100%; }
+            .flex { display: flex; justify-content: space-between; gap: 4px; }
+            .bold-xl { font-size: 16px; font-weight: 900; }
+            .item-container { margin-bottom: 4px; width: 100%; }
+            .item-name { 
+              font-size: 13px; 
+              word-break: break-all; 
+              text-transform: uppercase;
+            }
+            .footer { margin-top: 10px; font-size: 10px; }
           </style>
         </head>
         <body>
           <div class="center">
             <div class="bold-xl">D. MOREIRA</div>
-            <div style="font-size: 10px;">CONVENIÊNCIA & LANCHES</div>
+            <div style="font-size: 9px;">CONVENIÊNCIA & LANCHES</div>
           </div>
           <div class="line"></div>
           <div class="flex"><span>PEDIDO:</span> <span>#${order.id}</span></div>
           <div class="flex"><span>MESA:</span> <span>${order.tableId}</span></div>
           <div class="flex"><span>DATA:</span> <span>${dateStr}</span></div>
-          <div class="flex"><span>CLIENTE:</span> <span>${order.customerName.toUpperCase()}</span></div>
+          <div class="flex"><span>CLIENTE:</span> <span>${order.customerName.slice(0,15).toUpperCase()}</span></div>
           <div class="line"></div>
-          <div class="center" style="margin: 5px 0;">DETALHES DO PEDIDO</div>
+          <div class="center" style="margin: 3px 0; font-size: 14px;">RESUMO</div>
           ${order.items.map(i => `
             <div class="item-container">
-              <div>${i.quantity}x ${i.name.toUpperCase()}</div>
-              <div class="flex" style="font-size: 12px; padding-left: 8px;">
-                <span>R$ ${i.price.toFixed(2)}</span>
-                <span>R$ ${(i.price * i.quantity).toFixed(2)}</span>
+              <div class="item-name">${i.quantity}x ${i.name}</div>
+              <div class="flex" style="font-size: 11px; padding-left: 5px;">
+                <span>Un: R$ ${i.price.toFixed(2)}</span>
+                <span>Sub: R$ ${(i.price * i.quantity).toFixed(2)}</span>
               </div>
             </div>
           `).join('')}
           <div class="line"></div>
-          <div class="flex" style="font-size: 18px;"><span>TOTAL:</span> <span>R$ ${order.total.toFixed(2)}</span></div>
+          <div class="flex" style="font-size: 16px; margin-top: 3px;">
+            <span>TOTAL:</span> 
+            <span>R$ ${order.total.toFixed(2)}</span>
+          </div>
           <div class="flex"><span>PAGTO:</span> <span>${order.paymentMethod.toUpperCase()}</span></div>
           <div class="line"></div>
           <div class="footer center">
-            <div>*** SEM VALOR FISCAL ***</div>
+            <div style="font-size: 12px; margin-bottom: 2px;">*** SEM VALOR FISCAL ***</div>
             <div>Obrigado pela preferência!</div>
           </div>
-          <script>window.onload=function(){window.print();setTimeout(function(){window.close();},500);};</script>
+          <script>window.onload=function(){window.print();setTimeout(function(){window.close();},600);};</script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(content);
+    printWindow.document.close();
+  };
+
+  const handlePrintReport = () => {
+    const totalSales = salesHistory.reduce((acc, order) => acc + order.total, 0);
+    const pixTotal = salesHistory.filter(o => o.paymentMethod === 'Pix').reduce((acc, o) => acc + o.total, 0);
+    const cashTotal = salesHistory.filter(o => o.paymentMethod === 'Dinheiro').reduce((acc, o) => acc + o.total, 0);
+    const cardTotal = salesHistory.filter(o => o.paymentMethod === 'Cartão').reduce((acc, o) => acc + o.total, 0);
+
+    const printWindow = window.open('', '_blank', 'width=600,height=800');
+    if (!printWindow) return;
+
+    const paperWidth = printConfig.width === '58mm' ? '48mm' : '72mm';
+
+    const content = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Relatório - D.Moreira</title>
+          <style>
+            @page { margin: 0; }
+            * { color: #000 !important; font-weight: bold; }
+            body { font-family: 'Courier New', Courier, monospace; width: ${paperWidth}; margin: 0; padding: 2mm; font-size: 13px; line-height: 1.2; background: #fff; }
+            .center { text-align: center; }
+            .line { border-bottom: 2px dashed #000; margin: 8px 0; }
+            .flex { display: flex; justify-content: space-between; }
+          </style>
+        </head>
+        <body>
+          <div class="center" style="font-size: 15px;">D.MOREIRA - CAIXA</div>
+          <div class="line"></div>
+          <div class="flex"><span>Pedidos:</span> <span>${salesHistory.length}</span></div>
+          <div class="line"></div>
+          <div class="flex"><span>Pix:</span> <span>R$ ${pixTotal.toFixed(2)}</span></div>
+          <div class="flex"><span>Dinheiro:</span> <span>R$ ${cashTotal.toFixed(2)}</span></div>
+          <div class="flex"><span>Cartão:</span> <span>R$ ${cardTotal.toFixed(2)}</span></div>
+          <div class="line"></div>
+          <div class="flex" style="font-size: 15px;"><span>TOTAL:</span> <span>R$ ${totalSales.toFixed(2)}</span></div>
+          <div class="line"></div>
+          <div class="center" style="font-size: 10px;">Gerado: ${new Date().toLocaleString('pt-BR')}</div>
+          <script>window.onload=function(){window.print();window.close();};</script>
         </body>
       </html>
     `;
@@ -171,8 +241,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
             value={printConfig.width}
             onChange={(e) => setPrintConfig({ width: e.target.value as any })}
           >
-            <option value="58mm">Term. 58mm</option>
-            <option value="80mm">Term. 80mm</option>
+            <option value="58mm">Bobina 58mm</option>
+            <option value="80mm">Bobina 80mm</option>
           </select>
           <button onClick={onLogout} className="bg-black text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Sair</button>
         </div>
