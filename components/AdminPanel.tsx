@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Table, Order, PrintConfig, Product, CategoryType } from '../types';
 import { MENU_ITEMS } from '../constants';
 import { CloseIcon } from './Icons';
@@ -20,6 +20,36 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
   const [showSalesReport, setShowSalesReport] = useState(false);
   const [adminCategory, setAdminCategory] = useState<CategoryType | 'Todos'>('Todos');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSoundEnabled, setIsSoundEnabled] = useState(true);
+
+  // Referência para contar mesas ocupadas na última atualização
+  const occupiedCount = tables.filter(t => t.status === 'occupied').length;
+  const lastOccupiedCountRef = useRef(occupiedCount);
+
+  // Alerta Sonoro
+  const playNotification = () => {
+    if (!isSoundEnabled) return;
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    audio.play().catch(e => console.log("Áudio aguardando interação do usuário."));
+  };
+
+  // Sincronização automática e detecção de novos pedidos
+  useEffect(() => {
+    if (!selectedTable && !showSalesReport) {
+      const interval = setInterval(() => {
+        onRefreshData();
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [selectedTable, showSalesReport, onRefreshData]);
+
+  // Efeito para tocar som quando o número de mesas ocupadas aumenta
+  useEffect(() => {
+    if (occupiedCount > lastOccupiedCountRef.current) {
+      playNotification();
+    }
+    lastOccupiedCountRef.current = occupiedCount;
+  }, [occupiedCount, isSoundEnabled]);
 
   const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
 
@@ -181,12 +211,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
         <div className="flex items-center gap-4">
           <div>
             <h2 className="text-3xl font-black text-gray-900 italic">Controle de Mesas</h2>
-            <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Painel Administrativo D.Moreira</p>
+            <div className="flex items-center gap-3">
+              <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Painel Administrativo D.Moreira</p>
+              {!selectedTable && !showSalesReport && (
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1 text-[9px] font-black text-green-500 uppercase bg-green-50 px-2 py-0.5 rounded-full border border-green-100 animate-pulse">
+                    <span className="w-1 h-1 bg-green-500 rounded-full"></span>
+                    Auto-Sync
+                  </span>
+                  <button 
+                    onClick={() => setIsSoundEnabled(!isSoundEnabled)}
+                    className={`flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border transition-all ${isSoundEnabled ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : 'bg-gray-100 border-gray-200 text-gray-400'}`}
+                  >
+                    {isSoundEnabled ? '🔔 Som Ligado' : '🔕 Silencioso'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <button 
             onClick={handleManualRefresh}
             className={`p-3 rounded-full bg-white shadow-md border border-gray-100 hover:bg-gray-50 transition-all ${isRefreshing ? 'animate-spin' : ''}`}
-            title="Sincronizar Pedidos"
+            title="Sincronizar Pedidos Agora"
           >
             <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           </button>
