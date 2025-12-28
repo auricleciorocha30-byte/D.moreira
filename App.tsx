@@ -1,15 +1,25 @@
+
 import React, { useState, useMemo } from 'react';
 import Header from './components/Header';
 import MenuItem from './components/MenuItem';
 import Cart from './components/Cart';
-import { MENU_ITEMS } from './constants';
-import { CategoryType, Product, CartItem } from './types';
+import AdminPanel from './components/AdminPanel';
+import { MENU_ITEMS, INITIAL_TABLES } from './constants';
+import { CategoryType, Product, CartItem, Table, Order } from './types';
 import { CartIcon } from './components/Icons';
 
 const App: React.FC = () => {
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loginPass, setLoginPass] = useState('');
+  const [showLogin, setShowLogin] = useState(false);
+
   const [selectedCategory, setSelectedCategory] = useState<CategoryType | 'Todos'>('Todos');
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  
+  // Gestão Global de Mesas
+  const [tables, setTables] = useState<Table[]>(INITIAL_TABLES);
 
   const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
 
@@ -17,6 +27,18 @@ const App: React.FC = () => {
     if (selectedCategory === 'Todos') return MENU_ITEMS;
     return MENU_ITEMS.filter(item => item.category === selectedCategory);
   }, [selectedCategory]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginPass === '123') {
+      setIsLoggedIn(true);
+      setIsAdmin(true);
+      setShowLogin(false);
+      setLoginPass('');
+    } else {
+      alert('Senha incorreta!');
+    }
+  };
 
   const addToCart = (product: Product) => {
     setCartItems(prev => {
@@ -28,38 +50,53 @@ const App: React.FC = () => {
     });
   };
 
-  const updateQuantity = (id: string, delta: number) => {
-    setCartItems(prev => prev.map(item => {
-      if (item.id === id) {
-        const newQuantity = Math.max(1, item.quantity + delta);
-        return { ...item, quantity: newQuantity };
-      }
-      return item;
-    }));
+  const handlePlaceOrder = (order: Order) => {
+    setTables(prev => prev.map(t => 
+      t.id === order.tableId 
+        ? { ...t, status: 'occupied', currentOrder: order } 
+        : t
+    ));
+    setCartItems([]);
   };
 
-  const removeFromCart = (id: string) => {
-    setCartItems(prev => prev.filter(item => item.id !== id));
+  const updateTable = (tableId: number, status: 'free' | 'occupied', order: Order | null = null) => {
+    setTables(prev => prev.map(t => 
+      t.id === tableId ? { ...t, status, currentOrder: order } : t
+    ));
   };
 
-  const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
-  const cartTotal = cartItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
+  if (isAdmin && isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <AdminPanel 
+          tables={tables} 
+          onUpdateTable={updateTable}
+          onLogout={() => { setIsAdmin(false); setIsLoggedIn(false); }}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans antialiased">
+    <div className="min-h-screen bg-gray-50 flex flex-col font-sans antialiased relative">
       <Header />
 
+      {/* Botão Admin Discreto no Canto */}
+      <button 
+        onClick={() => setShowLogin(true)}
+        className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 hover:text-black uppercase tracking-tighter"
+      >
+        Admin
+      </button>
+
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
-        {/* Category Selector */}
         <div className="flex overflow-x-auto gap-3 pb-8 no-scrollbar mask-fade scroll-smooth">
           {categories.map(cat => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
               className={`whitespace-nowrap px-7 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 ${
-                selectedCategory === cat 
-                ? 'bg-black text-white' 
-                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-100'
+                selectedCategory === cat ? 'bg-black text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-100'
               }`}
             >
               {cat}
@@ -68,55 +105,60 @@ const App: React.FC = () => {
           ))}
         </div>
 
-        {/* Menu Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredItems.map(item => (
-            <MenuItem 
-              key={item.id} 
-              product={item} 
-              onAdd={addToCart} 
-            />
+            <MenuItem key={item.id} product={item} onAdd={addToCart} />
           ))}
         </div>
-
-        {filteredItems.length === 0 && (
-          <div className="text-center py-20 bg-white rounded-[2.5rem] shadow-sm border border-gray-100">
-             <div className="text-4xl mb-4">🔍</div>
-             <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Nenhum item encontrado</p>
-          </div>
-        )}
       </main>
 
-      {/* Floating Cart UI */}
-      {cartCount > 0 && (
+      {/* Floating Cart Button */}
+      {cartItems.length > 0 && (
         <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 z-40 pointer-events-none">
-          <button 
-            onClick={() => setIsCartOpen(true)}
-            className="pointer-events-auto w-full max-w-md bg-black text-white rounded-[2rem] p-5 flex items-center justify-between shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:scale-[1.02] transition-all active:scale-95 ring-4 ring-yellow-400/30"
-          >
+          <button onClick={() => setIsCartOpen(true)} className="pointer-events-auto w-full max-w-md bg-black text-white rounded-[2rem] p-5 flex items-center justify-between shadow-2xl active:scale-95 ring-4 ring-yellow-400/30">
             <div className="flex items-center gap-4">
-              <div className="bg-yellow-400 text-black w-8 h-8 flex items-center justify-center rounded-xl text-sm font-black shadow-inner">
-                {cartCount}
-              </div>
-              <span className="font-black text-sm uppercase tracking-[0.2em]">Ver Sacola</span>
+              <div className="bg-yellow-400 text-black w-8 h-8 flex items-center justify-center rounded-xl text-sm font-black">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
+              <span className="font-black text-sm uppercase tracking-widest">Ver Pedido</span>
             </div>
-            <div className="flex items-center gap-3">
-               <span className="font-black text-yellow-400 text-xl">
-                R$ {cartTotal.toFixed(2).replace('.', ',')}
-               </span>
-               <CartIcon className="w-6 h-6 text-yellow-400" size={24} />
-            </div>
+            <span className="font-black text-yellow-400 text-xl">R$ {cartItems.reduce((a,b)=>a+(b.price*b.quantity),0).toFixed(2)}</span>
           </button>
         </div>
       )}
 
+      {/* Login Modal */}
+      {showLogin && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
+          <div className="bg-white p-10 rounded-[3rem] w-full max-w-sm shadow-2xl text-center">
+            <h2 className="text-3xl font-black mb-2">Painel Admin</h2>
+            <p className="text-gray-400 text-xs font-bold uppercase mb-8">D.Moreira Conveniência</p>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="text-left">
+                <label className="block text-[10px] font-black text-gray-400 mb-2 uppercase">Usuário</label>
+                <input type="text" defaultValue="admin" disabled className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold opacity-50"/>
+              </div>
+              <div className="text-left">
+                <label className="block text-[10px] font-black text-gray-400 mb-2 uppercase">Senha</label>
+                <input 
+                  type="password" 
+                  autoFocus
+                  value={loginPass} 
+                  onChange={(e) => setLoginPass(e.target.value)} 
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-2 focus:ring-yellow-400 outline-none"
+                />
+              </div>
+              <button type="submit" className="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl shadow-xl mt-4">Entrar</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="w-full text-xs font-bold text-gray-400 mt-2">Cancelar</button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <Cart 
-        isOpen={isCartOpen}
-        onClose={() => setIsCartOpen(false)}
-        items={cartItems}
-        onUpdateQuantity={updateQuantity}
-        onRemove={removeFromCart}
+        isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} 
+        items={cartItems} onUpdateQuantity={(id, d) => setCartItems(p => p.map(i => i.id === id ? {...i, quantity: Math.max(1, i.quantity + d)} : i))}
+        onRemove={(id) => setCartItems(p => p.filter(i => i.id !== id))}
         onAdd={addToCart}
+        onPlaceOrder={handlePlaceOrder}
       />
     </div>
   );

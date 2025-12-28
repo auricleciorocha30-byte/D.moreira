@@ -6,7 +6,7 @@ export interface Product {
   price: number;
   category: CategoryType;
   image: string;
-  savings?: string; // Ex: "Economize R$ 2,00"
+  savings?: string;
 }
 
 export type CategoryType = 'Cafeteria' | 'Bebidas' | 'Lanches' | 'Conveniência' | 'Combos';
@@ -20,4 +20,28 @@ export interface StoreInfo {
   slogan: string;
   hours: string;
   whatsapp: string;
+}
+
+export type TableStatus = 'free' | 'occupied';
+
+export interface Order {
+  id: string;
+  customerName: string;
+  items: CartItem[];
+  total: number;
+  paymentMethod: string;
+  timestamp: Date;
+  tableId: number;
+}
+
+export interface Table {
+  id: number;
+  status: TableStatus;
+  currentOrder: Order | null;
+}
+
+export type PrintWidth = '58mm' | '80mm';
+
+export interface PrintConfig {
+  width: PrintWidth;
 }
