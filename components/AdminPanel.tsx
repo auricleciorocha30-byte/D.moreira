@@ -8,16 +8,18 @@ interface AdminPanelProps {
   tables: Table[];
   onUpdateTable: (tableId: number, status: 'free' | 'occupied', order?: Order | null) => void;
   onAddToOrder: (tableId: number, product: Product) => void;
+  onRefreshData: () => void;
   salesHistory: Order[];
   onLogout: () => void;
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToOrder, salesHistory, onLogout }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToOrder, onRefreshData, salesHistory, onLogout }) => {
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [printConfig, setPrintConfig] = useState<PrintConfig>({ width: '58mm' });
   const [isAddingItems, setIsAddingItems] = useState(false);
   const [showSalesReport, setShowSalesReport] = useState(false);
   const [adminCategory, setAdminCategory] = useState<CategoryType | 'Todos'>('Todos');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
 
@@ -25,6 +27,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
     if (adminCategory === 'Todos') return MENU_ITEMS;
     return MENU_ITEMS.filter(item => item.category === adminCategory);
   }, [adminCategory]);
+
+  const handleManualRefresh = () => {
+    setIsRefreshing(true);
+    onRefreshData();
+    setTimeout(() => setIsRefreshing(false), 600);
+  };
 
   const handlePrint = (order: Order) => {
     const printWindow = window.open('', '_blank', 'width=600,height=800');
@@ -170,24 +178,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-        <div>
-          <h2 className="text-3xl font-black text-gray-900 italic">Controle de Mesas</h2>
-          <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Painel Administrativo D.Moreira</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h2 className="text-3xl font-black text-gray-900 italic">Controle de Mesas</h2>
+            <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Painel Administrativo D.Moreira</p>
+          </div>
+          <button 
+            onClick={handleManualRefresh}
+            className={`p-3 rounded-full bg-white shadow-md border border-gray-100 hover:bg-gray-50 transition-all ${isRefreshing ? 'animate-spin' : ''}`}
+            title="Sincronizar Pedidos"
+          >
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          </button>
         </div>
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <button 
             onClick={() => setShowSalesReport(true)}
-            className="bg-yellow-400 text-black px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+            className="bg-yellow-400 text-black px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center gap-2"
           >
-            📊 Relatório
+            <span>📊</span> Relatório de Vendas
           </button>
           <select 
-            className="bg-white border border-gray-200 text-xs font-black px-4 py-3 rounded-xl shadow-sm outline-none"
+            className="bg-white border border-gray-200 text-xs font-black px-4 py-3 rounded-xl shadow-sm outline-none cursor-pointer"
             value={printConfig.width}
             onChange={(e) => setPrintConfig({ width: e.target.value as any })}
           >
-            <option value="58mm">Papel 58mm</option>
-            <option value="80mm">Papel 80mm</option>
+            <option value="58mm">Impressora 58mm</option>
+            <option value="80mm">Impressora 80mm</option>
           </select>
           <button onClick={onLogout} className="bg-black text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all">Sair</button>
         </div>
@@ -202,22 +219,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
               setIsAddingItems(table.status === 'free');
               setAdminCategory('Todos');
             }}
-            className={`p-6 rounded-[2rem] border-4 transition-all flex flex-col items-center justify-center gap-2 group ${
+            className={`p-6 rounded-[2rem] border-4 transition-all flex flex-col items-center justify-center gap-2 group relative overflow-hidden ${
               table.status === 'free' 
-                ? 'bg-white border-gray-100 hover:border-yellow-400' 
+                ? 'bg-white border-gray-100 hover:border-yellow-400 hover:shadow-xl' 
                 : 'bg-yellow-400 border-black shadow-xl scale-105 active:scale-100'
             }`}
           >
+            {table.status === 'occupied' && (
+              <div className="absolute top-2 right-2 flex gap-1">
+                <span className="w-2 h-2 bg-black rounded-full animate-pulse"></span>
+              </div>
+            )}
             <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Mesa</span>
             <span className="text-4xl font-black">{table.id}</span>
             <span className={`text-[10px] font-black uppercase px-4 py-1.5 rounded-full ${
-              table.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'
+              table.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white shadow-lg'
             }`}>
               {table.status === 'free' ? 'Livre' : 'Ocupada'}
             </span>
             {table.currentOrder && (
-              <span className="text-[10px] font-bold mt-1 text-black/60 truncate w-full text-center">
+              <span className="text-[10px] font-bold mt-1 text-black/60 truncate w-full text-center px-2">
                 {table.currentOrder.customerName}
+              </span>
+            )}
+            {table.status === 'free' && (
+              <span className="text-[9px] font-black text-yellow-600 uppercase mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                + Novo Pedido
               </span>
             )}
           </button>
@@ -229,22 +256,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
           <div className="bg-white w-full max-w-lg rounded-[3rem] p-8 shadow-2xl relative animate-pop-in">
             <button onClick={() => setShowSalesReport(false)} className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-full"><CloseIcon/></button>
-            <h3 className="text-2xl font-black mb-6">Relatório de Vendas</h3>
+            <h3 className="text-2xl font-black mb-6">Relatório de Caixa</h3>
             <div className="space-y-4 mb-8">
-              <div className="flex justify-between border-b pb-2">
+              <div className="flex justify-between border-b border-gray-50 pb-2">
                 <span className="font-bold text-gray-500">Pedidos Finalizados</span>
                 <span className="font-black">{salesHistory.length}</span>
               </div>
-              <div className="flex justify-between border-b pb-2">
-                <span className="font-bold text-gray-500">Total em Pix</span>
+              <div className="flex justify-between border-b border-gray-50 pb-2">
+                <span className="font-bold text-gray-500">Vendas em Pix</span>
                 <span className="font-black text-green-600">R$ {salesHistory.filter(o => o.paymentMethod === 'Pix').reduce((acc, o) => acc + o.total, 0).toFixed(2)}</span>
               </div>
-              <div className="flex justify-between border-b pb-2">
-                <span className="font-bold text-gray-500">Total em Dinheiro</span>
+              <div className="flex justify-between border-b border-gray-50 pb-2">
+                <span className="font-bold text-gray-500">Vendas em Dinheiro</span>
                 <span className="font-black text-green-600">R$ {salesHistory.filter(o => o.paymentMethod === 'Dinheiro').reduce((acc, o) => acc + o.total, 0).toFixed(2)}</span>
               </div>
-              <div className="flex justify-between border-b pb-2">
-                <span className="font-bold text-gray-500">Total em Cartão</span>
+              <div className="flex justify-between border-b border-gray-50 pb-2">
+                <span className="font-bold text-gray-500">Vendas em Cartão</span>
                 <span className="font-black text-green-600">R$ {salesHistory.filter(o => o.paymentMethod === 'Cartão').reduce((acc, o) => acc + o.total, 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between pt-4">
@@ -253,13 +280,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <button onClick={handlePrintReport} className="bg-black text-white py-4 rounded-2xl font-black uppercase text-xs">Imprimir Relatório</button>
+              <button onClick={handlePrintReport} className="bg-black text-white py-4 rounded-2xl font-black uppercase text-xs shadow-xl active:scale-95">Imprimir Relatório</button>
               <button onClick={() => {
-                if(confirm("Deseja zerar o relatório de vendas?")) {
+                if(confirm("Deseja zerar o relatório de vendas e o caixa?")) {
                   localStorage.removeItem('dmoreira_sales');
                   window.location.reload();
                 }
-              }} className="bg-red-100 text-red-600 py-4 rounded-2xl font-black uppercase text-xs">Zerar Histórico</button>
+              }} className="bg-red-50 text-red-600 py-4 rounded-2xl font-black uppercase text-xs border border-red-100 active:scale-95">Zerar Tudo</button>
             </div>
           </div>
         </div>
@@ -273,34 +300,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
               <div>
                 <h3 className="text-2xl font-black">Mesa {selectedTable.id}</h3>
                 <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">
-                  {currentTableData?.currentOrder?.customerName || 'Mesa Livre'}
+                  {currentTableData?.currentOrder?.customerName || 'Adicionando Novo Pedido'}
                 </p>
               </div>
-              <button onClick={() => setSelectedTable(null)} className="p-2 hover:bg-gray-100 rounded-full"><CloseIcon/></button>
+              <button onClick={() => setSelectedTable(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><CloseIcon/></button>
             </div>
 
             <div className="flex-1 overflow-y-auto no-scrollbar mb-6 pr-2">
               {!isAddingItems && currentTableData?.currentOrder ? (
                 <>
                   <div className="flex justify-between items-center mb-4">
-                    <h4 className="text-xs font-black uppercase text-gray-400">Consumo Atual</h4>
+                    <h4 className="text-xs font-black uppercase text-gray-400 tracking-widest">Resumo do Consumo</h4>
                     <button onClick={() => {
                       setIsAddingItems(true);
                       setAdminCategory('Todos');
-                    }} className="text-[10px] font-black bg-yellow-400 px-4 py-1.5 rounded-full uppercase tracking-widest">+ Adicionar Itens</button>
+                    }} className="text-[10px] font-black bg-yellow-400 px-4 py-1.5 rounded-full uppercase tracking-widest shadow-md hover:brightness-110 active:scale-95">+ Adicionar Itens</button>
                   </div>
                   <div className="space-y-2">
                     {currentTableData.currentOrder.items.map(item => (
-                      <div key={item.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-2xl">
-                        <span className="text-sm font-bold text-gray-700">{item.quantity}x {item.name}</span>
-                        <span className="font-black text-sm">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                      <div key={item.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-gray-100/50">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-black text-gray-900">{item.quantity}x {item.name}</span>
+                          <span className="text-[10px] font-bold text-gray-400">Unit: R$ {item.price.toFixed(2)}</span>
+                        </div>
+                        <span className="font-black text-sm text-gray-900">R$ {(item.price * item.quantity).toFixed(2)}</span>
                       </div>
                     ))}
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="flex flex-col gap-4 mb-4">
+                  <div className="flex flex-col gap-4 mb-4 sticky top-0 bg-white z-10 pb-4">
                     <div className="flex items-center gap-4">
                       {currentTableData?.status === 'occupied' && (
                         <button onClick={() => setIsAddingItems(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors">
@@ -317,7 +347,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
                           onClick={() => setAdminCategory(cat)}
                           className={`whitespace-nowrap px-4 py-2 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all border ${
                             adminCategory === cat 
-                              ? 'bg-black text-white border-black' 
+                              ? 'bg-black text-white border-black shadow-lg shadow-black/10' 
                               : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'
                           }`}
                         >
@@ -327,20 +357,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-4">
                     {filteredAdminItems.map(product => (
                       <button 
                         key={product.id}
                         onClick={() => onAddToOrder(selectedTable.id, product)}
                         className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl hover:bg-yellow-50 border border-transparent hover:border-yellow-200 transition-all text-left group"
                       >
-                        <img src={product.image} className="w-14 h-14 object-cover rounded-xl shadow-sm" alt={product.name} />
+                        <img src={product.image} className="w-14 h-14 object-cover rounded-xl shadow-sm border border-white" alt={product.name} />
                         <div className="flex-1">
                           <p className="text-[11px] font-black leading-tight text-gray-900">{product.name}</p>
                           <p className="text-[10px] font-bold text-yellow-700 mt-0.5">R$ {product.price.toFixed(2)}</p>
                           <p className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter mt-1">{product.category}</p>
                         </div>
-                        <div className="bg-black text-white p-2 rounded-xl group-active:scale-90 transition-transform">
+                        <div className="bg-black text-white p-2 rounded-xl group-active:scale-90 transition-transform shadow-md">
                           <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg>
                         </div>
                       </button>
@@ -354,28 +384,38 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
               <div className="pt-6 border-t border-gray-100 shrink-0">
                 <div className="flex justify-between items-end mb-6">
                   <div className="flex flex-col">
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Acumulado</span>
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Subtotal Acumulado</span>
                     <span className="text-3xl font-black text-black leading-none">R$ {currentTableData.currentOrder.total.toFixed(2)}</span>
                   </div>
                   <div className="flex flex-col items-end">
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Forma de Pagto</span>
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Meio de Pagto</span>
                     <select 
-                      className="bg-transparent font-black text-sm outline-none text-right cursor-pointer hover:text-yellow-600 transition-colors"
+                      className="bg-transparent font-black text-sm outline-none text-right cursor-pointer text-gray-900 border-b-2 border-transparent hover:border-yellow-400 transition-all py-1"
                       value={currentTableData.currentOrder.paymentMethod}
                       onChange={(e) => {
                          onUpdateTable(selectedTable.id, 'occupied', { ...currentTableData.currentOrder!, paymentMethod: e.target.value });
                       }}
                     >
-                      <option value="Pix">Pix</option>
-                      <option value="Dinheiro">Dinheiro</option>
-                      <option value="Cartão">Cartão</option>
+                      <option value="Pix">📱 Pix</option>
+                      <option value="Dinheiro">💵 Dinheiro</option>
+                      <option value="Cartão">💳 Cartão</option>
                     </select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <button onClick={() => handlePrint(currentTableData.currentOrder!)} className="bg-gray-100 text-black py-4 rounded-2xl font-black uppercase text-xs hover:bg-gray-200 transition-colors">Imprimir Cupom</button>
-                  <button onClick={() => { onUpdateTable(selectedTable.id, 'free'); setSelectedTable(null); }} className="bg-green-500 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg shadow-green-200 hover:bg-green-600 transition-colors">Finalizar Mesa</button>
+                  <button onClick={() => handlePrint(currentTableData.currentOrder!)} className="bg-gray-100 text-black py-4 rounded-2xl font-black uppercase text-xs hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                    <span>Imprimir Cupom</span>
+                  </button>
+                  <button onClick={() => { onUpdateTable(selectedTable.id, 'free'); setSelectedTable(null); }} className="bg-green-500 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg shadow-green-200/50 hover:bg-green-600 transition-colors active:scale-95">Finalizar e Liberar</button>
                 </div>
+              </div>
+            )}
+            
+            {currentTableData?.status === 'free' && isAddingItems && (
+              <div className="pt-4 border-t border-gray-100 text-center shrink-0">
+                <p className="text-[10px] font-bold text-gray-400 uppercase mb-4 tracking-widest">Os itens serão adicionados assim que você clicar em um produto acima</p>
+                <button onClick={() => setSelectedTable(null)} className="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-black">Cancelar Ação</button>
               </div>
             )}
           </div>

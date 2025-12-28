@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Header from './components/Header';
 import MenuItem from './components/MenuItem';
 import Cart from './components/Cart';
@@ -41,6 +41,20 @@ const App: React.FC = () => {
     return [];
   });
 
+  // Sincronização automática entre abas do mesmo navegador
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'dmoreira_tables' && e.newValue) {
+        setTables(JSON.parse(e.newValue));
+      }
+      if (e.key === 'dmoreira_sales' && e.newValue) {
+        setSalesHistory(JSON.parse(e.newValue));
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('dmoreira_tables', JSON.stringify(tables));
   }, [tables]);
@@ -48,6 +62,13 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('dmoreira_sales', JSON.stringify(salesHistory));
   }, [salesHistory]);
+
+  const handleRefreshData = useCallback(() => {
+    const savedTables = localStorage.getItem('dmoreira_tables');
+    const savedSales = localStorage.getItem('dmoreira_sales');
+    if (savedTables) setTables(JSON.parse(savedTables));
+    if (savedSales) setSalesHistory(JSON.parse(savedSales));
+  }, []);
 
   const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
 
@@ -104,7 +125,6 @@ const App: React.FC = () => {
       if (t.id === tableId) {
         let currentOrder = t.currentOrder;
         
-        // Se a mesa estiver livre, inicia um novo pedido
         if (!currentOrder) {
           currentOrder = {
             id: Math.random().toString(36).substr(2, 6).toUpperCase(),
@@ -157,6 +177,7 @@ const App: React.FC = () => {
           tables={tables} 
           onUpdateTable={updateTable}
           onAddToOrder={handleAddToOrder}
+          onRefreshData={handleRefreshData}
           salesHistory={salesHistory}
           onLogout={() => { setIsAdmin(false); setIsLoggedIn(false); }}
         />
