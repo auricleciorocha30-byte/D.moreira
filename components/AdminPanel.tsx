@@ -34,32 +34,75 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Imprimir Pedido</title>
+          <title>D.Moreira - Pedido ${order.id}</title>
           <style>
             @page { margin: 0; }
-            body { font-family: 'Courier New', monospace; width: ${printConfig.width}; margin: 0; padding: 5mm; font-size: 12px; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            body { 
+              font-family: 'Courier New', Courier, monospace; 
+              width: ${printConfig.width === '58mm' ? '54mm' : '76mm'}; 
+              margin: 0; 
+              padding: 4mm; 
+              font-size: 13px; 
+              color: #000; 
+              background: #fff;
+              line-height: 1.3;
+            }
             .center { text-align: center; }
-            .line { border-bottom: 1px dashed #000; margin: 5px 0; }
-            .flex { display: flex; justify-content: space-between; }
-            .bold { font-weight: bold; font-size: 14px; }
+            .line { border-bottom: 2px solid #000; margin: 8px 0; }
+            .flex { display: flex; justify-content: space-between; align-items: flex-start; }
+            .bold { font-weight: 900; font-size: 15px; }
+            .header { margin-bottom: 12px; }
+            .item-row { margin-bottom: 4px; }
+            .footer { margin-top: 20px; font-size: 11px; }
+            h1, h2, h3 { margin: 0; padding: 0; }
           </style>
         </head>
         <body>
-          <div class="center bold">D.MOREIRA</div>
-          <div class="center">Parada Obrigatória ⛽</div>
+          <div class="center header">
+            <h1 class="bold">D. MOREIRA</h1>
+            <div style="font-size: 11px;">CONVENIÊNCIA & LANCHES</div>
+            <div style="font-size: 11px;">Parada Obrigatória ⛽</div>
+          </div>
           <div class="line"></div>
-          <div><b>PEDIDO:</b> ${order.id}</div>
-          <div><b>MESA:</b> ${order.tableId}</div>
-          <div><b>DATA:</b> ${new Date(order.timestamp).toLocaleString('pt-BR')}</div>
-          <div><b>CLIENTE:</b> ${order.customerName}</div>
+          <div class="flex"><b>PEDIDO:</b> <span>#${order.id}</span></div>
+          <div class="flex"><b>MESA:</b> <span>${order.tableId}</span></div>
+          <div class="flex"><b>DATA:</b> <span>${new Date(order.timestamp).toLocaleString('pt-BR', {hour: '2-digit', minute:'2-digit', day:'2-digit', month:'2-digit'})}</span></div>
+          <div class="flex"><b>CLIENTE:</b> <span>${order.customerName.toUpperCase()}</span></div>
           <div class="line"></div>
-          <div class="bold">ITENS:</div>
-          ${order.items.map(i => `<div class="flex"><span>${i.quantity}x ${i.name}</span><span>R$ ${(i.price * i.quantity).toFixed(2)}</span></div>`).join('')}
+          <div class="bold center" style="margin-bottom: 8px;">DETALHES DO PEDIDO</div>
+          ${order.items.map(i => `
+            <div class="item-row">
+              <div class="flex">
+                <span style="font-weight: bold;">${i.quantity}x ${i.name.toUpperCase()}</span>
+              </div>
+              <div class="flex" style="font-size: 11px; padding-left: 10px;">
+                <span>V. Unit: R$ ${i.price.toFixed(2)}</span>
+                <span>Sub: R$ ${(i.price * i.quantity).toFixed(2)}</span>
+              </div>
+            </div>
+          `).join('')}
           <div class="line"></div>
-          <div class="flex bold"><span>TOTAL:</span><span>R$ ${order.total.toFixed(2)}</span></div>
+          <div class="flex bold">
+            <span>TOTAL:</span>
+            <span>R$ ${order.total.toFixed(2)}</span>
+          </div>
+          <div class="flex" style="margin-top: 5px;">
+            <b>PAGAMENTO:</b>
+            <span>${order.paymentMethod.toUpperCase()}</span>
+          </div>
           <div class="line"></div>
-          <div class="center">*** SEM VALOR FISCAL ***</div>
-          <script>window.onload = function() { window.print(); window.close(); };</script>
+          <div class="footer center">
+            <div class="bold">*** SEM VALOR FISCAL ***</div>
+            <div>Obrigado pela preferência!</div>
+            <div style="margin-top: 10px; font-size: 9px;">Software de Gestão D.Moreira</div>
+          </div>
+          <script>
+            window.onload = function() { 
+              window.print(); 
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
         </body>
       </html>
     `;
@@ -79,18 +122,41 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
     const content = `
       <!DOCTYPE html>
       <html>
-        <head><title>Relatório de Vendas</title><style>body { font-family: monospace; padding: 20px; }</style></head>
+        <head>
+          <title>Relatório de Vendas - D.Moreira</title>
+          <style>
+            @page { margin: 0; }
+            body { 
+              font-family: 'Courier New', Courier, monospace; 
+              width: ${printConfig.width === '58mm' ? '54mm' : '76mm'}; 
+              margin: 0; padding: 5mm; font-size: 13px; color: #000; 
+              line-height: 1.4;
+            }
+            .center { text-align: center; }
+            .bold { font-weight: 900; font-size: 15px; }
+            .line { border-bottom: 2px solid #000; margin: 10px 0; }
+            .flex { display: flex; justify-content: space-between; }
+          </style>
+        </head>
         <body>
-          <h2 style="text-align:center">D.MOREIRA - RELATÓRIO</h2>
-          <hr/>
-          <p>Total de Pedidos: ${salesHistory.length}</p>
-          <p>Faturamento Total: R$ ${totalSales.toFixed(2)}</p>
-          <hr/>
-          <p>Pix: R$ ${pixTotal.toFixed(2)}</p>
-          <p>Dinheiro: R$ ${cashTotal.toFixed(2)}</p>
-          <p>Cartão: R$ ${cardTotal.toFixed(2)}</p>
-          <hr/>
-          <p>Data: ${new Date().toLocaleString()}</p>
+          <div class="center bold">D.MOREIRA - RELATÓRIO</div>
+          <div class="center" style="font-size: 11px;">FECHAMENTO DE CAIXA</div>
+          <div class="line"></div>
+          <div class="flex"><span>Pedidos Finalizados:</span> <b>${salesHistory.length}</b></div>
+          <div class="line"></div>
+          <div class="flex"><span>Total em Pix:</span> <b>R$ ${pixTotal.toFixed(2)}</b></div>
+          <div class="flex"><span>Total em Dinheiro:</span> <b>R$ ${cashTotal.toFixed(2)}</b></div>
+          <div class="flex"><span>Total em Cartão:</span> <b>R$ ${cardTotal.toFixed(2)}</b></div>
+          <div class="line"></div>
+          <div class="flex bold">
+            <span>FATURAMENTO TOTAL:</span>
+            <span>R$ ${totalSales.toFixed(2)}</span>
+          </div>
+          <div class="line"></div>
+          <div class="center" style="font-size: 11px;">
+            Gerado em: ${new Date().toLocaleString('pt-BR')}<br>
+            *** DOCUMENTO INTERNO ***
+          </div>
           <script>window.onload = function() { window.print(); window.close(); };</script>
         </body>
       </html>
@@ -244,7 +310,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
                       <h4 className="text-xs font-black uppercase text-gray-900 tracking-widest">Escolha os Produtos</h4>
                     </div>
                     
-                    {/* Navegação por Categoria no Admin */}
                     <div className="flex overflow-x-auto gap-2 no-scrollbar pb-1">
                       {categories.map(cat => (
                         <button
