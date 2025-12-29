@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Table, Order, PrintConfig, Product, CategoryType } from '../types';
+import { Table, Order, PrintConfig, Product, CategoryType, CartItem } from '../types';
 import { MENU_ITEMS } from '../constants';
-import { CloseIcon } from './Icons';
+import { CloseIcon, TrashIcon } from './Icons';
 
 interface AdminPanelProps {
   tables: Table[];
@@ -65,6 +65,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
+  const handleRemoveItem = (itemId: string) => {
+    if (!currentTableData?.currentOrder) return;
+    
+    if (!confirm("Deseja realmente cancelar este item do pedido?")) return;
+
+    const updatedItems = currentTableData.currentOrder.items.filter(item => item.id !== itemId);
+    
+    if (updatedItems.length === 0) {
+      // Se não sobrou nenhum item, libera a mesa ou mantém ocupada sem itens? 
+      // Geralmente melhor manter ocupada se o usuário ainda está lá, ou liberar se foi erro.
+      // Vamos apenas atualizar a conta.
+      onUpdateTable(currentTableData.id, 'occupied', {
+        ...currentTableData.currentOrder,
+        items: [],
+        total: 0
+      });
+    } else {
+      const newTotal = updatedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+      onUpdateTable(currentTableData.id, 'occupied', {
+        ...currentTableData.currentOrder,
+        items: updatedItems,
+        total: newTotal
+      });
+    }
+  };
+
   const handlePrint = (order: Order) => {
     const printWindow = window.open('', '_blank', 'width=600,height=800');
     if (!printWindow) return alert('Habilite pop-ups para imprimir.');
@@ -74,7 +100,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
       hour: '2-digit', minute: '2-digit'
     }).replace(',', '');
 
-    // Reduzimos de 54mm para 48mm para garantir margem de segurança física
     const paperWidth = printConfig.width === '58mm' ? '48mm' : '72mm';
 
     const content = `
@@ -84,33 +109,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
           <title>D.Moreira - Pedido ${order.id}</title>
           <style>
             @page { margin: 0; }
-            * { 
-              -webkit-print-color-adjust: exact !important; 
-              print-color-adjust: exact !important; 
-              color: #000 !important; 
-              font-weight: bold;
-              box-sizing: border-box;
-            }
-            body { 
-              font-family: 'Courier New', Courier, monospace; 
-              width: ${paperWidth}; 
-              margin: 0; 
-              padding: 1mm 1mm 5mm 1mm; 
-              font-size: 13px; 
-              line-height: 1.1; 
-              background: #fff;
-              overflow-x: hidden;
-            }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color: #000 !important; font-weight: bold; }
+            body { font-family: 'Courier New', Courier, monospace; width: ${paperWidth}; margin: 0; padding: 2mm; font-size: 13px; line-height: 1.1; background: #fff; overflow-x: hidden; }
             .center { text-align: center; }
             .line { border-bottom: 2px dashed #000; margin: 5px 0; width: 100%; }
             .flex { display: flex; justify-content: space-between; gap: 4px; }
             .bold-xl { font-size: 16px; font-weight: 900; }
             .item-container { margin-bottom: 4px; width: 100%; }
-            .item-name { 
-              font-size: 13px; 
-              word-break: break-all; 
-              text-transform: uppercase;
-            }
+            .item-name { font-size: 13px; word-break: break-all; text-transform: uppercase; }
             .footer { margin-top: 10px; font-size: 10px; }
           </style>
         </head>
@@ -355,12 +361,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
                   <div className="space-y-2">
                     <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Itens Consumidos</h4>
                     {currentTableData?.currentOrder?.items.map((item, idx) => (
-                      <div key={idx} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                        <div className="flex flex-col">
+                      <div key={idx} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-gray-100 group">
+                        <div className="flex flex-col flex-1">
                           <span className="text-sm font-black text-gray-900">{item.quantity}x {item.name}</span>
                           <span className="text-[10px] font-bold text-gray-400">Unit: R$ {item.price.toFixed(2)}</span>
                         </div>
-                        <span className="font-black text-sm text-gray-900">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                        <div className="flex items-center gap-4">
+                          <span className="font-black text-sm text-gray-900">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                          <button 
+                            onClick={() => handleRemoveItem(item.id)}
+                            className="p-2 text-red-200 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Cancelar este item"
+                          >
+                            <TrashIcon size={18} />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
