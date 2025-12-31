@@ -32,6 +32,7 @@ export interface Order {
   paymentMethod: string;
   timestamp: Date | string;
   tableId: number;
+  isUpdated?: boolean;
 }
 
 export interface Table {

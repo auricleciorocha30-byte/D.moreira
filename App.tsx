@@ -23,7 +23,6 @@ const App: React.FC = () => {
   const [tables, setTables] = useState<Table[]>(INITIAL_TABLES);
   const [salesHistory, setSalesHistory] = useState<Order[]>([]);
 
-  // Verificar sessão ativa ao carregar
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -115,19 +114,9 @@ const App: React.FC = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoadingLogin(true);
-    
-    const { error } = await supabase.auth.signInWithPassword({
-      email: loginEmail,
-      password: loginPass,
-    });
-
-    if (error) {
-      alert('Erro no login: ' + error.message);
-    } else {
-      setShowLogin(false);
-      setLoginPass('');
-      setLoginEmail('');
-    }
+    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPass });
+    if (error) alert('Erro no login: ' + error.message);
+    else { setShowLogin(false); setLoginPass(''); setLoginEmail(''); }
     setIsLoadingLogin(false);
   };
 
@@ -140,24 +129,43 @@ const App: React.FC = () => {
   const addToCart = (product: Product) => {
     setCartItems(prev => {
       const existing = prev.find(item => item.id === product.id);
-      if (existing) {
-        return prev.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
-      }
+      if (existing) return prev.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
       return [...prev, { ...product, quantity: 1 }];
     });
   };
 
   const handlePlaceOrder = async (order: Order) => {
+    // Buscar estado atual da mesa para ver se já está ocupada
+    const { data: tableData } = await supabase.from('tables').select('current_order, status').eq('id', order.tableId).single();
+    
+    let finalOrder = order;
+
+    if (tableData && tableData.status === 'occupied' && tableData.current_order) {
+      const existingOrder = tableData.current_order;
+      const mergedItems = [...existingOrder.items];
+
+      order.items.forEach(newItem => {
+        const foundIdx = mergedItems.findIndex(i => i.id === newItem.id);
+        if (foundIdx > -1) mergedItems[foundIdx].quantity += newItem.quantity;
+        else mergedItems.push(newItem);
+      });
+
+      finalOrder = {
+        ...existingOrder,
+        items: mergedItems,
+        total: mergedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0),
+        timestamp: new Date().toISOString(),
+        isUpdated: true // Sinalizador para o Admin
+      };
+    }
+
     const { error } = await supabase
       .from('tables')
-      .update({ status: 'occupied', current_order: order })
+      .update({ status: 'occupied', current_order: finalOrder })
       .eq('id', order.tableId);
     
-    if (error) {
-      alert('Erro ao enviar pedido.');
-    } else {
-      setCartItems([]);
-    }
+    if (error) alert('Erro ao enviar pedido.');
+    else setCartItems([]);
   };
 
   const updateTable = async (tableId: number, status: 'free' | 'occupied', order: Order | null = null) => {
@@ -194,26 +202,22 @@ const App: React.FC = () => {
     }
     const existingItems = [...currentOrder.items];
     const itemIdx = existingItems.findIndex(i => i.id === product.id);
-    if (itemIdx > -1) {
-      existingItems[itemIdx] = { ...existingItems[itemIdx], quantity: existingItems[itemIdx].quantity + 1 };
-    } else {
-      existingItems.push({ ...product, quantity: 1 });
-    }
-    const updatedOrder = { ...currentOrder, items: existingItems, total: existingItems.reduce((acc, item) => acc + (item.price * item.quantity), 0) };
+    if (itemIdx > -1) existingItems[itemIdx] = { ...existingItems[itemIdx], quantity: existingItems[itemIdx].quantity + 1 };
+    else existingItems.push({ ...product, quantity: 1 });
+    
+    const updatedOrder = { 
+      ...currentOrder, 
+      items: existingItems, 
+      total: existingItems.reduce((acc, item) => acc + (item.price * item.quantity), 0),
+      timestamp: new Date().toISOString()
+    };
     await supabase.from('tables').update({ status: 'occupied', current_order: updatedOrder }).eq('id', tableId);
   };
 
   if (isAdmin && isLoggedIn) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <AdminPanel 
-          tables={tables} 
-          onUpdateTable={updateTable}
-          onAddToOrder={handleAddToOrder}
-          onRefreshData={fetchData}
-          salesHistory={salesHistory}
-          onLogout={handleLogout}
-        />
+        <AdminPanel tables={tables} onUpdateTable={updateTable} onAddToOrder={handleAddToOrder} onRefreshData={fetchData} salesHistory={salesHistory} onLogout={handleLogout} />
       </div>
     );
   }
@@ -222,7 +226,6 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans antialiased relative">
       <Header />
       <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest transition-colors">Acesso Admin</button>
-
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
         <div className="flex overflow-x-auto gap-3 pb-8 no-scrollbar mask-fade scroll-smooth">
           {categories.map(cat => (
@@ -233,7 +236,6 @@ const App: React.FC = () => {
           {filteredItems.map(item => <MenuItem key={item.id} product={item} onAdd={addToCart} />)}
         </div>
       </main>
-
       <div className="fixed bottom-8 left-0 right-0 flex flex-col items-center gap-4 px-6 z-40 pointer-events-none">
         <button onClick={() => window.open(`https://wa.me/${STORE_INFO.whatsapp}`, '_blank')} className="pointer-events-auto bg-green-500 text-white rounded-full px-6 py-3 flex items-center gap-3 shadow-2xl hover:bg-green-600 transition-all active:scale-95 ring-4 ring-white"><span className="font-black text-xs uppercase tracking-widest">Suporte WhatsApp</span></button>
         {cartItems.length > 0 && (
@@ -246,47 +248,25 @@ const App: React.FC = () => {
           </button>
         )}
       </div>
-
       {showLogin && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
           <div className="bg-white p-10 rounded-[3rem] w-full max-w-sm shadow-2xl text-center">
             <h2 className="text-3xl font-black mb-2">Painel Admin</h2>
-            <p className="text-gray-400 text-xs font-bold uppercase mb-8">D.Moreira Conveniência</p>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="text-left">
                 <label className="block text-[10px] font-black text-gray-400 mb-2 uppercase tracking-widest">E-mail</label>
-                <input 
-                  type="email" 
-                  required
-                  value={loginEmail} 
-                  onChange={(e) => setLoginEmail(e.target.value)} 
-                  placeholder="admin@exemplo.com"
-                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-2 focus:ring-yellow-400 outline-none transition-all"
-                />
+                <input type="email" required value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="admin@exemplo.com" className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"/>
               </div>
               <div className="text-left">
                 <label className="block text-[10px] font-black text-gray-400 mb-2 uppercase tracking-widest">Senha</label>
-                <input 
-                  type="password" 
-                  required
-                  value={loginPass} 
-                  onChange={(e) => setLoginPass(e.target.value)} 
-                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-2 focus:ring-yellow-400 outline-none transition-all"
-                />
+                <input type="password" required value={loginPass} onChange={(e) => setLoginPass(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"/>
               </div>
-              <button 
-                type="submit" 
-                disabled={isLoadingLogin}
-                className="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl shadow-xl mt-4 hover:brightness-110 active:scale-95 transition-all uppercase text-xs tracking-widest flex items-center justify-center gap-2"
-              >
-                {isLoadingLogin ? 'Autenticando...' : 'Entrar no Sistema'}
-              </button>
-              <button type="button" onClick={() => setShowLogin(false)} className="w-full text-[10px] font-black text-gray-400 mt-4 uppercase tracking-widest">Voltar ao Cardápio</button>
+              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl shadow-xl mt-4 uppercase text-xs tracking-widest">{isLoadingLogin ? 'Autenticando...' : 'Entrar no Sistema'}</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="w-full text-[10px] font-black text-gray-400 mt-4 uppercase tracking-widest">Voltar</button>
             </form>
           </div>
         </div>
       )}
-
       <Cart 
         isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} 
         items={cartItems} onUpdateQuantity={(id, d) => setCartItems(p => p.map(i => i.id === id ? {...i, quantity: Math.max(1, i.quantity + d)} : i))}
