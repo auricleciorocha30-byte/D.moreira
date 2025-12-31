@@ -7,6 +7,7 @@ export interface Product {
   category: CategoryType;
   image: string;
   savings?: string;
+  isAvailable: boolean; // Novo campo para controle de estoque
 }
 
 export type CategoryType = 'Cafeteria' | 'Bebidas' | 'Lanches' | 'Conveniência' | 'Combos';

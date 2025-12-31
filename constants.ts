@@ -22,7 +22,9 @@ export const MENU_ITEMS: Product[] = [
     price: 16.90,
     category: 'Combos',
     image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=300&fit=crop',
-    savings: 'Economize R$ 3,10'
+    savings: 'Economize R$ 3,10',
+    // Added required isAvailable property
+    isAvailable: true
   },
   {
     id: 'c1',
@@ -30,7 +32,9 @@ export const MENU_ITEMS: Product[] = [
     description: 'Aquele café forte para despertar.',
     price: 5.50,
     category: 'Cafeteria',
-    image: 'https://images.unsplash.com/photo-1510972527921-ce03766a1cf1?w=400&h=300&fit=crop'
+    image: 'https://images.unsplash.com/photo-1510972527921-ce03766a1cf1?w=400&h=300&fit=crop',
+    // Added required isAvailable property
+    isAvailable: true
   },
   {
     id: 'b1',
@@ -38,7 +42,9 @@ export const MENU_ITEMS: Product[] = [
     description: 'Geladinha para refrescar.',
     price: 6.00,
     category: 'Bebidas',
-    image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=400&h=300&fit=crop'
+    image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=400&h=300&fit=crop',
+    // Added required isAvailable property
+    isAvailable: true
   },
   {
     id: 'l1',
@@ -46,6 +52,8 @@ export const MENU_ITEMS: Product[] = [
     description: 'Presunto e queijo derretido na chapa.',
     price: 12.50,
     category: 'Lanches',
-    image: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=400&h=300&fit=crop'
+    image: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=400&h=300&fit=crop',
+    // Added required isAvailable property
+    isAvailable: true
   }
 ];
