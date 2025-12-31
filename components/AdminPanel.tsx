@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Table, Order, PrintConfig, Product, CategoryType, CartItem } from '../types';
+import { Table, Order, PrintConfig, Product, CategoryType, OrderStatus } from '../types';
 import { MENU_ITEMS } from '../constants';
 import { CloseIcon, TrashIcon } from './Icons';
 
@@ -15,7 +15,7 @@ interface AdminPanelProps {
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToOrder, onRefreshData, salesHistory, onLogout }) => {
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
-  const [printConfig, setPrintConfig] = useState<PrintConfig>({ width: '58mm' });
+  const [printConfig, setPrintConfig] = useState<PrintConfig>({ width: '80mm' });
   const [isAddingItems, setIsAddingItems] = useState(false);
   const [showSalesReport, setShowSalesReport] = useState(false);
   const [adminCategory, setAdminCategory] = useState<CategoryType | 'Todos'>('Todos');
@@ -27,7 +27,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
     [tables, selectedTable]
   );
 
-  // Lógica de Som: Contar total de itens em todas as mesas
   const totalItemsInTables = useMemo(() => {
     return tables.reduce((acc, table) => {
       if (!table.currentOrder) return acc;
@@ -40,46 +39,38 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
   const playNotification = () => {
     if (!isSoundEnabled) return;
     const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-    audio.play().catch(e => console.log("Áudio bloqueado. Clique em qualquer lugar do painel para ativar."));
+    audio.play().catch(() => {});
   };
 
   useEffect(() => {
-    // Toca se o número total de itens aumentou (novo pedido ou complemento)
     if (totalItemsInTables > lastTotalItemsRef.current) {
       playNotification();
     }
     lastTotalItemsRef.current = totalItemsInTables;
   }, [totalItemsInTables, isSoundEnabled]);
 
-  const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
-
-  const filteredAdminItems = useMemo(() => {
-    if (adminCategory === 'Todos') return MENU_ITEMS;
-    return MENU_ITEMS.filter(item => item.category === adminCategory);
-  }, [adminCategory]);
-
-  const handleManualRefresh = () => {
-    setIsRefreshing(true);
-    onRefreshData();
-    setTimeout(() => setIsRefreshing(false), 600);
-  };
-
-  const handleRemoveItem = (itemId: string) => {
+  const handleStatusChange = (newStatus: OrderStatus) => {
     if (!currentTableData?.currentOrder) return;
-    if (!confirm("Deseja realmente cancelar este item?")) return;
-    const updatedItems = currentTableData.currentOrder.items.filter(item => item.id !== itemId);
-    const newTotal = updatedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     onUpdateTable(currentTableData.id, 'occupied', {
       ...currentTableData.currentOrder,
-      items: updatedItems,
-      total: newTotal
+      status: newStatus
     });
   };
 
+  const getStatusLabel = (status: OrderStatus) => {
+    switch (status) {
+      case 'pending': return { text: 'Pendente', color: 'bg-red-500' };
+      case 'preparing': return { text: 'Em Preparo', color: 'bg-orange-500' };
+      case 'ready': return { text: 'Pronto!', color: 'bg-blue-500' };
+      case 'delivered': return { text: 'Entregue', color: 'bg-green-500' };
+      default: return { text: 'Pendente', color: 'bg-red-500' };
+    }
+  };
+
   const handlePrint = (order: Order) => {
-    const printWindow = window.open('', '_blank', 'width=600,height=800');
+    const printWindow = window.open('', '_blank', 'width=800,height=800');
     if (!printWindow) return alert('Habilite pop-ups.');
-    const dateStr = new Date(order.timestamp).toLocaleString('pt-BR').replace(',', '');
+    const dateStr = new Date(order.timestamp).toLocaleString('pt-BR');
     const paperWidth = printConfig.width === '58mm' ? '48mm' : '72mm';
     const content = `
       <!DOCTYPE html>
@@ -88,27 +79,30 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
           <title>D.Moreira - Pedido ${order.id}</title>
           <style>
             @page { margin: 0; }
-            * { color: #000 !important; font-weight: bold; }
-            body { font-family: 'Courier New', monospace; width: ${paperWidth}; margin: 0; padding: 2mm; font-size: 13px; line-height: 1.1; background: #fff; }
+            * { color: #000 !important; font-family: 'Courier New', monospace; font-weight: bold; }
+            body { width: ${paperWidth}; margin: 0; padding: 4mm; font-size: 14px; line-height: 1.2; background: #fff; }
             .center { text-align: center; }
-            .line { border-bottom: 2px dashed #000; margin: 5px 0; }
+            .line { border-bottom: 2px dashed #000; margin: 8px 0; }
             .flex { display: flex; justify-content: space-between; }
-            .bold-xl { font-size: 16px; font-weight: 900; }
+            .header { font-size: 20px; font-weight: 900; margin-bottom: 5px; }
+            .item-row { margin-bottom: 4px; }
           </style>
         </head>
         <body>
-          <div class="center"><div class="bold-xl">D. MOREIRA</div></div>
+          <div class="center"><div class="header">D. MOREIRA</div><div>CONVENIÊNCIA</div></div>
           <div class="line"></div>
-          <div class="flex"><span>MESA:</span> <span>${order.tableId}</span></div>
+          <div class="flex"><span>TIPO:</span> <span>${order.orderType.toUpperCase()}</span></div>
+          <div class="flex"><span>LOCAL:</span> <span>${order.tableId === 99 ? 'Balcão/Viagem' : 'MESA ' + order.tableId}</span></div>
           <div class="flex"><span>DATA:</span> <span>${dateStr}</span></div>
           <div class="flex"><span>CLIENTE:</span> <span>${order.customerName.toUpperCase()}</span></div>
           <div class="line"></div>
-          ${order.items.map(i => `<div class="flex"><span>${i.quantity}x ${i.name.slice(0,18)}</span> <span>R$ ${(i.price * i.quantity).toFixed(2)}</span></div>`).join('')}
+          ${order.items.map(i => `<div class="item-row"><div class="flex"><span>${i.quantity}x ${i.name}</span><span>R$ ${(i.price * i.quantity).toFixed(2)}</span></div></div>`).join('')}
           <div class="line"></div>
-          <div class="flex" style="font-size: 16px;"><span>TOTAL:</span> <span>R$ ${order.total.toFixed(2)}</span></div>
+          <div class="flex" style="font-size: 18px;"><span>TOTAL:</span> <span>R$ ${order.total.toFixed(2)}</span></div>
           <div class="flex"><span>PAGTO:</span> <span>${order.paymentMethod.toUpperCase()}</span></div>
+          ${order.address ? `<div class="line"></div><div>END: ${order.address}</div>` : ''}
           <div class="line"></div>
-          <div class="center">*** SEM VALOR FISCAL ***</div>
+          <div class="center italic">*** OBRIGADO PELA VISITA ***</div>
           <script>window.onload=function(){window.print();window.close();};</script>
         </body>
       </html>
@@ -118,142 +112,207 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto" onClick={() => { if(!isSoundEnabled) setIsSoundEnabled(true); }}>
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-        <div className="flex items-center gap-4">
-          <div>
-            <h2 className="text-3xl font-black text-gray-900 italic">Controle de Mesas</h2>
-            <div className="flex items-center gap-3">
-              <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">D.Moreira Dashboard</p>
-              <button 
-                onClick={(e) => { e.stopPropagation(); setIsSoundEnabled(!isSoundEnabled); }}
-                className={`flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border transition-all ${isSoundEnabled ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : 'bg-gray-100 border-gray-200 text-gray-400'}`}
-              >
-                {isSoundEnabled ? '🔔 Alerta Ativo' : '🔕 Mudo'}
-              </button>
-            </div>
+    <div className="p-4 md:p-8 max-w-7xl mx-auto" onClick={() => !isSoundEnabled && setIsSoundEnabled(true)}>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
+        <div>
+          <h2 className="text-4xl font-black text-gray-900 italic tracking-tight">Painel Operacional</h2>
+          <div className="flex items-center gap-3 mt-1">
+            <span className="text-gray-400 text-xs font-black uppercase tracking-widest">D.Moreira Gestão</span>
+            <button onClick={(e) => { e.stopPropagation(); setIsSoundEnabled(!isSoundEnabled); }} className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border transition-all ${isSoundEnabled ? 'bg-yellow-100 border-yellow-400 text-yellow-800' : 'bg-gray-100 border-gray-300 text-gray-400'}`}>
+              {isSoundEnabled ? '🔔 Alerta Sonoro' : '🔕 Mudo'}
+            </button>
           </div>
-          <button onClick={handleManualRefresh} className={`p-3 rounded-full bg-white shadow-md border border-gray-100 ${isRefreshing ? 'animate-spin' : ''}`}>
-            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          </button>
         </div>
         
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <button onClick={() => setShowSalesReport(true)} className="bg-yellow-400 text-black px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95">📊 Relatório</button>
-          <button onClick={onLogout} className="bg-black text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg">Sair</button>
+        <div className="flex flex-wrap items-center gap-4">
+          <button onClick={onRefreshData} className="bg-white p-3.5 rounded-2xl shadow-md border border-gray-100 hover:bg-gray-50 transition-colors">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          </button>
+          <button onClick={() => setShowSalesReport(true)} className="bg-yellow-400 text-black px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 border-b-4 border-black transition-all">📊 Relatório Financeiro</button>
+          <button onClick={onLogout} className="bg-black text-white px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl">Sair</button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
-        {tables.map(table => (
-          <button
-            key={table.id}
-            onClick={() => { setSelectedTable(table); setIsAddingItems(table.status === 'free'); setAdminCategory('Todos'); }}
-            className={`p-6 rounded-[2rem] border-4 transition-all flex flex-col items-center justify-center gap-2 group relative ${
-              table.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl scale-105'
-            }`}
-          >
-            {table.currentOrder?.isUpdated && (
-              <div className="absolute -top-3 -right-3 bg-red-600 text-white text-[9px] font-black px-3 py-1.5 rounded-full shadow-lg border-2 border-white animate-bounce z-10 uppercase tracking-tighter">
-                Novo Item!
-              </div>
-            )}
-            <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Mesa</span>
-            <span className="text-4xl font-black">{table.id}</span>
-            <span className={`text-[10px] font-black uppercase px-4 py-1.5 rounded-full ${table.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>
-              {table.status === 'free' ? 'Livre' : 'Ocupada'}
-            </span>
-            {table.currentOrder && <span className="text-[9px] font-bold text-black/70 truncate w-full text-center">{table.currentOrder.customerName}</span>}
-          </button>
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
+        {tables.map(table => {
+          const statusInfo = table.currentOrder ? getStatusLabel(table.currentOrder.status) : null;
+          return (
+            <button
+              key={table.id}
+              onClick={() => setSelectedTable(table)}
+              className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-2 group relative h-48 ${
+                table.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-2xl scale-105 z-10'
+              }`}
+            >
+              {table.currentOrder?.isUpdated && (
+                <div className="absolute -top-3 -right-3 bg-red-600 text-white text-[9px] font-black px-3 py-1.5 rounded-full shadow-lg border-2 border-white animate-bounce z-20 uppercase">Novo Item!</div>
+              )}
+              {statusInfo && (
+                <div className={`absolute top-4 left-4 ${statusInfo.color} text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest`}>
+                  {statusInfo.text}
+                </div>
+              )}
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-40">Mesa</span>
+              <span className="text-5xl font-black italic">{table.id}</span>
+              <span className={`text-[9px] font-black uppercase px-4 py-1.5 rounded-full mt-2 ${table.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>
+                {table.status === 'free' ? 'Disponível' : 'Ocupada'}
+              </span>
+              {table.currentOrder && (
+                <span className="text-[10px] font-bold text-black/70 mt-1 truncate w-full text-center px-2">{table.currentOrder.customerName}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {selectedTable && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setSelectedTable(null)} />
-          <div className="relative bg-white w-full max-w-2xl rounded-[3rem] p-6 md:p-8 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-pop-in border-8 border-yellow-400">
-            <div className="flex justify-between items-center mb-6 shrink-0">
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-xl" onClick={() => setSelectedTable(null)} />
+          <div className="relative bg-white w-full max-w-3xl rounded-[3.5rem] p-8 md:p-10 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-pop-in border-[12px] border-yellow-400">
+            <div className="flex justify-between items-start mb-8 shrink-0">
               <div>
-                <h3 className="text-3xl font-black italic">Mesa {selectedTable.id}</h3>
-                <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">{currentTableData?.status === 'occupied' ? 'Pedido em Aberto' : 'Nova Conta'}</p>
+                <h3 className="text-4xl font-black italic">Atendimento Mesa {selectedTable.id}</h3>
+                <div className="flex gap-2 mt-2">
+                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${currentTableData?.status === 'occupied' ? 'bg-black text-white' : 'bg-gray-100 text-gray-400'}`}>
+                    {currentTableData?.status === 'occupied' ? 'Conta Ativa' : 'Mesa Livre'}
+                  </span>
+                  {currentTableData?.currentOrder && (
+                    <span className="px-4 py-1.5 rounded-full bg-yellow-100 text-yellow-800 text-[10px] font-black uppercase tracking-widest">
+                      {currentTableData.currentOrder.orderType === 'table' ? 'No Local' : currentTableData.currentOrder.orderType === 'delivery' ? 'Entrega' : 'Viagem'}
+                    </span>
+                  )}
+                </div>
               </div>
-              <button onClick={() => setSelectedTable(null)} className="p-2 hover:bg-gray-100 rounded-full"><CloseIcon/></button>
+              <button onClick={() => setSelectedTable(null)} className="p-3 hover:bg-gray-100 rounded-full transition-colors"><CloseIcon size={32}/></button>
             </div>
 
-            <div className="flex-1 overflow-y-auto no-scrollbar mb-6">
-              {isAddingItems ? (
-                <div className="space-y-6">
-                  <div className="flex items-center gap-3 sticky top-0 bg-white pb-4 z-20">
-                    {currentTableData?.status === 'occupied' && <button onClick={() => setIsAddingItems(false)} className="bg-gray-100 p-2 rounded-xl font-bold text-[10px] uppercase">← Voltar</button>}
-                    <div className="flex overflow-x-auto gap-2 no-scrollbar">
-                      {categories.map(cat => (
-                        <button key={cat} onClick={() => setAdminCategory(cat)} className={`whitespace-nowrap px-4 py-2 rounded-xl font-black text-[10px] uppercase border transition-all ${adminCategory === cat ? 'bg-black text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>{cat}</button>
-                      ))}
+            <div className="flex-1 overflow-y-auto no-scrollbar mb-8 pr-2">
+              {currentTableData?.currentOrder ? (
+                <div className="space-y-8">
+                  <div className="bg-black text-white p-6 rounded-[2.5rem] shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-yellow-400 tracking-widest mb-1 block">Status do Preparo</span>
+                      <div className="flex gap-2 mt-2 flex-wrap">
+                        {(['pending', 'preparing', 'ready', 'delivered'] as OrderStatus[]).map((st) => (
+                          <button
+                            key={st}
+                            onClick={() => handleStatusChange(st)}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border-2 ${
+                              currentTableData.currentOrder?.status === st 
+                              ? 'bg-yellow-400 text-black border-yellow-400 scale-105' 
+                              : 'bg-transparent border-white/20 text-white/40 hover:border-white'
+                            }`}
+                          >
+                            {getStatusLabel(st).text}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-black uppercase text-yellow-400 tracking-widest mb-1 block">Responsável</span>
+                      <p className="text-xl font-black italic">{currentTableData.currentOrder.customerName}</p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {filteredAdminItems.map(product => (
-                      <button key={product.id} onClick={() => onAddToOrder(selectedTable.id, product)} className="flex items-center gap-4 p-3 bg-gray-50 rounded-2xl hover:bg-yellow-50 border border-transparent hover:border-yellow-200 transition-all text-left">
-                        <img src={product.image} className="w-14 h-14 object-cover rounded-xl shadow-sm" />
-                        <div className="flex-1"><p className="text-xs font-black text-gray-900 leading-tight">{product.name}</p><p className="text-[11px] font-bold text-yellow-700">R$ {product.price.toFixed(2)}</p></div>
-                        <div className="bg-black text-white p-2 rounded-xl shadow-lg"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg></div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center bg-yellow-400 p-4 rounded-2xl border-2 border-black">
-                    <div><span className="text-[10px] font-black uppercase text-black/60">Cliente</span><p className="font-black text-lg">{currentTableData?.currentOrder?.customerName}</p></div>
-                    <button onClick={() => setIsAddingItems(true)} className="bg-black text-yellow-400 px-6 py-2 rounded-xl font-black text-xs uppercase shadow-xl hover:scale-105 transition-all">+ Adicionar Itens</button>
-                  </div>
-                  <div className="space-y-2">
-                    <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Resumo Consumido</h4>
-                    {currentTableData?.currentOrder?.items.map((item, idx) => (
-                      <div key={idx} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                        <div className="flex flex-col flex-1"><span className="text-sm font-black text-gray-900">{item.quantity}x {item.name}</span><span className="text-[10px] font-bold text-gray-400">Unit: R$ {item.price.toFixed(2)}</span></div>
-                        <div className="flex items-center gap-4"><span className="font-black text-sm text-gray-900">R$ {(item.price * item.quantity).toFixed(2)}</span><button onClick={() => handleRemoveItem(item.id)} className="p-2 text-red-200 hover:text-red-500"><TrashIcon size={18} /></button></div>
+
+                  <div className="space-y-4">
+                    <h4 className="text-[11px] font-black uppercase text-gray-400 tracking-[0.2em] px-2 italic">Comanda de Itens</h4>
+                    {currentTableData.currentOrder.items.map((item, idx) => (
+                      <div key={idx} className="flex justify-between items-center bg-gray-50 p-5 rounded-3xl border border-gray-100 hover:shadow-md transition-shadow">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-black text-yellow-400 w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm">{item.quantity}x</div>
+                          <div>
+                            <span className="text-base font-black text-gray-900 leading-tight">{item.name}</span>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Unit: R$ {item.price.toFixed(2)}</p>
+                          </div>
+                        </div>
+                        <span className="font-black text-lg italic text-gray-900">R$ {(item.price * item.quantity).toFixed(2)}</span>
                       </div>
                     ))}
                   </div>
                 </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                  <div className="bg-gray-50 p-10 rounded-full italic font-black text-6xl text-gray-200">D.M</div>
+                  <p className="text-lg font-black text-gray-300 uppercase italic">Mesa pronta para novos clientes</p>
+                </div>
               )}
             </div>
 
-            <div className="pt-6 border-t border-gray-100 shrink-0">
+            <div className="pt-8 border-t-4 border-gray-100 shrink-0">
               {currentTableData?.currentOrder ? (
                 <>
-                  <div className="flex justify-between items-end mb-6">
-                    <div><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total da Mesa</span><p className="text-4xl font-black text-black leading-none">R$ {currentTableData.currentOrder.total.toFixed(2)}</p></div>
-                    <div className="text-right">
-                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pagamento</span>
-                      <select className="block w-full bg-transparent font-black text-lg outline-none border-b-4 border-yellow-400" value={currentTableData.currentOrder.paymentMethod} onChange={(e) => onUpdateTable(selectedTable.id, 'occupied', { ...currentTableData.currentOrder!, paymentMethod: e.target.value })}>
-                        <option value="Pix">Pix</option><option value="Dinheiro">Dinheiro</option><option value="Cartão">Cartão</option>
+                  <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
+                    <div>
+                      <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Total Consumido</span>
+                      <p className="text-5xl font-black text-black leading-none italic">R$ {currentTableData.currentOrder.total.toFixed(2)}</p>
+                    </div>
+                    <div className="w-full md:w-48">
+                      <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Método de Pagto</span>
+                      <select 
+                        className="w-full bg-gray-50 font-black text-lg px-4 py-3 rounded-2xl outline-none border-b-4 border-yellow-400"
+                        value={currentTableData.currentOrder.paymentMethod}
+                        onChange={(e) => onUpdateTable(selectedTable.id, 'occupied', { ...currentTableData.currentOrder!, paymentMethod: e.target.value })}
+                      >
+                        <option value="Pix">Pix</option>
+                        <option value="Dinheiro">Dinheiro</option>
+                        <option value="Cartão">Cartão</option>
                       </select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => handlePrint(currentTableData.currentOrder!)} className="bg-gray-100 text-black py-4 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 border-2 border-gray-200">🖨️ Cupom</button>
-                    <button onClick={() => { onUpdateTable(selectedTable.id, 'free'); setSelectedTable(null); }} className="bg-green-500 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-green-600 transition-all border-2 border-black">Liberar Mesa</button>
+                  <div className="grid grid-cols-2 gap-6">
+                    <button 
+                      onClick={() => handlePrint(currentTableData.currentOrder!)}
+                      className="bg-gray-100 text-black py-5 rounded-[2rem] font-black uppercase text-xs tracking-widest flex items-center justify-center gap-3 border-4 border-gray-200 hover:bg-gray-200 transition-all"
+                    >
+                      🖨️ Imprimir Cupom (80mm)
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if(confirm(`Confirmar fechamento da conta da Mesa ${selectedTable.id}?`)) {
+                          onUpdateTable(selectedTable.id, 'free');
+                          setSelectedTable(null);
+                        }
+                      }}
+                      className="bg-green-500 text-white py-5 rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-2xl hover:bg-green-600 transition-all border-b-4 border-green-800"
+                    >
+                      Liberar Mesa & Receber
+                    </button>
                   </div>
                 </>
-              ) : <div className="text-center py-4"><p className="text-sm font-black text-gray-400 uppercase italic">Selecione produtos acima</p></div>}
+              ) : (
+                <button 
+                  onClick={() => setIsAddingItems(true)} 
+                  className="w-full bg-yellow-400 text-black py-5 rounded-[2.5rem] font-black uppercase text-xs tracking-widest shadow-xl border-b-4 border-black"
+                >
+                  Abrir Nova Comanda
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
 
       {showSalesReport && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="bg-white w-full max-w-lg rounded-[3rem] p-8 shadow-2xl relative border-8 border-yellow-400">
-            <button onClick={() => setShowSalesReport(false)} className="absolute top-6 right-6 p-2"><CloseIcon/></button>
-            <h3 className="text-2xl font-black mb-6 italic">Relatório do Dia</h3>
-            <div className="space-y-4 mb-8">
-              {['Pix', 'Dinheiro', 'Cartão'].map(method => (
-                <div key={method} className="flex justify-between border-b border-gray-50 pb-2"><span className="font-bold text-gray-500 uppercase text-xs">{method}</span><span className="font-black">R$ {salesHistory.filter(o => o.paymentMethod === method).reduce((acc, o) => acc + o.total, 0).toFixed(2)}</span></div>
-              ))}
-              <div className="flex justify-between pt-4"><span className="text-xl font-black">TOTAL EM CAIXA</span><span className="text-2xl font-black text-black">R$ {salesHistory.reduce((acc, o) => acc + o.total, 0).toFixed(2)}</span></div>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/95 backdrop-blur-2xl">
+          <div className="bg-white w-full max-w-xl rounded-[4rem] p-12 shadow-2xl relative border-[12px] border-yellow-400">
+            <button onClick={() => setShowSalesReport(false)} className="absolute top-8 right-8 p-2 hover:bg-gray-100 rounded-full"><CloseIcon/></button>
+            <h3 className="text-3xl font-black mb-8 italic tracking-tighter">Relatório de Caixa Diário</h3>
+            <div className="space-y-6 mb-10">
+              {['Pix', 'Dinheiro', 'Cartão'].map(method => {
+                const total = salesHistory.filter(o => o.paymentMethod === method).reduce((acc, o) => acc + o.total, 0);
+                return (
+                  <div key={method} className="flex justify-between items-center border-b-2 border-gray-50 pb-4">
+                    <span className="font-black text-gray-400 uppercase text-xs tracking-widest">{method}</span>
+                    <span className="font-black text-xl italic">R$ {total.toFixed(2)}</span>
+                  </div>
+                );
+              })}
+              <div className="flex justify-between pt-6 bg-yellow-50 p-6 rounded-3xl">
+                <span className="text-sm font-black uppercase tracking-widest text-yellow-800">TOTAL EM CAIXA</span>
+                <span className="text-3xl font-black text-black italic">R$ {salesHistory.reduce((acc, o) => acc + o.total, 0).toFixed(2)}</span>
+              </div>
             </div>
+            <button onClick={() => window.print()} className="w-full bg-black text-white py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest">Imprimir Relatório</button>
           </div>
         </div>
       )}

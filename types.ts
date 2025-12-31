@@ -23,6 +23,8 @@ export interface StoreInfo {
 }
 
 export type TableStatus = 'free' | 'occupied';
+export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'delivered';
+export type OrderType = 'table' | 'takeaway' | 'delivery';
 
 export interface Order {
   id: string;
@@ -33,6 +35,9 @@ export interface Order {
   timestamp: Date | string;
   tableId: number;
   isUpdated?: boolean;
+  status: OrderStatus;
+  orderType: OrderType;
+  address?: string;
 }
 
 export interface Table {
