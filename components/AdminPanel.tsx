@@ -36,60 +36,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
 
   const filteredItemsToAdd = useMemo(() => 
     menuItems.filter(item => 
-      item.isAvailable && 
       (item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
        item.category.toLowerCase().includes(searchTerm.toLowerCase()))
     )
   , [menuItems, searchTerm]);
-
-  const sqlSetup = `-- 1. CRIAR TABELA DE PRODUTOS
-CREATE TABLE IF NOT EXISTS public.products (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    price DECIMAL(10,2) NOT NULL,
-    category TEXT NOT NULL,
-    image TEXT,
-    savings TEXT,
-    is_available BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-ALTER TABLE public.products DISABLE ROW LEVEL SECURITY;
-
--- 2. CRIAR TABELA DE MESAS
-CREATE TABLE IF NOT EXISTS public.tables (
-    id INTEGER PRIMARY KEY,
-    status TEXT DEFAULT 'free',
-    current_order JSONB,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-ALTER TABLE public.tables DISABLE ROW LEVEL SECURITY;
-
--- 3. CRIAR TABELA DE VENDAS
-CREATE TABLE IF NOT EXISTS public.sales (
-    id BIGSERIAL PRIMARY KEY,
-    customer_name TEXT,
-    items JSONB,
-    total DECIMAL(10,2),
-    payment_method TEXT,
-    table_id INTEGER,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-ALTER TABLE public.sales DISABLE ROW LEVEL SECURITY;
-
--- 4. HABILITAR REALTIME
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'products') THEN
-        ALTER PUBLICATION supabase_realtime ADD TABLE products;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'tables') THEN
-        ALTER PUBLICATION supabase_realtime ADD TABLE tables;
-    END IF;
-END $$;
-
--- 5. INSERIR MESAS INICIAIS
-INSERT INTO tables (id, status) VALUES (1,'free'),(2,'free'),(3,'free'),(4,'free'),(5,'free'),(6,'free'),(7,'free'),(8,'free'),(9,'free'),(10,'free'),(11,'free'),(12,'free') ON CONFLICT DO NOTHING;`;
 
   const getStatusLabel = (status: OrderStatus) => {
     switch (status) {
@@ -101,32 +51,8 @@ INSERT INTO tables (id, status) VALUES (1,'free'),(2,'free'),(3,'free'),(4,'free
     }
   };
 
-  const handleRepopulateMenu = async () => {
-    if (confirm('Deseja sincronizar os produtos padrão com o banco?')) {
-      setIsSyncing(true);
-      try {
-        const payload = STATIC_MENU.map(item => ({
-          id: item.id,
-          name: item.name,
-          description: item.description,
-          price: item.price,
-          category: item.category,
-          image: item.image,
-          savings: item.savings || '',
-          is_available: true
-        }));
-        
-        const { error } = await supabase.from('products').upsert(payload);
-        if (error) throw error;
-        
-        alert('Cardápio sincronizado!');
-        onRefreshData();
-      } catch (err: any) {
-        alert('Erro ao sincronizar: Verifique a conexão.');
-      } finally {
-        setIsSyncing(false);
-      }
-    }
+  const handleToggleAvailability = async (item: Product) => {
+    onSaveProduct({ ...item, isAvailable: !item.isAvailable });
   };
 
   const handlePrint = (order: Order) => {
@@ -159,8 +85,8 @@ INSERT INTO tables (id, status) VALUES (1,'free'),(2,'free'),(3,'free'),(4,'free
           <h2 className="text-3xl font-black italic tracking-tighter">D.Moreira Admin</h2>
           <div className="flex gap-6 mt-4">
             <button onClick={() => setActiveTab('tables')} className={`text-[11px] font-black uppercase tracking-[0.2em] pb-1 border-b-4 transition-all ${activeTab === 'tables' ? 'border-yellow-400 text-black' : 'border-transparent text-gray-300 hover:text-gray-500'}`}>Pedidos</button>
-            <button onClick={() => setActiveTab('functions')} className={`text-[11px] font-black uppercase tracking-[0.2em] pb-1 border-b-4 transition-all ${activeTab === 'functions' ? 'border-yellow-400 text-black' : 'border-transparent text-gray-300 hover:text-gray-500'}`}>Cardápio</button>
-            <button onClick={() => setActiveTab('setup')} className={`text-[11px] font-black uppercase tracking-[0.2em] pb-1 border-b-4 transition-all ${activeTab === 'setup' ? 'border-red-400 text-black' : 'border-transparent text-gray-300 hover:text-gray-500'} ${dbStatus === 'error_tables_missing' ? 'animate-pulse text-red-500' : ''}`}>Setup Banco</button>
+            <button onClick={() => setActiveTab('functions')} className={`text-[11px] font-black uppercase tracking-[0.2em] pb-1 border-b-4 transition-all ${activeTab === 'functions' ? 'border-yellow-400 text-black' : 'border-transparent text-gray-300 hover:text-gray-500'}`}>Cardápio & Estoque</button>
+            <button onClick={() => setActiveTab('setup')} className={`text-[11px] font-black uppercase tracking-[0.2em] pb-1 border-b-4 transition-all ${activeTab === 'setup' ? 'border-red-400 text-black' : 'border-transparent text-gray-300 hover:text-gray-500'}`}>Setup</button>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -188,24 +114,34 @@ INSERT INTO tables (id, status) VALUES (1,'free'),(2,'free'),(3,'free'),(4,'free
       {activeTab === 'functions' && (
         <div className="bg-white rounded-[3.5rem] p-8 md:p-12 shadow-sm border border-gray-100">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
-            <div><h3 className="text-3xl font-black italic tracking-tighter">Estoque & Itens</h3></div>
+            <div><h3 className="text-3xl font-black italic tracking-tighter">Gerenciar Estoque</h3></div>
             <div className="flex gap-3">
-              <button onClick={handleRepopulateMenu} disabled={isSyncing} className="bg-gray-100 text-gray-600 px-6 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest">{isSyncing ? 'Carregando...' : 'Sincronizar'}</button>
-              <button onClick={() => { setEditingProduct({ category: 'Lanches', isAvailable: true }); setIsProductModalOpen(true); }} className="bg-yellow-400 text-black px-8 py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:scale-105 transition-all border-b-4 border-black">+ Novo</button>
+              <button onClick={() => { setEditingProduct({ category: 'Lanches', isAvailable: true }); setIsProductModalOpen(true); }} className="bg-yellow-400 text-black px-8 py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:scale-105 transition-all border-b-4 border-black">+ Novo Item</button>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {menuItems.map(item => (
-              <div key={item.id} className={`group p-5 rounded-[2.5rem] border-2 transition-all ${item.isAvailable ? 'bg-gray-50 border-gray-100' : 'bg-red-50/50 border-red-100'}`}>
+              <div key={item.id} className={`group p-5 rounded-[2.5rem] border-2 transition-all ${item.isAvailable ? 'bg-gray-50 border-gray-100' : 'bg-red-50 border-red-200'}`}>
                 <div className="relative mb-4">
-                  <img src={item.image} className={`w-full h-32 object-cover rounded-2xl ${!item.isAvailable && 'grayscale'}`} />
-                  {!item.isAvailable && <span className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl font-black text-white text-[10px] uppercase">Esgotado</span>}
+                  <img src={item.image} className={`w-full h-32 object-cover rounded-2xl shadow-sm ${!item.isAvailable && 'grayscale brightness-75'}`} />
+                  {!item.isAvailable && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="bg-red-600 text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase shadow-xl ring-2 ring-white">Esgotado</span>
+                    </div>
+                  )}
                 </div>
-                <h4 className="font-black text-sm text-gray-900 truncate">{item.name}</h4>
-                <p className="text-yellow-700 font-black text-xs mb-4">R$ {item.price.toFixed(2)}</p>
+                <h4 className="font-black text-sm text-gray-900 truncate leading-tight">{item.name}</h4>
+                <div className="flex justify-between items-center mb-4">
+                  <p className="text-yellow-700 font-black text-xs">R$ {item.price.toFixed(2)}</p>
+                  <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${item.isAvailable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {item.isAvailable ? 'Em Estoque' : 'Em Falta'}
+                  </span>
+                </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { setEditingProduct(item); setIsProductModalOpen(true); }} className="flex-1 bg-white border border-gray-200 py-3 rounded-xl font-black text-[10px] uppercase">Editar</button>
-                  <button onClick={() => onSaveProduct({ ...item, isAvailable: !item.isAvailable })} className={`px-4 py-3 rounded-xl font-black text-[10px] uppercase ${item.isAvailable ? 'text-red-500' : 'bg-green-500 text-white'}`}>{item.isAvailable ? 'Remover' : 'Repor'}</button>
+                  <button onClick={() => { setEditingProduct(item); setIsProductModalOpen(true); }} className="flex-1 bg-white border border-gray-200 py-3 rounded-xl font-black text-[10px] uppercase hover:bg-gray-100 transition-colors">Editar</button>
+                  <button onClick={() => handleToggleAvailability(item)} className={`px-4 py-3 rounded-xl font-black text-[10px] uppercase transition-all shadow-sm ${item.isAvailable ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-green-500 text-white'}`}>
+                    {item.isAvailable ? 'Esgotou' : 'Repor'}
+                  </button>
                 </div>
               </div>
             ))}
@@ -213,25 +149,12 @@ INSERT INTO tables (id, status) VALUES (1,'free'),(2,'free'),(3,'free'),(4,'free
         </div>
       )}
 
-      {activeTab === 'setup' && (
-        <div className="bg-black text-white rounded-[3.5rem] p-10 md:p-16 shadow-2xl animate-pop-in">
-          <h3 className="text-4xl font-black italic mb-6">Configurar Banco (SQL)</h3>
-          <p className="text-gray-400 font-bold mb-10 text-sm max-w-2xl leading-relaxed">Configuração SQL para o Supabase:</p>
-          <div className="bg-gray-900 p-6 rounded-3xl border border-white/10 relative mb-8">
-            <pre className="text-[10px] font-mono text-gray-300 overflow-x-auto whitespace-pre-wrap">{sqlSetup}</pre>
-            <button onClick={() => { navigator.clipboard.writeText(sqlSetup); alert('SQL Copiado!'); }} className="absolute top-4 right-4 bg-yellow-400 text-black px-4 py-2 rounded-xl text-[10px] font-black uppercase">Copiar</button>
-          </div>
-          <button onClick={() => window.location.reload()} className="w-full bg-white text-black py-6 rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-xl">Recarregar</button>
-        </div>
-      )}
-
-      {/* Modal de Mesa com ADICIONAR PRODUTO */}
       {selectedTable && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
           <div className="relative bg-white w-full max-w-5xl rounded-[4rem] p-8 md:p-12 shadow-2xl flex flex-col md:flex-row gap-8 max-h-[92vh] border-[12px] border-yellow-400 animate-pop-in overflow-hidden">
             
-            {/* Lado Esquerdo: Detalhes do Pedido */}
+            {/* Pedido da Mesa */}
             <div className="flex-1 flex flex-col min-w-0">
               <div className="flex justify-between items-start mb-6 shrink-0">
                 <div>
@@ -284,7 +207,7 @@ INSERT INTO tables (id, status) VALUES (1,'free'),(2,'free'),(3,'free'),(4,'free
               </div>
             </div>
 
-            {/* Lado Direito: ADICIONAR PRODUTOS (Visível sempre ou quando mesa aberta) */}
+            {/* Inserir no Pedido */}
             <div className="hidden md:flex flex-col w-80 shrink-0 bg-gray-50 rounded-[2.5rem] p-6 border border-gray-200">
               <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 italic">Inserir no Pedido</h4>
               <input 
@@ -298,60 +221,51 @@ INSERT INTO tables (id, status) VALUES (1,'free'),(2,'free'),(3,'free'),(4,'free
                 {filteredItemsToAdd.map(item => (
                   <button 
                     key={item.id} 
-                    onClick={() => selectedTable.currentOrder && onAddToOrder(selectedTable.id, item)}
-                    disabled={!selectedTable.currentOrder}
-                    className={`w-full text-left bg-white p-3 rounded-2xl border border-gray-100 flex gap-3 transition-all hover:border-yellow-400 hover:shadow-md active:scale-95 ${!selectedTable.currentOrder ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
+                    onClick={() => item.isAvailable && selectedTable.currentOrder && onAddToOrder(selectedTable.id, item)}
+                    disabled={!selectedTable.currentOrder || !item.isAvailable}
+                    className={`w-full text-left bg-white p-3 rounded-2xl border border-gray-100 flex gap-3 transition-all hover:border-yellow-400 hover:shadow-md active:scale-95 ${(!selectedTable.currentOrder || !item.isAvailable) ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
                   >
                     <img src={item.image} className="w-10 h-10 object-cover rounded-lg shadow-sm" />
                     <div className="min-w-0 flex-1">
                       <p className="text-[10px] font-black truncate leading-tight text-gray-900">{item.name}</p>
-                      <p className="text-[10px] font-black text-yellow-700">R$ {item.price.toFixed(2)}</p>
+                      <p className={`text-[10px] font-black ${item.isAvailable ? 'text-yellow-700' : 'text-red-500'}`}>
+                        {item.isAvailable ? `R$ ${item.price.toFixed(2)}` : 'Esgotado'}
+                      </p>
                     </div>
-                    <div className="bg-yellow-400 text-black w-6 h-6 rounded-full flex items-center justify-center font-black text-xs shrink-0">+</div>
+                    {item.isAvailable && <div className="bg-yellow-400 text-black w-6 h-6 rounded-full flex items-center justify-center font-black text-xs shrink-0">+</div>}
                   </button>
                 ))}
               </div>
-              {!selectedTable.currentOrder && (
-                <p className="text-[9px] font-bold text-center text-red-400 mt-4 uppercase">Abra a mesa para lançar produtos</p>
-              )}
             </div>
 
-            {/* Botão flutuante para fechar no Mobile */}
             <button onClick={() => setSelectedTableId(null)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full hidden md:block"><CloseIcon size={24}/></button>
           </div>
         </div>
       )}
 
-      {/* Modal de Produto (Sempre no topo se aberto) */}
+      {/* Modal de Produto */}
       {isProductModalOpen && editingProduct && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsProductModalOpen(false)} />
           <div className="relative bg-white w-full max-w-lg rounded-[4rem] p-10 shadow-2xl border-[12px] border-yellow-400 overflow-y-auto max-h-[95vh] no-scrollbar">
             <h3 className="text-3xl font-black mb-8 italic tracking-tighter">Produto</h3>
             <div className="space-y-5">
-              <input type="text" className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold" placeholder="Nome" value={editingProduct.name || ''} onChange={e => setEditingProduct({...editingProduct, name: e.target.value})} />
-              <input type="number" step="0.01" className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold" placeholder="Preço" value={editingProduct.price || ''} onChange={e => setEditingProduct({...editingProduct, price: parseFloat(e.target.value)})} />
-              <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold" value={editingProduct.category} onChange={e => setEditingProduct({...editingProduct, category: e.target.value as CategoryType})}>
-                {categories.filter(c => c !== 'Todos').map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <div className="flex gap-4">
-                <button onClick={() => setIsProductModalOpen(false)} className="flex-1 py-4 bg-gray-100 rounded-2xl font-black">Sair</button>
-                <button onClick={() => { onSaveProduct(editingProduct); setIsProductModalOpen(false); }} className="flex-1 py-4 bg-black text-yellow-400 rounded-2xl font-black">Salvar</button>
+              <input type="text" className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none" placeholder="Nome" value={editingProduct.name || ''} onChange={e => setEditingProduct({...editingProduct, name: e.target.value})} />
+              <div className="grid grid-cols-2 gap-4">
+                <input type="number" step="0.01" className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none" placeholder="Preço" value={editingProduct.price || ''} onChange={e => setEditingProduct({...editingProduct, price: parseFloat(e.target.value)})} />
+                <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none" value={editingProduct.category} onChange={e => setEditingProduct({...editingProduct, category: e.target.value as CategoryType})}>
+                  {categories.filter(c => c !== 'Todos').map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-4 p-5 bg-gray-50 rounded-3xl border border-gray-100">
+                <input type="checkbox" id="avail_chk_edit" className="w-6 h-6 accent-yellow-400 rounded-lg" checked={editingProduct.isAvailable} onChange={e => setEditingProduct({...editingProduct, isAvailable: e.target.checked})} />
+                <label htmlFor="avail_chk_edit" className="text-xs font-black uppercase tracking-widest cursor-pointer">Disponível para venda</label>
+              </div>
+              <div className="flex gap-4 pt-6">
+                <button onClick={() => setIsProductModalOpen(false)} className="flex-1 py-4 bg-gray-100 rounded-2xl font-black uppercase text-[10px] tracking-widest">Sair</button>
+                <button onClick={() => { onSaveProduct(editingProduct); setIsProductModalOpen(false); }} className="flex-1 py-4 bg-black text-yellow-400 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-2xl">Salvar Dados</button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {showSalesReport && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/95">
-          <div className="bg-white w-full max-w-xl rounded-[4rem] p-12 border-[12px] border-yellow-400 text-center relative animate-pop-in">
-            <button onClick={() => setShowSalesReport(false)} className="absolute top-8 right-8"><CloseIcon/></button>
-            <h3 className="text-4xl font-black mb-10 italic">Vendas</h3>
-            <div className="bg-yellow-50 p-8 rounded-[2rem] mb-8">
-               <span className="font-black text-4xl italic">R$ {salesHistory.reduce((acc, o) => acc + o.total, 0).toFixed(2).replace('.', ',')}</span>
-            </div>
-            <button onClick={() => window.print()} className="w-full bg-black text-white py-6 rounded-[2rem] font-black uppercase text-xs">Imprimir</button>
           </div>
         </div>
       )}

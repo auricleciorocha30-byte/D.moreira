@@ -12,7 +12,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd }) => {
   const isAvailable = product.isAvailable !== false;
 
   return (
-    <div className={`group bg-white rounded-[2rem] shadow-md border overflow-hidden flex flex-col relative transition-all duration-300 ${!isAvailable ? 'opacity-60 grayscale-[0.5]' : 'hover:shadow-2xl hover:-translate-y-1'} ${isCombo ? 'border-yellow-400 border-2' : 'border-gray-100'}`}>
+    <div className={`group bg-white rounded-[2rem] shadow-md border overflow-hidden flex flex-col relative transition-all duration-300 ${!isAvailable ? 'opacity-70' : 'hover:shadow-2xl hover:-translate-y-1'} ${isCombo ? 'border-yellow-400 border-2' : 'border-gray-100'}`}>
       {isCombo && isAvailable && (
         <div className="absolute top-4 left-4 z-10 bg-black text-yellow-400 text-[10px] font-black uppercase px-3 py-1.5 rounded-full shadow-lg">
           Combo 🔥
@@ -20,10 +20,11 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd }) => {
       )}
 
       {!isAvailable && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/40 backdrop-blur-[2px]">
-          <span className="bg-red-600 text-white font-black text-[10px] uppercase tracking-[0.2em] px-6 py-2 rounded-full shadow-2xl rotate-[-10deg]">
-            Em Falta 🚫
-          </span>
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[2px] p-6 text-center">
+          <div className="bg-red-600 text-white font-black text-[12px] uppercase tracking-[0.2em] px-6 py-3 rounded-full shadow-2xl mb-2 animate-pulse">
+            Indisponível 🚫
+          </div>
+          <p className="text-white/80 text-[9px] font-bold uppercase tracking-widest">Aguardando Reposição</p>
         </div>
       )}
       
@@ -31,7 +32,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd }) => {
         <img 
           src={product.image} 
           alt={product.name} 
-          className={`w-full h-full object-cover transition-transform duration-700 ${isAvailable ? 'group-hover:scale-110' : ''}`}
+          className={`w-full h-full object-cover transition-transform duration-700 ${!isAvailable ? 'grayscale scale-105' : 'group-hover:scale-110'}`}
         />
         {isAvailable && (
           <div className={`absolute bottom-3 right-3 ${isCombo ? 'bg-black text-yellow-400' : 'bg-yellow-400 text-black'} font-black px-4 py-1.5 rounded-full text-sm shadow-xl`}>
@@ -55,10 +56,10 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd }) => {
         <button 
           onClick={() => isAvailable && onAdd(product)}
           disabled={!isAvailable}
-          className={`w-full ${!isAvailable ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : isCombo ? 'bg-black text-white' : 'bg-yellow-400 text-black'} font-black py-4 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg ${isAvailable ? 'hover:brightness-110' : ''}`}
+          className={`w-full ${!isAvailable ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : isCombo ? 'bg-black text-white' : 'bg-yellow-400 text-black'} font-black py-4 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg ${isAvailable ? 'hover:brightness-110' : ''}`}
         >
           <span className="text-sm uppercase tracking-widest">
-            {!isAvailable ? 'Esgotado' : isCombo ? 'Escolher Combo' : 'Adicionar'}
+            {!isAvailable ? 'Produto em Falta' : isCombo ? 'Escolher Combo' : 'Adicionar'}
           </span>
           {isAvailable && (
             <svg width="20" height="20" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
