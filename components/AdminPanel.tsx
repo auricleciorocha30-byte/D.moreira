@@ -67,6 +67,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
     }
   };
 
+  const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
+
+  const filteredAdminItems = useMemo(() => {
+    if (adminCategory === 'Todos') return MENU_ITEMS;
+    return MENU_ITEMS.filter(item => item.category === adminCategory);
+  }, [adminCategory]);
+
+  const handleManualRefresh = () => {
+    setIsRefreshing(true);
+    onRefreshData();
+    setTimeout(() => setIsRefreshing(false), 600);
+  };
+
   const handlePrint = (order: Order) => {
     const printWindow = window.open('', '_blank', 'width=800,height=800');
     if (!printWindow) return alert('Habilite pop-ups.');
@@ -125,7 +138,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
         </div>
         
         <div className="flex flex-wrap items-center gap-4">
-          <button onClick={onRefreshData} className="bg-white p-3.5 rounded-2xl shadow-md border border-gray-100 hover:bg-gray-50 transition-colors">
+          <button onClick={handleManualRefresh} className={`bg-white p-3.5 rounded-2xl shadow-md border border-gray-100 hover:bg-gray-50 transition-colors ${isRefreshing ? 'animate-spin' : ''}`}>
             <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           </button>
           <button onClick={() => setShowSalesReport(true)} className="bg-yellow-400 text-black px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 border-b-4 border-black transition-all">📊 Relatório Financeiro</button>
@@ -139,7 +152,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
           return (
             <button
               key={table.id}
-              onClick={() => setSelectedTable(table)}
+              onClick={() => {
+                setSelectedTable(table);
+                setIsAddingItems(false);
+                setAdminCategory('Todos');
+              }}
               className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-2 group relative h-48 ${
                 table.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-2xl scale-105 z-10'
               }`}
@@ -187,7 +204,36 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
             </div>
 
             <div className="flex-1 overflow-y-auto no-scrollbar mb-8 pr-2">
-              {currentTableData?.currentOrder ? (
+              {isAddingItems ? (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3 sticky top-0 bg-white pb-4 z-20">
+                    <button onClick={() => setIsAddingItems(false)} className="bg-gray-100 p-2.5 rounded-xl font-black text-[10px] uppercase shadow-sm">← Voltar</button>
+                    <div className="flex overflow-x-auto gap-2 no-scrollbar">
+                      {categories.map(cat => (
+                        <button key={cat} onClick={() => setAdminCategory(cat)} className={`whitespace-nowrap px-4 py-2 rounded-xl font-black text-[10px] uppercase border transition-all ${adminCategory === cat ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-100 hover:bg-gray-100'}`}>{cat}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {filteredAdminItems.map(product => (
+                      <button 
+                        key={product.id} 
+                        onClick={() => onAddToOrder(selectedTable.id, product)} 
+                        className="flex items-center gap-4 p-3 bg-gray-50 rounded-2xl hover:bg-yellow-50 border border-transparent hover:border-yellow-200 transition-all text-left shadow-sm group"
+                      >
+                        <img src={product.image} className="w-14 h-14 object-cover rounded-xl shadow-sm" />
+                        <div className="flex-1">
+                          <p className="text-xs font-black text-gray-900 leading-tight">{product.name}</p>
+                          <p className="text-[11px] font-bold text-yellow-700">R$ {product.price.toFixed(2)}</p>
+                        </div>
+                        <div className="bg-black text-white p-2 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
+                          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : currentTableData?.currentOrder ? (
                 <div className="space-y-8">
                   <div className="bg-black text-white p-6 rounded-[2.5rem] shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
                     <div>
@@ -215,7 +261,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
                   </div>
 
                   <div className="space-y-4">
-                    <h4 className="text-[11px] font-black uppercase text-gray-400 tracking-[0.2em] px-2 italic">Comanda de Itens</h4>
+                    <div className="flex justify-between items-center px-2">
+                      <h4 className="text-[11px] font-black uppercase text-gray-400 tracking-[0.2em] italic">Comanda de Itens</h4>
+                      <button onClick={() => setIsAddingItems(true)} className="text-[10px] font-black uppercase text-yellow-600 hover:text-yellow-700">+ Adicionar Itens</button>
+                    </div>
                     {currentTableData.currentOrder.items.map((item, idx) => (
                       <div key={idx} className="flex justify-between items-center bg-gray-50 p-5 rounded-3xl border border-gray-100 hover:shadow-md transition-shadow">
                         <div className="flex items-center gap-4">
@@ -239,7 +288,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
             </div>
 
             <div className="pt-8 border-t-4 border-gray-100 shrink-0">
-              {currentTableData?.currentOrder ? (
+              {isAddingItems ? null : currentTableData?.currentOrder ? (
                 <>
                   <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                     <div>
@@ -282,7 +331,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, onUpdateTable, onAddToO
               ) : (
                 <button 
                   onClick={() => setIsAddingItems(true)} 
-                  className="w-full bg-yellow-400 text-black py-5 rounded-[2.5rem] font-black uppercase text-xs tracking-widest shadow-xl border-b-4 border-black"
+                  className="w-full bg-yellow-400 text-black py-5 rounded-[2.5rem] font-black uppercase text-xs tracking-widest shadow-xl border-b-4 border-black active:scale-95 transition-all"
                 >
                   Abrir Nova Comanda
                 </button>
