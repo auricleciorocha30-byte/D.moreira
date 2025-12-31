@@ -6,6 +6,7 @@ import Cart from './components/Cart';
 import AdminPanel from './components/AdminPanel';
 import { MENU_ITEMS, INITIAL_TABLES, STORE_INFO } from './constants';
 import { CategoryType, Product, CartItem, Table, Order } from './types';
+import { supabase } from './lib/supabase';
 
 const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -17,58 +18,73 @@ const App: React.FC = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   
-  const [tables, setTables] = useState<Table[]>(() => {
-    const savedTables = localStorage.getItem('dmoreira_tables');
-    if (savedTables) {
-      try {
-        return JSON.parse(savedTables);
-      } catch (e) {
-        return INITIAL_TABLES;
-      }
-    }
-    return INITIAL_TABLES;
-  });
+  const [tables, setTables] = useState<Table[]>(INITIAL_TABLES);
+  const [salesHistory, setSalesHistory] = useState<Order[]>([]);
 
-  const [salesHistory, setSalesHistory] = useState<Order[]>(() => {
-    const savedHistory = localStorage.getItem('dmoreira_sales');
-    if (savedHistory) {
-      try {
-        return JSON.parse(savedHistory);
-      } catch (e) {
-        return [];
-      }
+  // Carregar dados iniciais do Supabase
+  const fetchData = useCallback(async () => {
+    // Buscar mesas
+    const { data: tablesData, error: tablesError } = await supabase
+      .from('tables')
+      .select('*')
+      .order('id', { ascending: true });
+    
+    if (!tablesError && tablesData && tablesData.length > 0) {
+      setTables(tablesData.map(t => ({
+        id: t.id,
+        status: t.status,
+        currentOrder: t.current_order
+      })));
+    } else if (tablesData?.length === 0) {
+      // Se o banco estiver vazio, inicializa com as mesas padrão
+      const inserts = INITIAL_TABLES.map(t => ({ id: t.id, status: t.status, current_order: null }));
+      await supabase.from('tables').insert(inserts);
     }
-    return [];
-  });
 
-  // Sincronização automática entre abas do mesmo navegador
+    // Buscar histórico de vendas (últimas 100)
+    const { data: salesData, error: salesError } = await supabase
+      .from('sales')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    
+    if (!salesError && salesData) {
+      setSalesHistory(salesData.map(s => ({
+        id: s.id,
+        customerName: s.customer_name,
+        items: s.items,
+        total: s.total,
+        paymentMethod: s.payment_method,
+        tableId: s.table_id,
+        timestamp: s.created_at
+      })));
+    }
+  }, []);
+
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'dmoreira_tables' && e.newValue) {
-        setTables(JSON.parse(e.newValue));
-      }
-      if (e.key === 'dmoreira_sales' && e.newValue) {
-        setSalesHistory(JSON.parse(e.newValue));
-      }
+    fetchData();
+
+    // Inscrição em Tempo Real para Mesas
+    const tablesSubscription = supabase
+      .channel('tables_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
+        fetchData(); // Simplificado para recarregar tudo em mudanças
+      })
+      .subscribe();
+
+    // Inscrição em Tempo Real para Vendas
+    const salesSubscription = supabase
+      .channel('sales_changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sales' }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(tablesSubscription);
+      supabase.removeChannel(salesSubscription);
     };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('dmoreira_tables', JSON.stringify(tables));
-  }, [tables]);
-
-  useEffect(() => {
-    localStorage.setItem('dmoreira_sales', JSON.stringify(salesHistory));
-  }, [salesHistory]);
-
-  const handleRefreshData = useCallback(() => {
-    const savedTables = localStorage.getItem('dmoreira_tables');
-    const savedSales = localStorage.getItem('dmoreira_sales');
-    if (savedTables) setTables(JSON.parse(savedTables));
-    if (savedSales) setSalesHistory(JSON.parse(savedSales));
-  }, []);
+  }, [fetchData]);
 
   const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
 
@@ -99,70 +115,91 @@ const App: React.FC = () => {
     });
   };
 
-  const handlePlaceOrder = (order: Order) => {
-    setTables(prev => prev.map(t => 
-      t.id === order.tableId 
-        ? { ...t, status: 'occupied', currentOrder: order } 
-        : t
-    ));
-    setCartItems([]);
+  const handlePlaceOrder = async (order: Order) => {
+    const { error } = await supabase
+      .from('tables')
+      .update({ 
+        status: 'occupied', 
+        current_order: order 
+      })
+      .eq('id', order.tableId);
+    
+    if (error) {
+      alert('Erro ao enviar pedido. Tente novamente.');
+      console.error(error);
+    } else {
+      setCartItems([]);
+    }
   };
 
-  const updateTable = (tableId: number, status: 'free' | 'occupied', order: Order | null = null) => {
+  const updateTable = async (tableId: number, status: 'free' | 'occupied', order: Order | null = null) => {
     if (status === 'free') {
       const table = tables.find(t => t.id === tableId);
       if (table?.currentOrder) {
-        setSalesHistory(prev => [...prev, table.currentOrder!]);
+        // Registrar venda no histórico antes de limpar mesa
+        await supabase.from('sales').insert([{
+          customer_name: table.currentOrder.customerName,
+          items: table.currentOrder.items,
+          total: table.currentOrder.total,
+          payment_method: table.currentOrder.paymentMethod,
+          table_id: tableId
+        }]);
       }
+      
+      await supabase
+        .from('tables')
+        .update({ status: 'free', current_order: null })
+        .eq('id', tableId);
+    } else {
+      await supabase
+        .from('tables')
+        .update({ status: 'occupied', current_order: order })
+        .eq('id', tableId);
     }
-    setTables(prev => prev.map(t => 
-      t.id === tableId ? { ...t, status, currentOrder: order } : t
-    ));
   };
 
-  const handleAddToOrder = (tableId: number, product: Product) => {
-    setTables(prev => prev.map(t => {
-      if (t.id === tableId) {
-        let currentOrder = t.currentOrder;
-        
-        if (!currentOrder) {
-          currentOrder = {
-            id: Math.random().toString(36).substr(2, 6).toUpperCase(),
-            customerName: `Mesa ${tableId}`,
-            items: [],
-            total: 0,
-            paymentMethod: 'Pix',
-            timestamp: new Date(),
-            tableId: tableId
-          };
-        }
+  const handleAddToOrder = async (tableId: number, product: Product) => {
+    const table = tables.find(t => t.id === tableId);
+    let currentOrder = table?.currentOrder;
 
-        const existingItems = [...currentOrder.items];
-        const itemIdx = existingItems.findIndex(i => i.id === product.id);
-        
-        if (itemIdx > -1) {
-          existingItems[itemIdx] = { 
-            ...existingItems[itemIdx], 
-            quantity: existingItems[itemIdx].quantity + 1 
-          };
-        } else {
-          existingItems.push({ ...product, quantity: 1 });
-        }
+    if (!currentOrder) {
+      currentOrder = {
+        id: Math.random().toString(36).substr(2, 6).toUpperCase(),
+        customerName: `Mesa ${tableId}`,
+        items: [],
+        total: 0,
+        paymentMethod: 'Pix',
+        timestamp: new Date().toISOString(),
+        tableId: tableId
+      };
+    }
 
-        const newTotal = existingItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-        
-        return {
-          ...t,
-          status: 'occupied' as const,
-          currentOrder: {
-            ...currentOrder,
-            items: existingItems,
-            total: newTotal
-          }
-        };
-      }
-      return t;
-    }));
+    const existingItems = [...currentOrder.items];
+    const itemIdx = existingItems.findIndex(i => i.id === product.id);
+    
+    if (itemIdx > -1) {
+      existingItems[itemIdx] = { 
+        ...existingItems[itemIdx], 
+        quantity: existingItems[itemIdx].quantity + 1 
+      };
+    } else {
+      existingItems.push({ ...product, quantity: 1 });
+    }
+
+    const newTotal = existingItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+    const updatedOrder = {
+      ...currentOrder,
+      items: existingItems,
+      total: newTotal
+    };
+
+    await supabase
+      .from('tables')
+      .update({ 
+        status: 'occupied', 
+        current_order: updatedOrder 
+      })
+      .eq('id', tableId);
   };
 
   const openWhatsAppSupport = () => {
@@ -177,7 +214,7 @@ const App: React.FC = () => {
           tables={tables} 
           onUpdateTable={updateTable}
           onAddToOrder={handleAddToOrder}
-          onRefreshData={handleRefreshData}
+          onRefreshData={fetchData}
           salesHistory={salesHistory}
           onLogout={() => { setIsAdmin(false); setIsLoggedIn(false); }}
         />
