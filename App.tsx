@@ -23,6 +23,7 @@ const App: React.FC = () => {
   const [tables, setTables] = useState<Table[]>(INITIAL_TABLES);
   const [salesHistory, setSalesHistory] = useState<Order[]>([]);
   const [menuItems, setMenuItems] = useState<Product[]>([]);
+  const [dbStatus, setDbStatus] = useState<'loading' | 'ok' | 'error_tables_missing'>('loading');
 
   useEffect(() => {
     const checkSession = async () => {
@@ -51,22 +52,32 @@ const App: React.FC = () => {
     try {
       // Buscar Produtos
       const { data: productsData, error: pError } = await supabase.from('products').select('*');
-      if (pError) throw pError;
+      
+      if (pError) {
+        if (pError.code === '42P01') { // PostgreSQL table not found code
+          setDbStatus('error_tables_missing');
+          setMenuItems(STATIC_MENU); // Fallback imediato para os estáticos
+          return;
+        }
+        throw pError;
+      }
+
+      setDbStatus('ok');
 
       if (productsData && productsData.length > 0) {
         setMenuItems(productsData.map(p => ({
           id: p.id,
           name: p.name,
           description: p.description || '',
-          price: p.price,
+          price: Number(p.price),
           category: p.category,
           image: p.image || '',
           savings: p.savings || '',
           isAvailable: p.is_available ?? true
         })));
       } else {
-        // Se vazio, tenta carregar os estáticos para a UI (o admin pode salvar depois)
-        setMenuItems(STATIC_MENU.map(m => ({ ...m, isAvailable: true })));
+        // Se a tabela existe mas está vazia, usa estáticos
+        setMenuItems(STATIC_MENU);
       }
 
       // Buscar Mesas
@@ -86,7 +97,7 @@ const App: React.FC = () => {
           id: s.id,
           customerName: s.customer_name,
           items: s.items,
-          total: s.total,
+          total: Number(s.total),
           paymentMethod: s.payment_method,
           tableId: s.table_id,
           timestamp: s.created_at,
@@ -94,15 +105,16 @@ const App: React.FC = () => {
           orderType: 'table'
         })));
       }
-    } catch (err) {
-      console.error('Erro ao buscar dados:', err);
+    } catch (err: any) {
+      console.error('Erro geral Supabase:', err);
+      // Fallback para não deixar o cardápio vazio em erro de conexão
+      if (menuItems.length === 0) setMenuItems(STATIC_MENU);
     }
-  }, []);
+  }, [menuItems.length]);
 
   useEffect(() => {
     fetchData();
-    // Inscrição em tempo real para mudanças
-    const channel = supabase.channel('schema-db-changes')
+    const channel = supabase.channel('realtime-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, fetchData)
       .subscribe();
@@ -142,8 +154,8 @@ const App: React.FC = () => {
       const { error } = await supabase.from('tables').update({ status: 'occupied', current_order: finalOrder }).eq('id', order.tableId);
       if (error) throw error;
       setCartItems([]);
-    } catch (err) {
-      alert('Erro ao enviar pedido: ' + (err as any).message);
+    } catch (err: any) {
+      alert('Erro ao enviar pedido: Verifique se as tabelas foram criadas no Supabase.');
     }
   };
 
@@ -165,17 +177,16 @@ const App: React.FC = () => {
         await supabase.from('tables').update({ status: 'occupied', current_order: order }).eq('id', tableId);
       }
     } catch (err) {
-      console.error('Erro mesa:', err);
+      console.error('Erro atualização mesa:', err);
     }
   };
 
   const handleSaveProduct = async (product: Partial<Product>) => {
     if (!product.name || !product.price || !product.category) {
-      alert('Campos obrigatórios: Nome, Preço e Categoria.');
+      alert('Dados incompletos.');
       return;
     }
 
-    const isNew = !product.id;
     const payload = {
       name: product.name,
       description: product.description || '',
@@ -187,7 +198,7 @@ const App: React.FC = () => {
     };
 
     try {
-      if (isNew) {
+      if (!product.id) {
         const newId = 'prod_' + Math.random().toString(36).substr(2, 9);
         const { error } = await supabase.from('products').insert([{ ...payload, id: newId }]);
         if (error) throw error;
@@ -197,8 +208,8 @@ const App: React.FC = () => {
       }
       fetchData();
     } catch (err: any) {
-      console.error('Erro salvar produto:', err);
-      alert('Falha ao salvar: ' + (err.message || 'Verifique sua conexão'));
+      console.error('Erro save product:', err);
+      alert('Erro: Verifique se a tabela "products" existe no Supabase.');
     }
   };
 
@@ -217,6 +228,16 @@ const App: React.FC = () => {
       <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest transition-colors">Acesso Admin</button>
       
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
+        {dbStatus === 'error_tables_missing' && isAdmin && isLoggedIn && (
+          <div className="bg-red-500 text-white p-6 rounded-[2rem] mb-8 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4 border-4 border-white animate-bounce">
+            <div>
+              <p className="font-black text-lg uppercase tracking-tight">Tabelas não encontradas!</p>
+              <p className="text-xs opacity-90 font-bold">Você precisa configurar o SQL Schema no seu painel Supabase.</p>
+            </div>
+            <button onClick={() => fetchData()} className="bg-white text-red-500 px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg hover:scale-105 transition-transform">Verificar Novamente</button>
+          </div>
+        )}
+
         {isAdmin && isLoggedIn ? (
           <AdminPanel 
             tables={tables} 
@@ -227,6 +248,7 @@ const App: React.FC = () => {
             salesHistory={salesHistory} 
             onLogout={handleLogout}
             onSaveProduct={handleSaveProduct}
+            dbStatus={dbStatus}
           />
         ) : (
           <>
@@ -246,7 +268,7 @@ const App: React.FC = () => {
         <div className="fixed bottom-8 left-0 right-0 flex flex-col items-center gap-4 px-6 z-40 pointer-events-none">
           <button onClick={() => window.open(`https://wa.me/${STORE_INFO.whatsapp}`, '_blank')} className="pointer-events-auto bg-green-500 text-white rounded-full px-6 py-3 flex items-center gap-3 shadow-2xl hover:bg-green-600 transition-all active:scale-95 ring-4 ring-white"><span className="font-black text-xs uppercase tracking-widest">Suporte WhatsApp</span></button>
           {cartItems.length > 0 && (
-            <button onClick={() => setIsCartOpen(true)} className="pointer-events-auto w-full max-w-md bg-black text-white rounded-[2rem] p-5 flex items-center justify-between shadow-2xl active:scale-95 ring-4 ring-yellow-400/30 transition-all">
+            <button onClick={() => setIsCartOpen(true)} className="pointer-events-auto w-full max-md bg-black text-white rounded-[2rem] p-5 flex items-center justify-between shadow-2xl active:scale-95 ring-4 ring-yellow-400/30 transition-all">
               <div className="flex items-center gap-4">
                 <div className="bg-yellow-400 text-black w-8 h-8 flex items-center justify-center rounded-xl text-sm font-black shadow-inner">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
                 <span className="font-black text-sm uppercase tracking-widest">Ver Pedido</span>
@@ -260,13 +282,13 @@ const App: React.FC = () => {
       {showLogin && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
           <div className="bg-white p-10 rounded-[3rem] w-full max-w-sm shadow-2xl text-center">
-            <h2 className="text-3xl font-black mb-2 italic">D.Moreira Admin</h2>
+            <h2 className="text-3xl font-black mb-2 italic tracking-tighter">Acesso Admin</h2>
             <form onSubmit={e => {
               e.preventDefault();
               setIsLoadingLogin(true);
               supabase.auth.signInWithPassword({ email: loginEmail, password: loginPass })
                 .then(({ error }) => {
-                  if (error) alert('Login Falhou: ' + error.message);
+                  if (error) alert('Falha: ' + error.message);
                   else { setShowLogin(false); setLoginPass(''); setLoginEmail(''); }
                 })
                 .finally(() => setIsLoadingLogin(false));
@@ -274,7 +296,7 @@ const App: React.FC = () => {
               <input type="email" required placeholder="E-mail" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none"/>
               <input type="password" required placeholder="Senha" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none"/>
               <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl shadow-xl uppercase text-xs tracking-widest">{isLoadingLogin ? 'Entrando...' : 'Entrar'}</button>
-              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sair</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Voltar</button>
             </form>
           </div>
         </div>
