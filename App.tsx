@@ -50,13 +50,12 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      // Buscar Produtos
       const { data: productsData, error: pError } = await supabase.from('products').select('*');
       
       if (pError) {
-        if (pError.code === '42P01') { // PostgreSQL table not found code
+        if (pError.code === '42P01') {
           setDbStatus('error_tables_missing');
-          setMenuItems(STATIC_MENU); // Fallback imediato para os estáticos
+          setMenuItems(STATIC_MENU);
           return;
         }
         throw pError;
@@ -76,11 +75,9 @@ const App: React.FC = () => {
           isAvailable: p.is_available ?? true
         })));
       } else {
-        // Se a tabela existe mas está vazia, usa estáticos
         setMenuItems(STATIC_MENU);
       }
 
-      // Buscar Mesas
       const { data: tablesData } = await supabase.from('tables').select('*').order('id', { ascending: true });
       if (tablesData && tablesData.length > 0) {
         setTables(tablesData.map(t => ({
@@ -90,7 +87,6 @@ const App: React.FC = () => {
         })));
       }
 
-      // Buscar Vendas
       const { data: salesData } = await supabase.from('sales').select('*').order('created_at', { ascending: false }).limit(50);
       if (salesData) {
         setSalesHistory(salesData.map(s => ({
@@ -107,7 +103,6 @@ const App: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Erro geral Supabase:', err);
-      // Fallback para não deixar o cardápio vazio em erro de conexão
       if (menuItems.length === 0) setMenuItems(STATIC_MENU);
     }
   }, [menuItems.length]);
@@ -155,7 +150,7 @@ const App: React.FC = () => {
       if (error) throw error;
       setCartItems([]);
     } catch (err: any) {
-      alert('Erro ao enviar pedido: Verifique se as tabelas foram criadas no Supabase.');
+      alert('Erro ao enviar pedido: Verifique a conexão.');
     }
   };
 
@@ -187,6 +182,9 @@ const App: React.FC = () => {
       return;
     }
 
+    // UI Otimista: Atualiza a lista local antes do banco responder
+    setMenuItems(prev => prev.map(item => item.id === product.id ? { ...item, ...product } as Product : item));
+
     const payload = {
       name: product.name,
       description: product.description || '',
@@ -206,10 +204,11 @@ const App: React.FC = () => {
         const { error } = await supabase.from('products').update(payload).eq('id', product.id);
         if (error) throw error;
       }
-      fetchData();
+      fetchData(); // Sincroniza com o banco
     } catch (err: any) {
       console.error('Erro save product:', err);
-      alert('Erro: Verifique se a tabela "products" existe no Supabase.');
+      alert('Erro ao salvar no banco. Tente novamente.');
+      fetchData(); // Reverte a UI otimista em caso de erro
     }
   };
 
@@ -232,7 +231,7 @@ const App: React.FC = () => {
           <div className="bg-red-500 text-white p-6 rounded-[2rem] mb-8 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4 border-4 border-white animate-bounce">
             <div>
               <p className="font-black text-lg uppercase tracking-tight">Tabelas não encontradas!</p>
-              <p className="text-xs opacity-90 font-bold">Você precisa configurar o SQL Schema no seu painel Supabase.</p>
+              <p className="text-xs opacity-90 font-bold">Configure o banco no botão Setup.</p>
             </div>
             <button onClick={() => fetchData()} className="bg-white text-red-500 px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg hover:scale-105 transition-transform">Verificar Novamente</button>
           </div>

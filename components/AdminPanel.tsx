@@ -21,7 +21,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
   const [activeTab, setActiveTab] = useState<'tables' | 'functions' | 'setup'>('tables');
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [showSalesReport, setShowSalesReport] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -51,7 +50,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
     }
   };
 
-  const handleToggleAvailability = async (item: Product) => {
+  const handleToggleAvailability = (item: Product) => {
+    // Chama a função central que agora tem UI otimista
     onSaveProduct({ ...item, isAvailable: !item.isAvailable });
   };
 
@@ -154,7 +154,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
           <div className="relative bg-white w-full max-w-5xl rounded-[4rem] p-8 md:p-12 shadow-2xl flex flex-col md:flex-row gap-8 max-h-[92vh] border-[12px] border-yellow-400 animate-pop-in overflow-hidden">
             
-            {/* Pedido da Mesa */}
             <div className="flex-1 flex flex-col min-w-0">
               <div className="flex justify-between items-start mb-6 shrink-0">
                 <div>
@@ -207,7 +206,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
               </div>
             </div>
 
-            {/* Inserir no Pedido */}
             <div className="hidden md:flex flex-col w-80 shrink-0 bg-gray-50 rounded-[2.5rem] p-6 border border-gray-200">
               <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 italic">Inserir no Pedido</h4>
               <input 
@@ -243,7 +241,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
         </div>
       )}
 
-      {/* Modal de Produto */}
       {isProductModalOpen && editingProduct && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsProductModalOpen(false)} />
