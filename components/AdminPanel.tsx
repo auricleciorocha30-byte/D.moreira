@@ -29,7 +29,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
 
   const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
 
-  // SQL para exibição no modo Setup
+  // SQL para exibição no modo Setup (Atualizado para ser à prova de falhas)
   const sqlSetup = `-- 1. CRIAR TABELA DE PRODUTOS
 CREATE TABLE IF NOT EXISTS public.products (
     id TEXT PRIMARY KEY,
@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS public.products (
     is_available BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+ALTER TABLE public.products DISABLE ROW LEVEL SECURITY;
 
 -- 2. CRIAR TABELA DE MESAS
 CREATE TABLE IF NOT EXISTS public.tables (
@@ -50,6 +51,7 @@ CREATE TABLE IF NOT EXISTS public.tables (
     current_order JSONB,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+ALTER TABLE public.tables DISABLE ROW LEVEL SECURITY;
 
 -- 3. CRIAR TABELA DE VENDAS
 CREATE TABLE IF NOT EXISTS public.sales (
@@ -61,10 +63,18 @@ CREATE TABLE IF NOT EXISTS public.sales (
     table_id INTEGER,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+ALTER TABLE public.sales DISABLE ROW LEVEL SECURITY;
 
--- 4. HABILITAR REALTIME
-alter publication supabase_realtime add table products;
-alter publication supabase_realtime add table tables;
+-- 4. HABILITAR REALTIME (EVITA ERRO DE JÁ EXISTIR)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'products') THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE products;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'tables') THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE tables;
+    END IF;
+END $$;
 
 -- 5. INSERIR MESAS INICIAIS
 INSERT INTO tables (id, status) VALUES (1,'free'),(2,'free'),(3,'free'),(4,'free'),(5,'free'),(6,'free'),(7,'free'),(8,'free'),(9,'free'),(10,'free'),(11,'free'),(12,'free') ON CONFLICT DO NOTHING;`;
@@ -100,7 +110,7 @@ INSERT INTO tables (id, status) VALUES (1,'free'),(2,'free'),(3,'free'),(4,'free
         alert('Cardápio sincronizado!');
         onRefreshData();
       } catch (err: any) {
-        alert('Erro ao sincronizar: Verifique se as tabelas foram criadas no SQL Editor.');
+        alert('Erro ao sincronizar: Verifique se as tabelas foram criadas no SQL Editor com RLS desativado.');
       } finally {
         setIsSyncing(false);
       }
@@ -170,33 +180,32 @@ INSERT INTO tables (id, status) VALUES (1,'free'),(2,'free'),(3,'free'),(4,'free
 
       {activeTab === 'setup' && (
         <div className="bg-black text-white rounded-[3.5rem] p-10 md:p-16 shadow-2xl animate-pop-in">
-          <h3 className="text-4xl font-black italic mb-6">Configurar Supabase</h3>
-          <p className="text-gray-400 font-bold mb-10 text-sm max-w-2xl leading-relaxed">Se os produtos sumiram, é porque as tabelas não existem no seu projeto. Siga os passos:</p>
+          <h3 className="text-4xl font-black italic mb-6">Configurar Banco (SQL)</h3>
+          <p className="text-gray-400 font-bold mb-10 text-sm max-w-2xl leading-relaxed">O erro de publicação acontece porque você tentou adicionar uma tabela que já está configurada. Use o código atualizado abaixo para corrigir:</p>
           <ol className="space-y-8 mb-12">
             <li className="flex gap-6 items-start">
               <span className="bg-yellow-400 text-black w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0">1</span>
-              <div><p className="font-black uppercase text-xs tracking-widest text-yellow-400 mb-1">Acesse seu Painel Supabase</p><p className="text-gray-400 text-xs">Vá para a seção "SQL Editor" no menu lateral esquerdo.</p></div>
+              <div><p className="font-black uppercase text-xs tracking-widest text-yellow-400 mb-1">SQL Editor</p><p className="text-gray-400 text-xs">Vá para o "SQL Editor" no seu Supabase e crie um "New Query".</p></div>
             </li>
             <li className="flex gap-6 items-start">
               <span className="bg-yellow-400 text-black w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0">2</span>
               <div className="flex-1">
-                <p className="font-black uppercase text-xs tracking-widest text-yellow-400 mb-1">Cole o código abaixo</p>
+                <p className="font-black uppercase text-xs tracking-widest text-yellow-400 mb-1">Copiar & Colar</p>
                 <div className="bg-gray-900 p-6 rounded-3xl border border-white/10 relative group">
                   <pre className="text-[10px] font-mono text-gray-300 overflow-x-auto whitespace-pre-wrap">{sqlSetup}</pre>
-                  <button onClick={() => { navigator.clipboard.writeText(sqlSetup); alert('SQL Copiado!'); }} className="absolute top-4 right-4 bg-yellow-400 text-black px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-xl hover:scale-105 transition-all">Copiar SQL</button>
+                  <button onClick={() => { navigator.clipboard.writeText(sqlSetup); alert('Novo SQL Copiado!'); }} className="absolute top-4 right-4 bg-yellow-400 text-black px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-xl hover:scale-105 transition-all">Copiar SQL Atualizado</button>
                 </div>
               </div>
             </li>
             <li className="flex gap-6 items-start">
               <span className="bg-yellow-400 text-black w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0">3</span>
-              <div><p className="font-black uppercase text-xs tracking-widest text-yellow-400 mb-1">Clique em "RUN"</p><p className="text-gray-400 text-xs">Aguarde a mensagem de sucesso e recarregue esta página.</p></div>
+              <div><p className="font-black uppercase text-xs tracking-widest text-yellow-400 mb-1">Executar</p><p className="text-gray-400 text-xs">Clique em "RUN". O script agora ignora erros de publicação e desativa RLS automaticamente.</p></div>
             </li>
           </ol>
-          <button onClick={() => window.location.reload()} className="w-full bg-white text-black py-6 rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-xl hover:bg-yellow-400 transition-colors">Já fiz os passos, Recarregar</button>
+          <button onClick={() => window.location.reload()} className="w-full bg-white text-black py-6 rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-xl hover:bg-yellow-400 transition-colors">Recarregar Aplicativo</button>
         </div>
       )}
 
-      {/* Reutilizar Modais do AdminPanel Anterior... (Apenas garantindo que funcionem) */}
       {isProductModalOpen && editingProduct && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsProductModalOpen(false)} />
@@ -225,7 +234,6 @@ INSERT INTO tables (id, status) VALUES (1,'free'),(2,'free'),(3,'free'),(4,'free
         </div>
       )}
       
-      {/* Modal de Mesa, Relatório, etc (mantidos conforme versão anterior) */}
       {selectedTable && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setSelectedTable(null)} />

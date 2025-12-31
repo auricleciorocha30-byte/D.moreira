@@ -21,6 +21,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
  *     is_available BOOLEAN DEFAULT true,
  *     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
  * );
+ * ALTER TABLE public.products DISABLE ROW LEVEL SECURITY;
  * 
  * -- 2. CRIAR TABELA DE MESAS
  * CREATE TABLE IF NOT EXISTS public.tables (
@@ -29,6 +30,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
  *     current_order JSONB,
  *     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
  * );
+ * ALTER TABLE public.tables DISABLE ROW LEVEL SECURITY;
  * 
  * -- 3. CRIAR TABELA DE VENDAS
  * CREATE TABLE IF NOT EXISTS public.sales (
@@ -40,8 +42,23 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
  *     table_id INTEGER,
  *     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
  * );
+ * ALTER TABLE public.sales DISABLE ROW LEVEL SECURITY;
  * 
- * -- 4. HABILITAR REALTIME (IMPORTANTE)
- * alter publication supabase_realtime add table products;
- * alter publication supabase_realtime add table tables;
+ * -- 4. HABILITAR REALTIME (COM CHECAGEM PARA EVITAR ERROS)
+ * DO $$
+ * BEGIN
+ *     IF NOT EXISTS (
+ *         SELECT 1 FROM pg_publication_tables 
+ *         WHERE pubname = 'supabase_realtime' AND tablename = 'products'
+ *     ) THEN
+ *         ALTER PUBLICATION supabase_realtime ADD TABLE products;
+ *     END IF;
+ *     
+ *     IF NOT EXISTS (
+ *         SELECT 1 FROM pg_publication_tables 
+ *         WHERE pubname = 'supabase_realtime' AND tablename = 'tables'
+ *     ) THEN
+ *         ALTER PUBLICATION supabase_realtime ADD TABLE tables;
+ *     END IF;
+ * END $$;
  */
