@@ -21,7 +21,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
   const [activeTab, setActiveTab] = useState<'tables' | 'functions' | 'setup'>('tables');
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [showSalesReport, setShowSalesReport] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
@@ -51,7 +50,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
   };
 
   const handleToggleAvailability = (item: Product) => {
-    // Chama a função central que agora tem UI otimista
+    // A função no App.tsx agora tem UI otimista
     onSaveProduct({ ...item, isAvailable: !item.isAvailable });
   };
 
@@ -80,6 +79,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
 
   return (
     <div className="w-full animate-pop-in">
+      {/* Cabeçalho do Painel */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 bg-white p-6 rounded-[3rem] shadow-sm border border-gray-100">
         <div>
           <h2 className="text-3xl font-black italic tracking-tighter">D.Moreira Admin</h2>
@@ -123,7 +123,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
             {menuItems.map(item => (
               <div key={item.id} className={`group p-5 rounded-[2.5rem] border-2 transition-all ${item.isAvailable ? 'bg-gray-50 border-gray-100' : 'bg-red-50 border-red-200'}`}>
                 <div className="relative mb-4">
-                  <img src={item.image} className={`w-full h-32 object-cover rounded-2xl shadow-sm ${!item.isAvailable && 'grayscale brightness-75'}`} />
+                  <img src={item.image} className={`w-full h-32 object-cover rounded-2xl shadow-sm ${!item.isAvailable && 'grayscale brightness-75 opacity-50'}`} />
                   {!item.isAvailable && (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <span className="bg-red-600 text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase shadow-xl ring-2 ring-white">Esgotado</span>
@@ -139,8 +139,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => { setEditingProduct(item); setIsProductModalOpen(true); }} className="flex-1 bg-white border border-gray-200 py-3 rounded-xl font-black text-[10px] uppercase hover:bg-gray-100 transition-colors">Editar</button>
-                  <button onClick={() => handleToggleAvailability(item)} className={`px-4 py-3 rounded-xl font-black text-[10px] uppercase transition-all shadow-sm ${item.isAvailable ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-green-500 text-white'}`}>
-                    {item.isAvailable ? 'Esgotou' : 'Repor'}
+                  <button 
+                    onClick={() => handleToggleAvailability(item)} 
+                    className={`px-4 py-3 rounded-xl font-black text-[10px] uppercase transition-all shadow-sm ${item.isAvailable ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-600 text-white'}`}
+                  >
+                    {item.isAvailable ? 'Esgotar' : 'Repor'}
                   </button>
                 </div>
               </div>
@@ -206,6 +209,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
               </div>
             </div>
 
+            {/* BUSCA DE ITENS PARA ADICIONAR NA MESA */}
             <div className="hidden md:flex flex-col w-80 shrink-0 bg-gray-50 rounded-[2.5rem] p-6 border border-gray-200">
               <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 italic">Inserir no Pedido</h4>
               <input 
@@ -220,14 +224,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
                   <button 
                     key={item.id} 
                     onClick={() => item.isAvailable && selectedTable.currentOrder && onAddToOrder(selectedTable.id, item)}
-                    disabled={!selectedTable.currentOrder || !item.isAvailable}
-                    className={`w-full text-left bg-white p-3 rounded-2xl border border-gray-100 flex gap-3 transition-all hover:border-yellow-400 hover:shadow-md active:scale-95 ${(!selectedTable.currentOrder || !item.isAvailable) ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
+                    disabled={!selectedTable.currentOrder || item.isAvailable === false}
+                    className={`w-full text-left bg-white p-3 rounded-2xl border border-gray-100 flex gap-3 transition-all hover:border-yellow-400 hover:shadow-md active:scale-95 ${(!selectedTable.currentOrder || item.isAvailable === false) ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
                   >
                     <img src={item.image} className="w-10 h-10 object-cover rounded-lg shadow-sm" />
                     <div className="min-w-0 flex-1">
                       <p className="text-[10px] font-black truncate leading-tight text-gray-900">{item.name}</p>
-                      <p className={`text-[10px] font-black ${item.isAvailable ? 'text-yellow-700' : 'text-red-500'}`}>
-                        {item.isAvailable ? `R$ ${item.price.toFixed(2)}` : 'Esgotado'}
+                      <p className={`text-[10px] font-black ${item.isAvailable ? 'text-yellow-700' : 'text-red-600 font-bold'}`}>
+                        {item.isAvailable ? `R$ ${item.price.toFixed(2)}` : 'ESGOTADO'}
                       </p>
                     </div>
                     {item.isAvailable && <div className="bg-yellow-400 text-black w-6 h-6 rounded-full flex items-center justify-center font-black text-xs shrink-0">+</div>}
@@ -241,6 +245,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
         </div>
       )}
 
+      {/* MODAL DE EDIÇÃO DE PRODUTO */}
       {isProductModalOpen && editingProduct && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsProductModalOpen(false)} />
@@ -255,7 +260,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
                 </select>
               </div>
               <div className="flex items-center gap-4 p-5 bg-gray-50 rounded-3xl border border-gray-100">
-                <input type="checkbox" id="avail_chk_edit" className="w-6 h-6 accent-yellow-400 rounded-lg" checked={editingProduct.isAvailable} onChange={e => setEditingProduct({...editingProduct, isAvailable: e.target.checked})} />
+                <input type="checkbox" id="avail_chk_edit" className="w-6 h-6 accent-yellow-400 rounded-lg" checked={editingProduct.isAvailable !== false} onChange={e => setEditingProduct({...editingProduct, isAvailable: e.target.checked})} />
                 <label htmlFor="avail_chk_edit" className="text-xs font-black uppercase tracking-widest cursor-pointer">Disponível para venda</label>
               </div>
               <div className="flex gap-4 pt-6">

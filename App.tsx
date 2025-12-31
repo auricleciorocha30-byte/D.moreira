@@ -72,7 +72,7 @@ const App: React.FC = () => {
           category: p.category,
           image: p.image || '',
           savings: p.savings || '',
-          isAvailable: p.is_available ?? true
+          isAvailable: p.is_available ?? true 
         })));
       } else {
         setMenuItems(STATIC_MENU);
@@ -102,10 +102,10 @@ const App: React.FC = () => {
         })));
       }
     } catch (err: any) {
-      console.error('Erro geral Supabase:', err);
+      console.error('Erro ao buscar dados:', err);
       if (menuItems.length === 0) setMenuItems(STATIC_MENU);
     }
-  }, [menuItems.length]);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -118,7 +118,7 @@ const App: React.FC = () => {
   }, [fetchData]);
 
   const addToCart = (product: Product) => {
-    if (!product.isAvailable) return;
+    if (product.isAvailable === false) return; 
     setCartItems(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) return prev.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
@@ -150,7 +150,7 @@ const App: React.FC = () => {
       if (error) throw error;
       setCartItems([]);
     } catch (err: any) {
-      alert('Erro ao enviar pedido: Verifique a conexão.');
+      alert('Erro ao enviar pedido.');
     }
   };
 
@@ -177,38 +177,38 @@ const App: React.FC = () => {
   };
 
   const handleSaveProduct = async (product: Partial<Product>) => {
-    if (!product.name || !product.price || !product.category) {
+    if (!product.id && (!product.name || product.price === undefined)) {
       alert('Dados incompletos.');
       return;
     }
 
-    // UI Otimista: Atualiza a lista local antes do banco responder
-    setMenuItems(prev => prev.map(item => item.id === product.id ? { ...item, ...product } as Product : item));
+    // UI OTIMISTA: Muda o estado local IMEDIATAMENTE
+    setMenuItems(prev => prev.map(item => 
+      item.id === product.id ? { ...item, ...product } as Product : item
+    ));
 
-    const payload = {
+    const payload: any = {
       name: product.name,
-      description: product.description || '',
-      price: Number(product.price),
+      description: product.description,
+      price: product.price ? Number(product.price) : undefined,
       category: product.category,
-      image: product.image || '',
-      savings: product.savings || '',
-      is_available: product.isAvailable ?? true
+      image: product.image,
+      savings: product.savings,
+      is_available: product.isAvailable // Mapeia para o banco
     };
+
+    Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
 
     try {
       if (!product.id) {
         const newId = 'prod_' + Math.random().toString(36).substr(2, 9);
-        const { error } = await supabase.from('products').insert([{ ...payload, id: newId }]);
-        if (error) throw error;
+        await supabase.from('products').insert([{ ...payload, id: newId, is_available: payload.is_available ?? true }]);
       } else {
-        const { error } = await supabase.from('products').update(payload).eq('id', product.id);
-        if (error) throw error;
+        await supabase.from('products').update(payload).eq('id', product.id);
       }
-      fetchData(); // Sincroniza com o banco
-    } catch (err: any) {
-      console.error('Erro save product:', err);
-      alert('Erro ao salvar no banco. Tente novamente.');
-      fetchData(); // Reverte a UI otimista em caso de erro
+    } catch (err) {
+      console.error('Erro ao salvar:', err);
+      fetchData(); // Reverte caso falhe
     }
   };
 
@@ -227,16 +227,6 @@ const App: React.FC = () => {
       <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest transition-colors">Acesso Admin</button>
       
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
-        {dbStatus === 'error_tables_missing' && isAdmin && isLoggedIn && (
-          <div className="bg-red-500 text-white p-6 rounded-[2rem] mb-8 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4 border-4 border-white animate-bounce">
-            <div>
-              <p className="font-black text-lg uppercase tracking-tight">Tabelas não encontradas!</p>
-              <p className="text-xs opacity-90 font-bold">Configure o banco no botão Setup.</p>
-            </div>
-            <button onClick={() => fetchData()} className="bg-white text-red-500 px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg hover:scale-105 transition-transform">Verificar Novamente</button>
-          </div>
-        )}
-
         {isAdmin && isLoggedIn ? (
           <AdminPanel 
             tables={tables} 
@@ -265,7 +255,7 @@ const App: React.FC = () => {
 
       {!isAdmin && (
         <div className="fixed bottom-8 left-0 right-0 flex flex-col items-center gap-4 px-6 z-40 pointer-events-none">
-          <button onClick={() => window.open(`https://wa.me/${STORE_INFO.whatsapp}`, '_blank')} className="pointer-events-auto bg-green-500 text-white rounded-full px-6 py-3 flex items-center gap-3 shadow-2xl hover:bg-green-600 transition-all active:scale-95 ring-4 ring-white"><span className="font-black text-xs uppercase tracking-widest">Suporte WhatsApp</span></button>
+          <button onClick={() => window.open(`https://wa.me/${STORE_INFO.whatsapp}`, '_blank')} className="pointer-events-auto bg-green-500 text-white rounded-full px-6 py-3 flex items-center gap-3 shadow-2xl hover:bg-green-600 transition-all active:scale-95 ring-4 ring-white"><span className="font-black text-xs uppercase tracking-widest">WhatsApp Suporte</span></button>
           {cartItems.length > 0 && (
             <button onClick={() => setIsCartOpen(true)} className="pointer-events-auto w-full max-md bg-black text-white rounded-[2rem] p-5 flex items-center justify-between shadow-2xl active:scale-95 ring-4 ring-yellow-400/30 transition-all">
               <div className="flex items-center gap-4">
