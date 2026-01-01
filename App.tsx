@@ -15,7 +15,8 @@ const App: React.FC = () => {
   const [loginPass, setLoginPass] = useState('');
   const [isLoadingLogin, setIsLoadingLogin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-  const [audioEnabled, setAudioEnabled] = useState(false);
+  // Definindo como true por padrão conforme solicitado
+  const [audioEnabled, setAudioEnabled] = useState(true);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -36,7 +37,7 @@ const App: React.FC = () => {
   const playNotification = useCallback(() => {
     if (audioEnabled && notificationSound.current) {
       notificationSound.current.currentTime = 0;
-      notificationSound.current.play().catch(e => console.error("Erro ao tocar som:", e));
+      notificationSound.current.play().catch(e => console.error("Erro ao tocar som (pode requerer interação do usuário):", e));
     }
   }, [audioEnabled]);
 
