@@ -24,7 +24,6 @@ const App: React.FC = () => {
   const [menuItems, setMenuItems] = useState<Product[]>([]);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ok' | 'error_tables_missing'>('loading');
 
-  // Monitorar sessão do Supabase
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -141,12 +140,11 @@ const App: React.FC = () => {
         };
       }
 
-      // Reativado updated_at agora que o script SQL mestre foi fornecido
+      // REMOVIDO updated_at daqui para evitar erro de coluna inexistente
       const { error: upsertError } = await supabase.from('tables').upsert({ 
         id: order.tableId, 
         status: 'occupied', 
-        current_order: finalOrder,
-        updated_at: new Date().toISOString()
+        current_order: finalOrder
       });
 
       if (upsertError) throw upsertError;
@@ -155,7 +153,7 @@ const App: React.FC = () => {
       fetchData();
     } catch (err: any) { 
       console.error("Erro detalhado ao enviar pedido:", err);
-      alert(`Erro ao enviar pedido: ${err.message || 'Verifique se executou o script SQL no Supabase.'}`); 
+      alert(`Erro ao enviar pedido: ${err.message || 'Erro de conexão.'}`); 
     }
   };
 
@@ -202,11 +200,11 @@ const App: React.FC = () => {
             tables={tables} 
             menuItems={menuItems}
             onUpdateTable={async (id, status, ord) => { 
+              // REMOVIDO updated_at daqui para compatibilidade total
               await supabase.from('tables').upsert({ 
                 id, 
                 status, 
-                current_order: ord,
-                updated_at: new Date().toISOString() 
+                current_order: ord
               });
               fetchData();
             }}
@@ -228,7 +226,7 @@ const App: React.FC = () => {
             {dbStatus === 'error_tables_missing' && !isAdmin && (
               <div className="mb-8 p-6 bg-red-50 rounded-3xl border border-red-100 text-center">
                 <p className="text-red-800 text-xs font-black uppercase tracking-widest mb-2">Aviso de Sistema</p>
-                <p className="text-red-700 text-[10px] font-bold">Banco de dados não configurado no Supabase. Execute o script SQL Mestre.</p>
+                <p className="text-red-700 text-[10px] font-bold">Banco de dados não configurado. Use o SQL Editor no Supabase.</p>
               </div>
             )}
 
