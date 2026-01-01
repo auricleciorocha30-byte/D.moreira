@@ -24,7 +24,6 @@ const App: React.FC = () => {
   const [menuItems, setMenuItems] = useState<Product[]>([]);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ok' | 'error_tables_missing'>('loading');
 
-  // Áudio para notificações
   const notificationSound = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -92,7 +91,6 @@ const App: React.FC = () => {
             const idx = updated.findIndex(t => t.id === dbT.id);
             if (idx > -1) {
               const oldTable = prev.find(pT => pT.id === dbT.id);
-              // Verifica se o status mudou para occupied ou se o conteúdo do pedido mudou
               const oldItemsCount = oldTable?.currentOrder?.items.reduce((a, b) => a + b.quantity, 0) || 0;
               const newItemsCount = dbT.current_order?.items.reduce((a: number, b: any) => a + b.quantity, 0) || 0;
 
@@ -103,7 +101,7 @@ const App: React.FC = () => {
               updated[idx] = { 
                 id: dbT.id, 
                 status: dbT.status, 
-                currentOrder: dbT.current_order ? {
+                currentOrder: dbT.status === 'occupied' && dbT.current_order ? {
                   ...dbT.current_order,
                   isUpdated: oldTable?.status === 'occupied' && newItemsCount > oldItemsCount
                 } : null 
@@ -112,7 +110,7 @@ const App: React.FC = () => {
           });
 
           if (hasNewOrder && isAdmin) {
-            notificationSound.current?.play().catch(e => console.log("Erro áudio:", e));
+            notificationSound.current?.play().catch(() => {});
           }
 
           return updated;
@@ -167,7 +165,7 @@ const App: React.FC = () => {
           items: mergedItems, 
           total: mergedItems.reduce((acc, i) => acc + (i.price * i.quantity), 0), 
           timestamp: new Date().toISOString(),
-          status: 'pending' // Reseta status para pendente ao chegar novos itens
+          status: 'pending' 
         };
       }
 
@@ -182,7 +180,6 @@ const App: React.FC = () => {
       setCartItems([]);
       fetchData();
     } catch (err: any) { 
-      console.error("Erro detalhado ao enviar pedido:", err);
       alert(`Erro ao enviar pedido: ${err.message || 'Erro de conexão.'}`); 
     }
   };
@@ -230,11 +227,18 @@ const App: React.FC = () => {
             tables={tables} 
             menuItems={menuItems}
             onUpdateTable={async (id, status, ord) => { 
-              await supabase.from('tables').upsert({ 
+              // Garante que o pedido seja NULL se a mesa estiver sendo liberada
+              const orderToSave = status === 'free' ? null : (ord ? { ...ord, isUpdated: false } : null);
+              
+              const { error } = await supabase.from('tables').upsert({ 
                 id, 
                 status, 
-                current_order: ord ? { ...ord, isUpdated: false } : null
+                current_order: orderToSave
               });
+
+              if (error) {
+                alert("Erro ao atualizar mesa: " + error.message);
+              }
               fetchData();
             }}
             onAddToOrder={handlePlaceOrder as any}
@@ -251,14 +255,6 @@ const App: React.FC = () => {
                 <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-7 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 ${selectedCategory === cat ? 'bg-black text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border'}`}>{cat}</button>
               ))}
             </div>
-            
-            {dbStatus === 'error_tables_missing' && !isAdmin && (
-              <div className="mb-8 p-6 bg-red-50 rounded-3xl border border-red-100 text-center">
-                <p className="text-red-800 text-xs font-black uppercase tracking-widest mb-2">Aviso de Sistema</p>
-                <p className="text-red-700 text-[10px] font-bold">Banco de dados não configurado. Use o SQL Editor no Supabase.</p>
-              </div>
-            )}
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredItems.map(item => <MenuItem key={item.id} product={item} onAdd={addToCart} />)}
             </div>
@@ -286,51 +282,20 @@ const App: React.FC = () => {
           <div className="bg-white p-10 rounded-[3rem] w-full max-w-sm shadow-2xl text-center">
             <h2 className="text-3xl font-black mb-2 italic tracking-tighter">Painel Admin</h2>
             <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-8 italic">Acesso Restrito - D.Moreira</p>
-            
             <form onSubmit={e => {
               e.preventDefault();
               setIsLoadingLogin(true);
               supabase.auth.signInWithPassword({ email: loginEmail, password: loginPass })
                 .then(({ error }) => {
-                  if (error) {
-                    alert('Erro no Login: ' + error.message);
-                  } else {
-                    setShowLogin(false);
-                    setLoginPass('');
-                  }
+                  if (error) alert('Erro no Login: ' + error.message);
+                  else { setShowLogin(false); setLoginPass(''); }
                 })
                 .finally(() => setIsLoadingLogin(false));
             }} className="space-y-4">
-              <input 
-                type="email" 
-                required 
-                placeholder="E-mail" 
-                value={loginEmail} 
-                onChange={e => setLoginEmail(e.target.value)} 
-                className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 transition-all shadow-inner"
-              />
-              <input 
-                type="password" 
-                required 
-                placeholder="Senha" 
-                value={loginPass} 
-                onChange={e => setLoginPass(e.target.value)} 
-                className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 transition-all shadow-inner"
-              />
-              <button 
-                type="submit" 
-                disabled={isLoadingLogin} 
-                className="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl shadow-xl uppercase text-xs tracking-widest hover:brightness-110 active:scale-95 transition-all"
-              >
-                {isLoadingLogin ? 'Autenticando...' : 'Entrar Agora'}
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setShowLogin(false)} 
-                className="text-[10px] font-black text-gray-400 uppercase mt-4 tracking-widest hover:text-black transition-colors"
-              >
-                Voltar ao Cardápio
-              </button>
+              <input type="email" required placeholder="E-mail" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 transition-all shadow-inner"/>
+              <input type="password" required placeholder="Senha" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 transition-all shadow-inner"/>
+              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl shadow-xl uppercase text-xs tracking-widest hover:brightness-110 active:scale-95 transition-all">{isLoadingLogin ? 'Autenticando...' : 'Entrar Agora'}</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4 tracking-widest hover:text-black transition-colors">Voltar ao Cardápio</button>
             </form>
           </div>
         </div>
