@@ -207,6 +207,16 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeleteProduct = async (id: string) => {
+    try {
+      const { error } = await supabase.from('products').delete().eq('id', id);
+      if (error) throw error;
+      fetchData();
+    } catch (err: any) {
+      alert('Erro ao excluir produto: ' + err.message);
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setIsLoggedIn(false);
@@ -227,18 +237,9 @@ const App: React.FC = () => {
             tables={tables} 
             menuItems={menuItems}
             onUpdateTable={async (id, status, ord) => { 
-              // Garante que o pedido seja NULL se a mesa estiver sendo liberada
               const orderToSave = status === 'free' ? null : (ord ? { ...ord, isUpdated: false } : null);
-              
-              const { error } = await supabase.from('tables').upsert({ 
-                id, 
-                status, 
-                current_order: orderToSave
-              });
-
-              if (error) {
-                alert("Erro ao atualizar mesa: " + error.message);
-              }
+              const { error } = await supabase.from('tables').upsert({ id, status, current_order: orderToSave });
+              if (error) alert("Erro ao atualizar mesa: " + error.message);
               fetchData();
             }}
             onAddToOrder={handlePlaceOrder as any}
@@ -246,6 +247,7 @@ const App: React.FC = () => {
             salesHistory={[]} 
             onLogout={handleLogout}
             onSaveProduct={handleSaveProduct}
+            onDeleteProduct={handleDeleteProduct}
             dbStatus={dbStatus}
           />
         ) : (
