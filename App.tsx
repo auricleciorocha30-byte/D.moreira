@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Header from './components/Header';
 import MenuItem from './components/MenuItem';
 import Cart from './components/Cart';
@@ -23,6 +23,13 @@ const App: React.FC = () => {
   const [tables, setTables] = useState<Table[]>(INITIAL_TABLES);
   const [menuItems, setMenuItems] = useState<Product[]>([]);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ok' | 'error_tables_missing'>('loading');
+
+  // Áudio para notificações
+  const notificationSound = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+  }, []);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -79,19 +86,42 @@ const App: React.FC = () => {
       if (tablesData) {
         setTables(prev => {
           const updated = [...INITIAL_TABLES];
+          let hasNewOrder = false;
+
           tablesData.forEach(dbT => {
             const idx = updated.findIndex(t => t.id === dbT.id);
             if (idx > -1) {
-              updated[idx] = { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order };
+              const oldTable = prev.find(pT => pT.id === dbT.id);
+              // Verifica se o status mudou para occupied ou se o conteúdo do pedido mudou
+              const oldItemsCount = oldTable?.currentOrder?.items.reduce((a, b) => a + b.quantity, 0) || 0;
+              const newItemsCount = dbT.current_order?.items.reduce((a: number, b: any) => a + b.quantity, 0) || 0;
+
+              if (dbT.status === 'occupied' && (oldTable?.status !== 'occupied' || newItemsCount > oldItemsCount)) {
+                hasNewOrder = true;
+              }
+
+              updated[idx] = { 
+                id: dbT.id, 
+                status: dbT.status, 
+                currentOrder: dbT.current_order ? {
+                  ...dbT.current_order,
+                  isUpdated: oldTable?.status === 'occupied' && newItemsCount > oldItemsCount
+                } : null 
+              };
             }
           });
+
+          if (hasNewOrder && isAdmin) {
+            notificationSound.current?.play().catch(e => console.log("Erro áudio:", e));
+          }
+
           return updated;
         });
       }
     } catch (err) {
       console.error("Erro ao sincronizar:", err);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     fetchData();
@@ -136,11 +166,11 @@ const App: React.FC = () => {
           ...existing, 
           items: mergedItems, 
           total: mergedItems.reduce((acc, i) => acc + (i.price * i.quantity), 0), 
-          timestamp: new Date().toISOString() 
+          timestamp: new Date().toISOString(),
+          status: 'pending' // Reseta status para pendente ao chegar novos itens
         };
       }
 
-      // REMOVIDO updated_at daqui para evitar erro de coluna inexistente
       const { error: upsertError } = await supabase.from('tables').upsert({ 
         id: order.tableId, 
         status: 'occupied', 
@@ -200,11 +230,10 @@ const App: React.FC = () => {
             tables={tables} 
             menuItems={menuItems}
             onUpdateTable={async (id, status, ord) => { 
-              // REMOVIDO updated_at daqui para compatibilidade total
               await supabase.from('tables').upsert({ 
                 id, 
                 status, 
-                current_order: ord
+                current_order: ord ? { ...ord, isUpdated: false } : null
               });
               fetchData();
             }}

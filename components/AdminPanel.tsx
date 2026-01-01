@@ -45,17 +45,55 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
     }
   };
 
-  const handlePrint = (order: Order) => {
+  const handlePrint = (order: Order, type: 'kitchen' | 'customer') => {
     const printWindow = window.open('', '_blank', 'width=800,height=800');
     if (!printWindow) return;
-    const content = `<html><body style="font-family:monospace;width:72mm;padding:5mm;">
-      <h2 style="text-align:center;">D.MOREIRA</h2><hr/>
-      <p><b>REF:</b> ${order.tableId === 900 ? 'ENTREGA' : order.tableId === 901 ? 'RETIRADA' : 'MESA ' + order.tableId}</p>
-      <p><b>CLIENTE:</b> ${order.customerName}</p><hr/>
-      ${order.items.map(i => `<div>${i.quantity}x ${i.name} - R$ ${(i.price*i.quantity).toFixed(2)}</div>`).join('')}<hr/>
-      <h3 style="text-align:right;">TOTAL: R$ ${order.total.toFixed(2)}</h3>
-      <p>PAGTO: ${order.paymentMethod}</p>
-      <script>window.print();window.close();</script></body></html>`;
+
+    const dateStr = new Date().toLocaleTimeString('pt-BR');
+    const tableLabel = order.tableId === 900 ? 'ENTREGA' : order.tableId === 901 ? 'BALCÃO' : `MESA ${order.tableId}`;
+
+    let content = '';
+    if (type === 'kitchen') {
+      content = `
+        <html><body style="font-family:monospace;width:72mm;padding:5mm;font-size:14px;">
+          <h2 style="text-align:center;margin:0;">COZINHA</h2>
+          <div style="text-align:center;font-size:24px;font-weight:bold;margin:10px 0;">${tableLabel}</div>
+          <div style="text-align:center;margin-bottom:10px;">REF: ${order.customerName}</div>
+          <hr/>
+          ${order.items.map(i => `<div style="font-size:18px;margin-bottom:5px;"><b>${i.quantity}x</b> ${i.name.toUpperCase()}</div>`).join('')}
+          <hr/>
+          <div style="text-align:center;font-size:10px;">${dateStr}</div>
+          <script>window.print();window.close();</script>
+        </body></html>
+      `;
+    } else {
+      content = `
+        <html><body style="font-family:monospace;width:72mm;padding:5mm;font-size:12px;">
+          <h2 style="text-align:center;margin:0;">D.MOREIRA</h2>
+          <p style="text-align:center;margin:5px 0;">Parada Obrigatória ⛽</p>
+          <hr/>
+          <p><b>REF:</b> ${tableLabel}</p>
+          <p><b>CLIENTE:</b> ${order.customerName}</p>
+          <p><b>HORA:</b> ${dateStr}</p>
+          <hr/>
+          <table style="width:100%;border-collapse:collapse;">
+            ${order.items.map(i => `
+              <tr>
+                <td>${i.quantity}x ${i.name}</td>
+                <td style="text-align:right;">R$ ${(i.price*i.quantity).toFixed(2)}</td>
+              </tr>
+            `).join('')}
+          </table>
+          <hr/>
+          <div style="text-align:right;font-size:18px;"><b>TOTAL: R$ ${order.total.toFixed(2)}</b></div>
+          <p>PAGTO: ${order.paymentMethod}</p>
+          <hr/>
+          <p style="text-align:center;font-size:10px;">Agradecemos a preferência!</p>
+          <script>window.print();window.close();</script>
+        </body></html>
+      `;
+    }
+    
     printWindow.document.write(content);
     printWindow.document.close();
   };
@@ -63,8 +101,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
   const TableCard: React.FC<{ table: Table }> = ({ table }) => {
     const statusInfo = table.currentOrder ? getStatusLabel(table.currentOrder.status) : null;
     return (
-      <button onClick={() => setSelectedTableId(table.id)} className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-2 relative h-44 ${table.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl scale-105'}`}>
+      <button 
+        onClick={() => setSelectedTableId(table.id)} 
+        className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-2 relative h-44 ${table.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl scale-105'}`}
+      >
         {statusInfo && <div className={`absolute top-4 left-4 ${statusInfo.color} text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase`}>{statusInfo.text}</div>}
+        
+        {table.currentOrder?.isUpdated && (
+          <div className="absolute top-4 right-4 bg-red-600 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase animate-bounce">
+            Novo
+          </div>
+        )}
+
         <span className="text-4xl font-black italic">{table.id > 800 ? (table.id === 900 ? '🚚' : '🛍️') : table.id}</span>
         <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full ${table.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>{table.id > 800 ? (table.status === 'free' ? 'Sem Pedidos' : 'Pedidos Abertos') : (table.status === 'free' ? 'Livre' : 'Ocupada')}</span>
         {table.currentOrder && <span className="text-[10px] font-bold truncate w-full text-center px-2">{table.currentOrder.customerName}</span>}
@@ -130,10 +178,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
 
       {selectedTable && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => { onUpdateTable(selectedTable.id, 'occupied', selectedTable.currentOrder); setSelectedTableId(null); }} />
           <div className="relative bg-white w-full max-w-6xl rounded-[4rem] p-8 md:p-12 shadow-2xl flex flex-col md:flex-row gap-8 max-h-[92vh] border-[12px] border-yellow-400 overflow-hidden">
-            {/* Botão de Fechar Modal */}
-            <button onClick={() => setSelectedTableId(null)} className="absolute top-6 right-6 p-3 bg-gray-100 rounded-full hover:bg-gray-200 z-10">
+            <button onClick={() => { onUpdateTable(selectedTable.id, 'occupied', selectedTable.currentOrder); setSelectedTableId(null); }} className="absolute top-6 right-6 p-3 bg-gray-100 rounded-full hover:bg-gray-200 z-10">
               <CloseIcon size={24} />
             </button>
 
@@ -179,15 +226,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
                     <span className="text-gray-400 font-black uppercase text-[10px]">Total Acumulado</span>
                     <span className="text-4xl font-black italic">R$ {selectedTable.currentOrder.total.toFixed(2).replace('.', ',')}</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => handlePrint(selectedTable.currentOrder!)} className="bg-gray-100 py-5 rounded-2xl font-black uppercase text-[11px] hover:bg-gray-200 transition-all border shadow-sm">Imprimir Cupom</button>
-                    <button onClick={() => { if(confirm('Finalizar e liberar mesa?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[11px] shadow-xl hover:bg-green-700 transition-all">Fechar Conta</button>
+                  <div className="grid grid-cols-3 gap-3">
+                    <button onClick={() => handlePrint(selectedTable.currentOrder!, 'kitchen')} className="bg-black text-white py-5 rounded-2xl font-black uppercase text-[10px] hover:brightness-110 transition-all border shadow-sm">COZINHA</button>
+                    <button onClick={() => handlePrint(selectedTable.currentOrder!, 'customer')} className="bg-gray-100 py-5 rounded-2xl font-black uppercase text-[10px] hover:bg-gray-200 transition-all border shadow-sm">CLIENTE</button>
+                    <button onClick={() => { if(confirm('Finalizar e liberar mesa?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-green-700 transition-all">FECHAR</button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Coluna de Adição de Itens (FALTAVA ESSA SEÇÃO) */}
             <div className="flex-1 bg-gray-50 rounded-[3rem] p-8 flex flex-col min-w-0 border border-gray-100">
               <h4 className="text-xl font-black italic mb-4">Adicionar Itens</h4>
               <input 
