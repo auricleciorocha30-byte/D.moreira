@@ -1,11 +1,13 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Table, Order, Product, CategoryType, OrderStatus } from '../types';
+import { Table, Order, Product, CategoryType, OrderStatus, Category } from '../types';
 import { CloseIcon, TrashIcon, VolumeIcon } from './Icons';
+import { supabase } from '../lib/supabase';
 
 interface AdminPanelProps {
   tables: Table[];
   menuItems: Product[];
+  categories: Category[];
   audioEnabled: boolean;
   onToggleAudio: () => void;
   onUpdateTable: (tableId: number, status: 'free' | 'occupied', order?: Order | null) => void;
@@ -18,19 +20,19 @@ interface AdminPanelProps {
   dbStatus: 'loading' | 'ok' | 'error_tables_missing';
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled, onToggleAudio, onUpdateTable, onAddToOrder, onRefreshData, salesHistory, onLogout, onSaveProduct, onDeleteProduct, dbStatus }) => {
-  const [activeTab, setActiveTab] = useState<'tables' | 'delivery' | 'takeaway' | 'menu'>('tables');
+const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, audioEnabled, onToggleAudio, onUpdateTable, onAddToOrder, onRefreshData, salesHistory, onLogout, onSaveProduct, onDeleteProduct, dbStatus }) => {
+  const [activeTab, setActiveTab] = useState<'tables' | 'delivery' | 'takeaway' | 'menu' | 'categories'>('tables');
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   const physicalTables = tables.filter(t => t.id <= 12).sort((a,b) => a.id - b.id);
   const deliveryTable = tables.find(t => t.id === 900);
   const counterTable = tables.find(t => t.id === 901);
 
-  // Verificadores de novos pedidos para as abas (se houver QUALQUER mesa com isUpdated=true)
   const hasNewTables = physicalTables.some(t => t.status === 'occupied' && t.currentOrder?.isUpdated);
   const hasNewDelivery = deliveryTable?.status === 'occupied' && deliveryTable.currentOrder?.isUpdated;
   const hasNewTakeaway = counterTable?.status === 'occupied' && counterTable.currentOrder?.isUpdated;
@@ -52,12 +54,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
     setEditingProduct({
       name: '',
       price: 0,
-      category: 'Lanches',
+      category: categories[0]?.name || '',
       description: '',
       image: '',
       isAvailable: true
     });
     setIsProductModalOpen(true);
+  };
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    const { error } = await supabase.from('categories').insert([{ name: newCategoryName.trim() }]);
+    if (error) alert('Erro ao criar categoria: ' + error.message);
+    else { setNewCategoryName(''); onRefreshData(); }
+  };
+
+  const handleDeleteCategory = async (id: string, name: string) => {
+    if (!confirm(`Excluir categoria "${name}"? Os produtos vinculados podem ficar sem categoria.`)) return;
+    const { error } = await supabase.from('categories').delete().eq('id', id);
+    if (error) alert('Erro ao excluir: ' + error.message);
+    else onRefreshData();
   };
 
   const getStatusLabel = (status: OrderStatus) => {
@@ -122,7 +139,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
     const statusInfo = isOccupied ? getStatusLabel(table.currentOrder!.status) : null;
     const isDelivery = table.id === 900;
     const isTakeaway = table.id === 901;
-    // Verifica se é para viagem (ou seja, se o tipo é takeaway ou se é uma entrega/balcão)
     const isToTravel = table.currentOrder?.orderType === 'takeaway' || table.currentOrder?.orderType === 'delivery' || table.currentOrder?.orderType === 'counter';
 
     return (
@@ -145,7 +161,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
 
         {isOccupied && isToTravel && (
           <div className="absolute bottom-3 right-3 bg-black text-yellow-400 text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border border-yellow-400/30 flex items-center gap-1">
-             <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><path d="M22 8l-2-2-4 4-2-2-2 2-2-2-2 2-2-2-2 2 4 4 4-4 2 2 2-2 2 2 4-4z"/></svg>
              VIAGEM
           </div>
         )}
@@ -202,17 +217,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
             </button>
           </div>
           <div className="flex gap-2 sm:gap-4 overflow-x-auto no-scrollbar w-full md:w-auto p-1 items-center">
-            <button onClick={() => setActiveTab('tables')} className={`relative whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'tables' ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-400 hover:bg-gray-50'}`}>
-              Mesas {hasNewTables && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 rounded-full border-[3px] border-white animate-pulse shadow-md ring-2 ring-red-100"></span>}
+            <button onClick={() => setActiveTab('tables')} className={`relative whitespace-nowrap px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'tables' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>
+              Mesas {hasNewTables && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-[3px] border-white animate-pulse"></span>}
             </button>
-            <button onClick={() => setActiveTab('delivery')} className={`relative whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'delivery' ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-400 hover:bg-gray-50'}`}>
-              Entregas {hasNewDelivery && <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-600 rounded-full border-[4px] border-white animate-pulse shadow-lg ring-4 ring-red-200"></span>}
+            <button onClick={() => setActiveTab('delivery')} className={`relative whitespace-nowrap px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'delivery' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>
+              Entregas {hasNewDelivery && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 rounded-full border-[3px] border-white animate-pulse shadow-lg"></span>}
             </button>
-            <button onClick={() => setActiveTab('takeaway')} className={`relative whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'takeaway' ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-400 hover:bg-gray-50'}`}>
-              Retiradas {hasNewTakeaway && <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-600 rounded-full border-[4px] border-white animate-pulse shadow-lg ring-4 ring-red-200"></span>}
+            <button onClick={() => setActiveTab('takeaway')} className={`relative whitespace-nowrap px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'takeaway' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>
+              Retiradas {hasNewTakeaway && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 rounded-full border-[3px] border-white animate-pulse shadow-lg"></span>}
             </button>
-            <button onClick={() => setActiveTab('menu')} className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'menu' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>Cardápio</button>
-            <button onClick={onLogout} className="whitespace-nowrap text-red-500 font-black text-[11px] uppercase ml-4 px-4 hover:bg-red-50 rounded-xl py-2 transition-colors">Sair</button>
+            <button onClick={() => setActiveTab('menu')} className={`whitespace-nowrap px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'menu' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>Cardápio</button>
+            <button onClick={() => setActiveTab('categories')} className={`whitespace-nowrap px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'categories' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>Categorias</button>
+            <button onClick={onLogout} className="whitespace-nowrap text-red-500 font-black text-[10px] uppercase ml-4 px-3 py-2 hover:bg-red-50 rounded-xl transition-colors">Sair</button>
           </div>
         </div>
       </div>
@@ -222,6 +238,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
           {activeTab === 'tables' && physicalTables.map(t => <TableCard key={t.id} table={t} />)}
           {activeTab === 'delivery' && deliveryTable && <TableCard table={deliveryTable} />}
           {activeTab === 'takeaway' && counterTable && <TableCard table={counterTable} />}
+        </div>
+      )}
+
+      {activeTab === 'categories' && (
+        <div className="bg-white p-8 rounded-[3.5rem] shadow-sm border border-gray-100 max-w-2xl mx-auto">
+          <h3 className="text-3xl font-black italic tracking-tighter mb-8">Gestão de Categorias</h3>
+          <form onSubmit={handleAddCategory} className="flex gap-3 mb-8">
+            <input type="text" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Nova Categoria (ex: Sobremesas)" className="flex-1 bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400" />
+            <button type="submit" className="bg-black text-yellow-400 px-6 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110 active:scale-95 transition-all">Adicionar</button>
+          </form>
+          <div className="space-y-3">
+            {categories.map(cat => (
+              <div key={cat.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border group">
+                <span className="font-black text-gray-800 uppercase tracking-widest text-xs">{cat.name}</span>
+                <button onClick={() => handleDeleteCategory(cat.id, cat.name)} className="p-2 text-red-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><TrashIcon size={18}/></button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -239,7 +273,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
                   {!item.isAvailable && <div className="absolute inset-0 bg-black/60 flex items-center justify-center font-black text-white uppercase text-[10px] tracking-widest text-center px-4">Indisponível agora</div>}
                 </div>
                 <h4 className="font-black text-sm truncate mb-1">{item.name}</h4>
-                <p className="text-yellow-700 font-black text-xs mb-4">R$ {item.price.toFixed(2).replace('.', ',')}</p>
+                <div className="flex justify-between items-center mb-4">
+                   <span className="text-[8px] font-black uppercase text-gray-400 tracking-tighter bg-gray-100 px-2 py-1 rounded-md">{item.category}</span>
+                   <p className="text-yellow-700 font-black text-xs">R$ {item.price.toFixed(2).replace('.', ',')}</p>
+                </div>
                 <div className="flex gap-2">
                   <button onClick={() => openEditModal(item)} className="flex-1 bg-white py-3 rounded-xl font-black text-[10px] uppercase border shadow-sm hover:bg-gray-100">Editar</button>
                   <button onClick={() => { if(confirm(`Excluir ${item.name} permanentemente?`)) onDeleteProduct(item.id); }} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><TrashIcon size={16}/></button>
@@ -267,8 +304,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
                    </div>
                    <div>
                       <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-2 mb-1 block">Categoria *</label>
-                      <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value as CategoryType})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400">
-                         <option value="Lanches">Lanches</option><option value="Cafeteria">Cafeteria</option><option value="Bebidas">Bebidas</option><option value="Combos">Combos</option><option value="Conveniência">Conveniência</option>
+                      <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400">
+                         {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
                       </select>
                    </div>
                 </div>

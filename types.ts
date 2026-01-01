@@ -4,13 +4,18 @@ export interface Product {
   name: string;
   description: string;
   price: number;
-  category: CategoryType;
+  category: string;
   image: string;
   savings?: string;
   isAvailable: boolean;
 }
 
-export type CategoryType = 'Cafeteria' | 'Bebidas' | 'Lanches' | 'Conveniência' | 'Combos';
+export interface Category {
+  id: string;
+  name: string;
+}
+
+export type CategoryType = string;
 
 export interface CartItem extends Product {
   quantity: number;

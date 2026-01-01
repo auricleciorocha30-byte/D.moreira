@@ -5,7 +5,7 @@ import MenuItem from './components/MenuItem';
 import Cart from './components/Cart';
 import AdminPanel from './components/AdminPanel';
 import { MENU_ITEMS as STATIC_MENU, INITIAL_TABLES, STORE_INFO } from './constants';
-import { CategoryType, Product, CartItem, Table, Order } from './types';
+import { CategoryType, Product, CartItem, Table, Order, Category } from './types';
 import { supabase } from './lib/supabase';
 
 const App: React.FC = () => {
@@ -17,12 +17,13 @@ const App: React.FC = () => {
   const [showLogin, setShowLogin] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
 
-  const [selectedCategory, setSelectedCategory] = useState<CategoryType | 'Todos'>('Todos');
+  const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   
   const [tables, setTables] = useState<Table[]>(INITIAL_TABLES);
   const [menuItems, setMenuItems] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ok' | 'error_tables_missing'>('loading');
 
   const notificationSound = useRef<HTMLAudioElement | null>(null);
@@ -74,6 +75,11 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
+      // Buscar Categorias
+      const { data: catData } = await supabase.from('categories').select('*').order('name');
+      if (catData) setCategories(catData);
+
+      // Buscar Produtos
       const { data: productsData, error: pError } = await supabase.from('products').select('*').order('name');
       
       if (pError) {
@@ -100,6 +106,7 @@ const App: React.FC = () => {
         setMenuItems(STATIC_MENU);
       }
 
+      // Buscar Mesas
       const { data: tablesData } = await supabase.from('tables').select('*').order('id', { ascending: true });
       if (tablesData) {
         setTables(prev => {
@@ -125,7 +132,6 @@ const App: React.FC = () => {
                 status: dbT.status, 
                 currentOrder: dbT.status === 'occupied' && dbT.current_order ? {
                   ...dbT.current_order,
-                  // Preserva o isUpdated se já era true e ainda não foi limpo, ou seta se houver mudança real
                   isUpdated: (isNewOrder || isUpdatedOrder) ? true : (oldTable?.currentOrder?.isUpdated ?? false)
                 } : null 
               };
@@ -149,6 +155,7 @@ const App: React.FC = () => {
     const channel = supabase.channel('dmoreira-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [fetchData]);
@@ -246,7 +253,7 @@ const App: React.FC = () => {
     setIsAdmin(false);
   };
 
-  const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
+  const categoryNames = ['Todos', ...categories.map(c => c.name)];
   const filteredItems = menuItems.filter(item => selectedCategory === 'Todos' || item.category === selectedCategory);
 
   return (
@@ -274,11 +281,12 @@ const App: React.FC = () => {
             onSaveProduct={handleSaveProduct}
             onDeleteProduct={handleDeleteProduct}
             dbStatus={dbStatus}
+            categories={categories}
           />
         ) : (
           <>
             <div className="flex overflow-x-auto gap-3 pb-8 no-scrollbar mask-fade scroll-smooth">
-              {categories.map(cat => (
+              {categoryNames.map(cat => (
                 <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-7 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 ${selectedCategory === cat ? 'bg-black text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border'}`}>{cat}</button>
               ))}
             </div>
