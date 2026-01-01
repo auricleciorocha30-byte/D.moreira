@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [loginPass, setLoginPass] = useState('');
   const [isLoadingLogin, setIsLoadingLogin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
 
   const [selectedCategory, setSelectedCategory] = useState<CategoryType | 'Todos'>('Todos');
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -28,7 +29,26 @@ const App: React.FC = () => {
 
   useEffect(() => {
     notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    notificationSound.current.volume = 0.5;
   }, []);
+
+  const playNotification = useCallback(() => {
+    if (audioEnabled && notificationSound.current) {
+      notificationSound.current.currentTime = 0;
+      notificationSound.current.play().catch(e => console.error("Erro ao tocar som:", e));
+    }
+  }, [audioEnabled]);
+
+  const toggleAudio = () => {
+    setAudioEnabled(prev => !prev);
+    // Toca um som curto e silencioso para "desbloquear" o áudio no navegador
+    if (notificationSound.current) {
+      notificationSound.current.volume = 0;
+      notificationSound.current.play().then(() => {
+        if (notificationSound.current) notificationSound.current.volume = 0.5;
+      }).catch(() => {});
+    }
+  };
 
   useEffect(() => {
     const checkSession = async () => {
@@ -85,7 +105,7 @@ const App: React.FC = () => {
       if (tablesData) {
         setTables(prev => {
           const updated = [...INITIAL_TABLES];
-          let hasNewOrder = false;
+          let foundNew = false;
 
           tablesData.forEach(dbT => {
             const idx = updated.findIndex(t => t.id === dbT.id);
@@ -94,8 +114,9 @@ const App: React.FC = () => {
               const oldItemsCount = oldTable?.currentOrder?.items.reduce((a, b) => a + b.quantity, 0) || 0;
               const newItemsCount = dbT.current_order?.items.reduce((a: number, b: any) => a + b.quantity, 0) || 0;
 
+              // Novo pedido ou novos itens em mesa já ocupada
               if (dbT.status === 'occupied' && (oldTable?.status !== 'occupied' || newItemsCount > oldItemsCount)) {
-                hasNewOrder = true;
+                foundNew = true;
               }
 
               updated[idx] = { 
@@ -109,8 +130,8 @@ const App: React.FC = () => {
             }
           });
 
-          if (hasNewOrder && isAdmin) {
-            notificationSound.current?.play().catch(() => {});
+          if (foundNew && isAdmin && audioEnabled) {
+            playNotification();
           }
 
           return updated;
@@ -119,7 +140,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Erro ao sincronizar:", err);
     }
-  }, [isAdmin]);
+  }, [isAdmin, audioEnabled, playNotification]);
 
   useEffect(() => {
     fetchData();
@@ -191,7 +212,7 @@ const App: React.FC = () => {
       price: product.price,
       category: product.category,
       image: product.image,
-      is_available: product.isAvailable
+      is_available: product.isAvailable ?? true
     };
 
     try {
@@ -202,8 +223,8 @@ const App: React.FC = () => {
         await supabase.from('products').update(payload).eq('id', product.id);
       }
       fetchData();
-    } catch (err) { 
-      alert('Erro ao salvar no banco de dados.'); 
+    } catch (err: any) { 
+      alert('Erro ao salvar produto: ' + err.message); 
     }
   };
 
@@ -236,6 +257,8 @@ const App: React.FC = () => {
           <AdminPanel 
             tables={tables} 
             menuItems={menuItems}
+            audioEnabled={audioEnabled}
+            onToggleAudio={toggleAudio}
             onUpdateTable={async (id, status, ord) => { 
               const orderToSave = status === 'free' ? null : (ord ? { ...ord, isUpdated: false } : null);
               const { error } = await supabase.from('tables').upsert({ id, status, current_order: orderToSave });
