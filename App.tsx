@@ -114,9 +114,17 @@ const App: React.FC = () => {
 
   const handlePlaceOrder = async (order: Order) => {
     try {
-      const { data: current } = await supabase.from('tables').select('current_order, status').eq('id', order.tableId).single();
+      // Usar maybeSingle() para evitar erro caso a mesa não exista ainda no banco
+      const { data: current, error: fetchError } = await supabase
+        .from('tables')
+        .select('current_order, status')
+        .eq('id', order.tableId)
+        .maybeSingle();
       
+      if (fetchError) throw fetchError;
+
       let finalOrder = order;
+      // Se a mesa já estiver ocupada e tiver um pedido, mesclamos os itens (lógica acumulativa)
       if (current?.status === 'occupied' && current.current_order) {
         const existing = current.current_order;
         const mergedItems = [...existing.items];
@@ -135,17 +143,20 @@ const App: React.FC = () => {
         };
       }
 
-      const { error } = await supabase.from('tables').upsert({ 
+      const { error: upsertError } = await supabase.from('tables').upsert({ 
         id: order.tableId, 
         status: 'occupied', 
         current_order: finalOrder,
         updated_at: new Date().toISOString()
       });
 
-      if (error) throw error;
+      if (upsertError) throw upsertError;
+      
       setCartItems([]);
-    } catch (err) { 
-      alert('Erro ao enviar pedido para o sistema.'); 
+      fetchData(); // Atualiza a UI imediatamente
+    } catch (err: any) { 
+      console.error("Erro detalhado ao enviar pedido:", err);
+      alert(`Erro ao enviar pedido: ${err.message || 'Verifique se as tabelas foram criadas no Supabase.'}`); 
     }
   };
 
