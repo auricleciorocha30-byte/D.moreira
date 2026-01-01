@@ -7,7 +7,7 @@ export interface Product {
   category: CategoryType;
   image: string;
   savings?: string;
-  isAvailable: boolean; // Novo campo para controle de estoque
+  isAvailable: boolean;
 }
 
 export type CategoryType = 'Cafeteria' | 'Bebidas' | 'Lanches' | 'Conveniência' | 'Combos';
@@ -25,7 +25,7 @@ export interface StoreInfo {
 
 export type TableStatus = 'free' | 'occupied';
 export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'delivered';
-export type OrderType = 'table' | 'takeaway' | 'delivery';
+export type OrderType = 'table' | 'takeaway' | 'delivery' | 'counter';
 
 export interface Order {
   id: string;
@@ -45,10 +45,4 @@ export interface Table {
   id: number;
   status: TableStatus;
   currentOrder: Order | null;
-}
-
-export type PrintWidth = '58mm' | '80mm';
-
-export interface PrintConfig {
-  width: PrintWidth;
 }
