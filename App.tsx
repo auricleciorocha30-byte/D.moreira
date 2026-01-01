@@ -11,7 +11,6 @@ import { supabase } from './lib/supabase';
 const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [isLoadingLogin, setIsLoadingLogin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
@@ -27,15 +26,18 @@ const App: React.FC = () => {
   const fetchData = useCallback(async () => {
     try {
       const { data: productsData, error: pError } = await supabase.from('products').select('*').order('name');
+      
       if (pError) {
         if (pError.code === '42P01') setDbStatus('error_tables_missing');
-        setMenuItems(STATIC_MENU);
+        setMenuItems(STATIC_MENU); // Fallback para itens estáticos caso a tabela não exista
         return;
       }
+      
       setDbStatus('ok');
 
       if (productsData && productsData.length > 0) {
-        setMenuItems(productsData.map(p => ({
+        // Mapear dados do banco para o formato do App
+        const mapped = productsData.map(p => ({
           id: p.id,
           name: p.name,
           description: p.description || '',
@@ -44,31 +46,35 @@ const App: React.FC = () => {
           image: p.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=300&fit=crop',
           savings: p.savings || '',
           isAvailable: p.is_available ?? true 
-        })));
+        }));
+        setMenuItems(mapped);
       } else {
+        // Se a tabela existe mas está vazia, usa o menu padrão
         setMenuItems(STATIC_MENU);
       }
 
+      // Sincronizar Mesas
       const { data: tablesData } = await supabase.from('tables').select('*').order('id', { ascending: true });
       if (tablesData) {
         setTables(prev => {
-          const merged = [...INITIAL_TABLES];
-          tablesData.forEach(dbTable => {
-            const idx = merged.findIndex(t => t.id === dbTable.id);
-            if (idx > -1) merged[idx] = { id: dbTable.id, status: dbTable.status, currentOrder: dbTable.current_order };
-            else merged.push({ id: dbTable.id, status: dbTable.status, currentOrder: dbTable.current_order });
+          const updated = [...INITIAL_TABLES];
+          tablesData.forEach(dbT => {
+            const idx = updated.findIndex(t => t.id === dbT.id);
+            if (idx > -1) {
+              updated[idx] = { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order };
+            }
           });
-          return merged;
+          return updated;
         });
       }
     } catch (err) {
-      console.error(err);
+      console.error("Erro ao sincronizar:", err);
     }
   }, []);
 
   useEffect(() => {
     fetchData();
-    const channel = supabase.channel('conv-realtime')
+    const channel = supabase.channel('dmoreira-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, fetchData)
       .subscribe();
@@ -86,30 +92,43 @@ const App: React.FC = () => {
 
   const handlePlaceOrder = async (order: Order) => {
     try {
-      const { data: tableData } = await supabase.from('tables').select('current_order, status').eq('id', order.tableId).single();
+      // Busca estado atual da mesa para acumulativo
+      const { data: current } = await supabase.from('tables').select('current_order, status').eq('id', order.tableId).single();
+      
       let finalOrder = order;
-      if (tableData?.status === 'occupied' && tableData.current_order) {
-        const existing = tableData.current_order;
+      if (current?.status === 'occupied' && current.current_order) {
+        const existing = current.current_order;
         const mergedItems = [...existing.items];
+        
         order.items.forEach(newItem => {
-          const found = mergedItems.findIndex(i => i.id === newItem.id);
-          if (found > -1) mergedItems[found].quantity += newItem.quantity;
+          const foundIdx = mergedItems.findIndex(i => i.id === newItem.id);
+          if (foundIdx > -1) mergedItems[foundIdx].quantity += newItem.quantity;
           else mergedItems.push(newItem);
         });
-        finalOrder = { ...existing, items: mergedItems, total: mergedItems.reduce((acc, i) => acc + (i.price * i.quantity), 0), timestamp: new Date().toISOString() };
+
+        finalOrder = { 
+          ...existing, 
+          items: mergedItems, 
+          total: mergedItems.reduce((acc, i) => acc + (i.price * i.quantity), 0), 
+          timestamp: new Date().toISOString() 
+        };
       }
-      await supabase.from('tables').upsert({ id: order.tableId, status: 'occupied', current_order: finalOrder });
+
+      const { error } = await supabase.from('tables').upsert({ 
+        id: order.tableId, 
+        status: 'occupied', 
+        current_order: finalOrder,
+        updated_at: new Date().toISOString()
+      });
+
+      if (error) throw error;
       setCartItems([]);
-    } catch (err) { alert('Erro ao processar pedido.'); }
+    } catch (err) { 
+      alert('Erro ao enviar pedido para o sistema.'); 
+    }
   };
 
   const handleSaveProduct = async (product: Partial<Product>) => {
-    // UI Otimista
-    setMenuItems(prev => {
-      if (!product.id) return prev;
-      return prev.map(i => i.id === product.id ? { ...i, ...product } as Product : i);
-    });
-
     const payload = {
       name: product.name,
       description: product.description,
@@ -126,8 +145,10 @@ const App: React.FC = () => {
       } else {
         await supabase.from('products').update(payload).eq('id', product.id);
       }
-      fetchData(); // Sincroniza tudo
-    } catch (err) { alert('Erro ao salvar produto.'); fetchData(); }
+      fetchData();
+    } catch (err) { 
+      alert('Erro ao salvar no banco de dados.'); 
+    }
   };
 
   const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
@@ -136,14 +157,17 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans antialiased relative">
       <Header />
-      <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest transition-colors">Admin</button>
+      <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest transition-colors">Acesso Restrito</button>
       
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
         {isAdmin && isLoggedIn ? (
           <AdminPanel 
             tables={tables} 
             menuItems={menuItems}
-            onUpdateTable={async (id, status, ord) => { await supabase.from('tables').upsert({ id, status, current_order: ord }); fetchData(); }}
+            onUpdateTable={async (id, status, ord) => { 
+              await supabase.from('tables').upsert({ id, status, current_order: ord, updated_at: new Date().toISOString() });
+              fetchData();
+            }}
             onAddToOrder={handlePlaceOrder as any}
             onRefreshData={fetchData} 
             salesHistory={[]} 
@@ -155,9 +179,17 @@ const App: React.FC = () => {
           <>
             <div className="flex overflow-x-auto gap-3 pb-8 no-scrollbar mask-fade scroll-smooth">
               {categories.map(cat => (
-                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-7 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg ${selectedCategory === cat ? 'bg-black text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border'}`}>{cat}</button>
+                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-7 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 ${selectedCategory === cat ? 'bg-black text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border'}`}>{cat}</button>
               ))}
             </div>
+            
+            {dbStatus === 'error_tables_missing' && !isAdmin && (
+              <div className="mb-8 p-6 bg-red-50 rounded-3xl border border-red-100 text-center">
+                <p className="text-red-800 text-xs font-black uppercase tracking-widest mb-2">Aviso de Sistema</p>
+                <p className="text-red-700 text-[10px] font-bold">Banco de dados não configurado. Exibindo itens demonstrativos.</p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredItems.map(item => <MenuItem key={item.id} product={item} onAdd={addToCart} />)}
             </div>
@@ -167,14 +199,14 @@ const App: React.FC = () => {
 
       {!isAdmin && (
         <div className="fixed bottom-8 left-0 right-0 flex flex-col items-center gap-4 px-6 z-40 pointer-events-none">
-          <button onClick={() => window.open(`https://wa.me/${STORE_INFO.whatsapp}`, '_blank')} className="pointer-events-auto bg-green-500 text-white rounded-full px-6 py-3 flex items-center gap-3 shadow-2xl hover:bg-green-600 ring-4 ring-white"><span className="font-black text-xs uppercase tracking-widest">WhatsApp Suporte</span></button>
+          <button onClick={() => window.open(`https://wa.me/${STORE_INFO.whatsapp}`, '_blank')} className="pointer-events-auto bg-green-500 text-white rounded-full px-6 py-3 flex items-center gap-3 shadow-2xl hover:bg-green-600 active:scale-95 transition-all ring-4 ring-white"><span className="font-black text-xs uppercase tracking-widest">WhatsApp Suporte</span></button>
           {cartItems.length > 0 && (
-            <button onClick={() => setIsCartOpen(true)} className="pointer-events-auto w-full max-w-md bg-black text-white rounded-[2rem] p-5 flex items-center justify-between shadow-2xl active:scale-95 ring-4 ring-yellow-400/30">
+            <button onClick={() => setIsCartOpen(true)} className="pointer-events-auto w-full max-w-md bg-black text-white rounded-[2rem] p-5 flex items-center justify-between shadow-2xl active:scale-95 ring-4 ring-yellow-400/30 transition-all">
               <div className="flex items-center gap-4">
-                <div className="bg-yellow-400 text-black w-8 h-8 flex items-center justify-center rounded-xl text-sm font-black">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
-                <span className="font-black text-sm uppercase tracking-widest">Ver Pedido</span>
+                <div className="bg-yellow-400 text-black w-8 h-8 flex items-center justify-center rounded-xl text-sm font-black shadow-inner">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
+                <span className="font-black text-sm uppercase tracking-widest">Ver Sacola</span>
               </div>
-              <span className="font-black text-yellow-400 text-xl">R$ {cartItems.reduce((a,b)=>a+(b.price*b.quantity),0).toFixed(2).replace('.', ',')}</span>
+              <span className="font-black text-yellow-400 text-xl italic">R$ {cartItems.reduce((a,b)=>a+(b.price*b.quantity),0).toFixed(2).replace('.', ',')}</span>
             </button>
           )}
         </div>
@@ -183,19 +215,17 @@ const App: React.FC = () => {
       {showLogin && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
           <div className="bg-white p-10 rounded-[3rem] w-full max-w-sm shadow-2xl text-center">
-            <h2 className="text-3xl font-black mb-6 italic">Admin D.Moreira</h2>
+            <h2 className="text-3xl font-black mb-6 italic tracking-tighter">Painel Admin</h2>
             <form onSubmit={e => {
               e.preventDefault();
               setIsLoadingLogin(true);
-              // Para fins de teste, se você ainda não tem auth no Supabase, deixei simplificado
-              // Se tiver auth, use supabase.auth.signInWithPassword
               if (loginPass === 'admin123') { setIsLoggedIn(true); setIsAdmin(true); setShowLogin(false); }
-              else alert('Senha incorreta (padrão: admin123)');
+              else alert('Senha incorreta (Padrão: admin123)');
               setIsLoadingLogin(false);
             }} className="space-y-4">
-              <input type="password" required placeholder="Senha de Acesso" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none"/>
-              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl shadow-xl uppercase text-xs tracking-widest">Entrar</button>
-              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4">Voltar</button>
+              <input type="password" required placeholder="Digite a Senha" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none border-gray-100 focus:border-yellow-400 transition-all"/>
+              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl shadow-xl uppercase text-xs tracking-widest hover:brightness-110 active:scale-95 transition-all">Entrar agora</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4 tracking-widest">Voltar ao Cardápio</button>
             </form>
           </div>
         </div>
