@@ -11,6 +11,7 @@ import { supabase } from './lib/supabase';
 const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [isLoadingLogin, setIsLoadingLogin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
@@ -23,20 +24,43 @@ const App: React.FC = () => {
   const [menuItems, setMenuItems] = useState<Product[]>([]);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ok' | 'error_tables_missing'>('loading');
 
+  // Monitorar sessão do Supabase
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setIsLoggedIn(true);
+        setIsAdmin(true);
+      }
+    };
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setIsLoggedIn(true);
+        setIsAdmin(true);
+      } else {
+        setIsLoggedIn(false);
+        setIsAdmin(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
       const { data: productsData, error: pError } = await supabase.from('products').select('*').order('name');
       
       if (pError) {
         if (pError.code === '42P01') setDbStatus('error_tables_missing');
-        setMenuItems(STATIC_MENU); // Fallback para itens estáticos caso a tabela não exista
+        setMenuItems(STATIC_MENU);
         return;
       }
       
       setDbStatus('ok');
 
       if (productsData && productsData.length > 0) {
-        // Mapear dados do banco para o formato do App
         const mapped = productsData.map(p => ({
           id: p.id,
           name: p.name,
@@ -49,11 +73,9 @@ const App: React.FC = () => {
         }));
         setMenuItems(mapped);
       } else {
-        // Se a tabela existe mas está vazia, usa o menu padrão
         setMenuItems(STATIC_MENU);
       }
 
-      // Sincronizar Mesas
       const { data: tablesData } = await supabase.from('tables').select('*').order('id', { ascending: true });
       if (tablesData) {
         setTables(prev => {
@@ -92,7 +114,6 @@ const App: React.FC = () => {
 
   const handlePlaceOrder = async (order: Order) => {
     try {
-      // Busca estado atual da mesa para acumulativo
       const { data: current } = await supabase.from('tables').select('current_order, status').eq('id', order.tableId).single();
       
       let finalOrder = order;
@@ -151,13 +172,19 @@ const App: React.FC = () => {
     }
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setIsLoggedIn(false);
+    setIsAdmin(false);
+  };
+
   const categories: (CategoryType | 'Todos')[] = ['Todos', 'Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
   const filteredItems = menuItems.filter(item => selectedCategory === 'Todos' || item.category === selectedCategory);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans antialiased relative">
       <Header />
-      <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest transition-colors">Acesso Restrito</button>
+      <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest transition-colors">Acesso Admin</button>
       
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
         {isAdmin && isLoggedIn ? (
@@ -171,7 +198,7 @@ const App: React.FC = () => {
             onAddToOrder={handlePlaceOrder as any}
             onRefreshData={fetchData} 
             salesHistory={[]} 
-            onLogout={() => { setIsLoggedIn(false); setIsAdmin(false); }}
+            onLogout={handleLogout}
             onSaveProduct={handleSaveProduct}
             dbStatus={dbStatus}
           />
@@ -186,7 +213,7 @@ const App: React.FC = () => {
             {dbStatus === 'error_tables_missing' && !isAdmin && (
               <div className="mb-8 p-6 bg-red-50 rounded-3xl border border-red-100 text-center">
                 <p className="text-red-800 text-xs font-black uppercase tracking-widest mb-2">Aviso de Sistema</p>
-                <p className="text-red-700 text-[10px] font-bold">Banco de dados não configurado. Exibindo itens demonstrativos.</p>
+                <p className="text-red-700 text-[10px] font-bold">Banco de dados não configurado no Supabase. Exibindo itens demonstrativos.</p>
               </div>
             )}
 
@@ -215,17 +242,53 @@ const App: React.FC = () => {
       {showLogin && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
           <div className="bg-white p-10 rounded-[3rem] w-full max-w-sm shadow-2xl text-center">
-            <h2 className="text-3xl font-black mb-6 italic tracking-tighter">Painel Admin</h2>
+            <h2 className="text-3xl font-black mb-2 italic tracking-tighter">Painel Admin</h2>
+            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-8 italic">Acesso Restrito - D.Moreira</p>
+            
             <form onSubmit={e => {
               e.preventDefault();
               setIsLoadingLogin(true);
-              if (loginPass === 'admin123') { setIsLoggedIn(true); setIsAdmin(true); setShowLogin(false); }
-              else alert('Senha incorreta (Padrão: admin123)');
-              setIsLoadingLogin(false);
+              supabase.auth.signInWithPassword({ email: loginEmail, password: loginPass })
+                .then(({ error }) => {
+                  if (error) {
+                    alert('Erro no Login: ' + error.message);
+                  } else {
+                    setShowLogin(false);
+                    setLoginPass('');
+                  }
+                })
+                .finally(() => setIsLoadingLogin(false));
             }} className="space-y-4">
-              <input type="password" required placeholder="Digite a Senha" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none border-gray-100 focus:border-yellow-400 transition-all"/>
-              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl shadow-xl uppercase text-xs tracking-widest hover:brightness-110 active:scale-95 transition-all">Entrar agora</button>
-              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4 tracking-widest">Voltar ao Cardápio</button>
+              <input 
+                type="email" 
+                required 
+                placeholder="E-mail" 
+                value={loginEmail} 
+                onChange={e => setLoginEmail(e.target.value)} 
+                className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 transition-all shadow-inner"
+              />
+              <input 
+                type="password" 
+                required 
+                placeholder="Senha" 
+                value={loginPass} 
+                onChange={e => setLoginPass(e.target.value)} 
+                className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 transition-all shadow-inner"
+              />
+              <button 
+                type="submit" 
+                disabled={isLoadingLogin} 
+                className="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl shadow-xl uppercase text-xs tracking-widest hover:brightness-110 active:scale-95 transition-all"
+              >
+                {isLoadingLogin ? 'Autenticando...' : 'Entrar Agora'}
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setShowLogin(false)} 
+                className="text-[10px] font-black text-gray-400 uppercase mt-4 tracking-widest hover:text-black transition-colors"
+              >
+                Voltar ao Cardápio
+              </button>
             </form>
           </div>
         </div>
