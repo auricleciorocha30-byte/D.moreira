@@ -30,6 +30,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
   const deliveryTable = tables.find(t => t.id === 900);
   const counterTable = tables.find(t => t.id === 901);
 
+  // Verificadores de novos pedidos para as abas
+  const hasNewTables = physicalTables.some(t => t.status === 'occupied' && t.currentOrder?.isUpdated);
+  const hasNewDelivery = deliveryTable?.status === 'occupied' && deliveryTable.currentOrder?.isUpdated;
+  const hasNewTakeaway = counterTable?.status === 'occupied' && counterTable.currentOrder?.isUpdated;
+
   const selectedTable = useMemo(() => 
     tables.find(t => t.id === selectedTableId) || null
   , [tables, selectedTableId]);
@@ -38,7 +43,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
     menuItems.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()))
   , [menuItems, searchTerm]);
 
-  // Sincroniza o editingProduct quando o modal abre para edição
   const openEditModal = (product: Product) => {
     setEditingProduct({ ...product });
     setIsProductModalOpen(true);
@@ -96,6 +100,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
             ${order.items.map(i => `<tr><td>${i.quantity}x ${i.name}</td><td style="text-align:right;">R$ ${(i.price*i.quantity).toFixed(2)}</td></tr>`).join('')}
           </table>
           <hr/><div style="text-align:right;font-size:18px;"><b>TOTAL: R$ ${order.total.toFixed(2)}</b></div><p>PAGTO: ${order.paymentMethod}</p>
+          ${order.address ? `<p><b>ENDEREÇO:</b> ${order.address}</p><hr/>` : ''}
       `;
     }
     content += `<script>window.print();window.close();</script></body></html>`;
@@ -109,7 +114,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
     return (
       <button onClick={() => setSelectedTableId(table.id)} className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-2 relative h-44 ${!isOccupied ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl scale-105'}`}>
         {statusInfo && isOccupied && <div className={`absolute top-4 left-4 ${statusInfo.color} text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase`}>{statusInfo.text}</div>}
-        {isOccupied && table.currentOrder?.isUpdated && <div className="absolute top-4 right-4 bg-red-600 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase animate-bounce shadow-lg ring-2 ring-white">NOVO</div>}
+        {isOccupied && table.currentOrder?.isUpdated && <div className="absolute top-4 right-4 bg-red-600 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase animate-bounce shadow-lg ring-2 ring-white z-10">NOVO</div>}
         <span className="text-4xl font-black italic">{table.id > 800 ? (table.id === 900 ? '🚚' : '🛍️') : table.id}</span>
         <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full ${!isOccupied ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>{table.id > 800 ? (!isOccupied ? 'Sem Pedidos' : 'Pedidos Abertos') : (!isOccupied ? 'Livre' : 'Ocupada')}</span>
         {isOccupied && <span className="text-[10px] font-bold truncate w-full text-center px-2">{table.currentOrder!.customerName}</span>}
@@ -143,9 +148,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
             </button>
           </div>
           <div className="flex gap-2 sm:gap-4 overflow-x-auto no-scrollbar w-full md:w-auto">
-            <button onClick={() => setActiveTab('tables')} className={`whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'tables' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>Mesas</button>
-            <button onClick={() => setActiveTab('delivery')} className={`whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'delivery' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>Entregas</button>
-            <button onClick={() => setActiveTab('takeaway')} className={`whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'takeaway' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>Retiradas</button>
+            <button onClick={() => setActiveTab('tables')} className={`relative whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'tables' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>
+              Mesas {hasNewTables && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full border-2 border-white animate-pulse"></span>}
+            </button>
+            <button onClick={() => setActiveTab('delivery')} className={`relative whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'delivery' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>
+              Entregas {hasNewDelivery && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full border-2 border-white animate-pulse"></span>}
+            </button>
+            <button onClick={() => setActiveTab('takeaway')} className={`relative whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'takeaway' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>
+              Retiradas {hasNewTakeaway && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full border-2 border-white animate-pulse"></span>}
+            </button>
             <button onClick={() => setActiveTab('menu')} className={`whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'menu' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>Cardápio</button>
             <button onClick={onLogout} className="whitespace-nowrap text-red-500 font-black text-[10px] uppercase ml-4">Sair</button>
           </div>
@@ -242,7 +253,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
           <div className="relative bg-white w-full max-w-6xl rounded-[4rem] p-8 md:p-12 shadow-2xl flex flex-col md:flex-row gap-8 max-h-[92vh] border-[12px] border-yellow-400 overflow-hidden">
             <button onClick={() => setSelectedTableId(null)} className="absolute top-6 right-6 p-3 bg-gray-100 rounded-full hover:bg-gray-200 z-10"><CloseIcon size={24} /></button>
             <div className="flex-[1.2] flex flex-col min-w-0">
-              <h3 className="text-5xl font-black italic tracking-tighter mb-4">{selectedTable.id === 900 ? '🚚 Entregas' : selectedTable.id === 901 ? '🛍️ Balcão' : 'Mesa ' + selectedTable.id}</h3>
+              <div className="flex items-center gap-4 mb-4">
+                <h3 className="text-5xl font-black italic tracking-tighter">{selectedTable.id === 900 ? '🚚 Entregas' : selectedTable.id === 901 ? '🛍️ Balcão' : 'Mesa ' + selectedTable.id}</h3>
+              </div>
+
+              {selectedTable.currentOrder?.address && (
+                <div className="bg-red-50 border-2 border-red-100 p-6 rounded-[2rem] mb-6 shadow-sm">
+                  <p className="text-[10px] font-black uppercase text-red-600 tracking-widest mb-1">Endereço de Entrega</p>
+                  <p className="text-lg font-bold text-gray-900 leading-tight">{selectedTable.currentOrder.address}</p>
+                </div>
+              )}
+
               <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 mb-6 pr-2">
                 {selectedTable.status === 'occupied' && selectedTable.currentOrder ? (
                   <>
@@ -259,7 +280,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
                     ))}
                   </>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 text-center"><p className="text-gray-400 font-black uppercase text-[10px] tracking-widest">Mesa Livre.<br/>Adicione itens ao lado.</p></div>
+                  <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 text-center"><p className="text-gray-400 font-black uppercase text-[10px] tracking-widest">Sem comanda ativa.<br/>Adicione itens ao lado.</p></div>
                 )}
               </div>
               {selectedTable.status === 'occupied' && selectedTable.currentOrder && (
