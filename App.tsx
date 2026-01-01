@@ -41,7 +41,6 @@ const App: React.FC = () => {
 
   const toggleAudio = () => {
     setAudioEnabled(prev => !prev);
-    // Toca um som curto e silencioso para "desbloquear" o áudio no navegador
     if (notificationSound.current) {
       notificationSound.current.volume = 0;
       notificationSound.current.play().then(() => {
@@ -105,7 +104,7 @@ const App: React.FC = () => {
       if (tablesData) {
         setTables(prev => {
           const updated = [...INITIAL_TABLES];
-          let foundNew = false;
+          let foundNewAnywhere = false;
 
           tablesData.forEach(dbT => {
             const idx = updated.findIndex(t => t.id === dbT.id);
@@ -114,9 +113,11 @@ const App: React.FC = () => {
               const oldItemsCount = oldTable?.currentOrder?.items.reduce((a, b) => a + b.quantity, 0) || 0;
               const newItemsCount = dbT.current_order?.items.reduce((a: number, b: any) => a + b.quantity, 0) || 0;
 
-              // Novo pedido ou novos itens em mesa já ocupada
-              if (dbT.status === 'occupied' && (oldTable?.status !== 'occupied' || newItemsCount > oldItemsCount)) {
-                foundNew = true;
+              const isNewOrder = dbT.status === 'occupied' && oldTable?.status !== 'occupied';
+              const isUpdatedOrder = dbT.status === 'occupied' && oldTable?.status === 'occupied' && newItemsCount > oldItemsCount;
+
+              if (isNewOrder || isUpdatedOrder) {
+                foundNewAnywhere = true;
               }
 
               updated[idx] = { 
@@ -124,13 +125,14 @@ const App: React.FC = () => {
                 status: dbT.status, 
                 currentOrder: dbT.status === 'occupied' && dbT.current_order ? {
                   ...dbT.current_order,
-                  isUpdated: oldTable?.status === 'occupied' && newItemsCount > oldItemsCount
+                  // Preserva o isUpdated se já era true e ainda não foi limpo, ou seta se houver mudança real
+                  isUpdated: (isNewOrder || isUpdatedOrder) ? true : (oldTable?.currentOrder?.isUpdated ?? false)
                 } : null 
               };
             }
           });
 
-          if (foundNew && isAdmin && audioEnabled) {
+          if (foundNewAnywhere && isAdmin && audioEnabled) {
             playNotification();
           }
 
@@ -260,7 +262,7 @@ const App: React.FC = () => {
             audioEnabled={audioEnabled}
             onToggleAudio={toggleAudio}
             onUpdateTable={async (id, status, ord) => { 
-              const orderToSave = status === 'free' ? null : (ord ? { ...ord, isUpdated: false } : null);
+              const orderToSave = status === 'free' ? null : (ord ? { ...ord, isUpdated: ord.isUpdated ?? false } : null);
               const { error } = await supabase.from('tables').upsert({ id, status, current_order: orderToSave });
               if (error) alert("Erro ao atualizar mesa: " + error.message);
               fetchData();

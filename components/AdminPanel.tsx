@@ -30,7 +30,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
   const deliveryTable = tables.find(t => t.id === 900);
   const counterTable = tables.find(t => t.id === 901);
 
-  // Verificadores de novos pedidos para as abas
+  // Verificadores de novos pedidos para as abas (se houver QUALQUER mesa com isUpdated=true)
   const hasNewTables = physicalTables.some(t => t.status === 'occupied' && t.currentOrder?.isUpdated);
   const hasNewDelivery = deliveryTable?.status === 'occupied' && deliveryTable.currentOrder?.isUpdated;
   const hasNewTakeaway = counterTable?.status === 'occupied' && counterTable.currentOrder?.isUpdated;
@@ -72,7 +72,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
 
   const handleOpenTable = (id: number) => {
     const table = tables.find(t => t.id === id);
-    // Ao abrir a mesa, se ela tiver o alerta "isUpdated", limpamos ele no banco
     if (table?.currentOrder?.isUpdated) {
       onUpdateTable(id, 'occupied', { ...table.currentOrder, isUpdated: false });
     }
@@ -92,6 +91,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
           <h2 style="text-align:center;margin:0;">COZINHA</h2>
           <div style="text-align:center;font-size:24px;font-weight:bold;margin:10px 0;">${tableLabel}</div>
           <div style="text-align:center;margin-bottom:10px;">REF: ${order.customerName}</div>
+          <p style="text-align:center; font-weight:bold; font-size:14px;">${order.orderType === 'takeaway' || order.orderType === 'delivery' || order.orderType === 'counter' ? '*** PARA VIAGEM ***' : 'CONSUMO LOCAL'}</p>
           <hr/>
           ${order.items.map(i => `<div style="font-size:18px;margin-bottom:5px;"><b>${i.quantity}x</b> ${i.name.toUpperCase()}</div>`).join('')}
           <hr/>
@@ -120,32 +120,55 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
   const TableCard: React.FC<{ table: Table }> = ({ table }) => {
     const isOccupied = table.status === 'occupied' && table.currentOrder;
     const statusInfo = isOccupied ? getStatusLabel(table.currentOrder!.status) : null;
+    const isDelivery = table.id === 900;
+    const isTakeaway = table.id === 901;
+    // Verifica se é para viagem (ou seja, se o tipo é takeaway ou se é uma entrega/balcão)
+    const isToTravel = table.currentOrder?.orderType === 'takeaway' || table.currentOrder?.orderType === 'delivery' || table.currentOrder?.orderType === 'counter';
+
     return (
       <button 
         onClick={() => handleOpenTable(table.id)} 
-        className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-2 relative h-44 overflow-hidden ${!isOccupied ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl scale-105'}`}
+        className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-1 relative h-48 overflow-hidden ${!isOccupied ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl scale-105'}`}
       >
-        {statusInfo && isOccupied && <div className={`absolute top-4 left-4 ${statusInfo.color} text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase`}>{statusInfo.text}</div>}
+        {statusInfo && isOccupied && (
+          <div className={`absolute top-3 left-3 ${statusInfo.color} text-white text-[7px] font-black px-2 py-0.5 rounded-full uppercase`}>
+            {statusInfo.text}
+          </div>
+        )}
         
         {isOccupied && table.currentOrder?.isUpdated && (
-          <div className="absolute top-4 right-4 bg-red-600 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase animate-pulse shadow-lg ring-2 ring-white z-10 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
+          <div className="absolute top-3 right-3 bg-red-600 text-white text-[8px] font-black px-2.5 py-1 rounded-full uppercase animate-bounce shadow-lg ring-2 ring-white z-10 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>
             NOVO
           </div>
         )}
 
-        <span className="text-4xl font-black italic">{table.id > 800 ? (table.id === 900 ? '🚚' : '🛍️') : table.id}</span>
-        <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full ${!isOccupied ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>
-          {table.id > 800 ? (!isOccupied ? 'Sem Pedidos' : (table.id === 900 ? 'Entrega Ativa' : 'Balcão Ativo')) : (!isOccupied ? 'Livre' : 'Ocupada')}
+        {isOccupied && isToTravel && (
+          <div className="absolute bottom-3 right-3 bg-black text-yellow-400 text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border border-yellow-400/30 flex items-center gap-1">
+             <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><path d="M22 8l-2-2-4 4-2-2-2 2-2-2-2 2-2-2-2 2 4 4 4-4 2 2 2-2 2 2 4-4z"/></svg>
+             VIAGEM
+          </div>
+        )}
+
+        <span className="text-4xl font-black italic mb-1">
+          {isDelivery ? '🚚' : isTakeaway ? '🛍️' : table.id}
+        </span>
+        
+        <span className={`text-[8px] font-black uppercase px-2.5 py-1 rounded-full ${!isOccupied ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>
+          {isDelivery ? (!isOccupied ? 'Sem Entregas' : 'Entrega em Aberto') : isTakeaway ? (!isOccupied ? 'Sem Retiradas' : 'Retirada em Aberto') : (!isOccupied ? 'Livre' : 'Ocupada')}
         </span>
         
         {isOccupied && (
           <div className="w-full text-center mt-1">
-            <span className="text-[10px] font-black block truncate px-2">{table.currentOrder!.customerName}</span>
-            {table.id === 900 && table.currentOrder?.address && (
-              <span className="text-[8px] font-bold text-black/60 block truncate px-2 mt-0.5 uppercase tracking-tighter">
-                {table.currentOrder.address}
-              </span>
+            <span className="text-[11px] font-black block truncate px-1 text-black leading-tight">
+              {table.currentOrder!.customerName}
+            </span>
+            {isDelivery && table.currentOrder?.address && (
+              <div className="mt-1 bg-black/5 rounded-lg py-1 px-2 border border-black/10">
+                <span className="text-[9px] font-bold text-black/80 block line-clamp-2 uppercase tracking-tighter leading-none italic">
+                  {table.currentOrder.address}
+                </span>
+              </div>
             )}
           </div>
         )}
@@ -178,18 +201,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
               <span className="text-[8px] font-black uppercase tracking-widest">{audioEnabled ? 'Ativo' : 'Ativar'}</span>
             </button>
           </div>
-          <div className="flex gap-2 sm:gap-4 overflow-x-auto no-scrollbar w-full md:w-auto p-1">
+          <div className="flex gap-2 sm:gap-4 overflow-x-auto no-scrollbar w-full md:w-auto p-1 items-center">
             <button onClick={() => setActiveTab('tables')} className={`relative whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'tables' ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-400 hover:bg-gray-50'}`}>
-              Mesas {hasNewTables && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-[3px] border-white animate-pulse shadow-sm"></span>}
+              Mesas {hasNewTables && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 rounded-full border-[3px] border-white animate-pulse shadow-md ring-2 ring-red-100"></span>}
             </button>
             <button onClick={() => setActiveTab('delivery')} className={`relative whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'delivery' ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-400 hover:bg-gray-50'}`}>
-              Entregas {hasNewDelivery && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-[3px] border-white animate-pulse shadow-sm"></span>}
+              Entregas {hasNewDelivery && <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-600 rounded-full border-[4px] border-white animate-pulse shadow-lg ring-4 ring-red-200"></span>}
             </button>
             <button onClick={() => setActiveTab('takeaway')} className={`relative whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'takeaway' ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-400 hover:bg-gray-50'}`}>
-              Retiradas {hasNewTakeaway && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-[3px] border-white animate-pulse shadow-sm"></span>}
+              Retiradas {hasNewTakeaway && <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-600 rounded-full border-[4px] border-white animate-pulse shadow-lg ring-4 ring-red-200"></span>}
             </button>
             <button onClick={() => setActiveTab('menu')} className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'menu' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>Cardápio</button>
-            <button onClick={onLogout} className="whitespace-nowrap text-red-500 font-black text-[11px] uppercase ml-4 px-4">Sair</button>
+            <button onClick={onLogout} className="whitespace-nowrap text-red-500 font-black text-[11px] uppercase ml-4 px-4 hover:bg-red-50 rounded-xl py-2 transition-colors">Sair</button>
           </div>
         </div>
       </div>
@@ -213,7 +236,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
               <div key={item.id} className={`group bg-gray-50 p-5 rounded-[2.5rem] border transition-all ${!item.isAvailable ? 'opacity-60 grayscale bg-gray-200' : 'hover:border-yellow-400'}`}>
                 <div className="relative overflow-hidden rounded-2xl mb-4 aspect-square">
                   <img src={item.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                  {!item.isAvailable && <div className="absolute inset-0 bg-black/60 flex items-center justify-center font-black text-white uppercase text-[10px] tracking-widest">Fora de Estoque</div>}
+                  {!item.isAvailable && <div className="absolute inset-0 bg-black/60 flex items-center justify-center font-black text-white uppercase text-[10px] tracking-widest text-center px-4">Indisponível agora</div>}
                 </div>
                 <h4 className="font-black text-sm truncate mb-1">{item.name}</h4>
                 <p className="text-yellow-700 font-black text-xs mb-4">R$ {item.price.toFixed(2).replace('.', ',')}</p>
@@ -229,8 +252,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
 
       {isProductModalOpen && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
-          <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-10 shadow-2xl relative overflow-hidden">
-             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full hover:bg-gray-200"><CloseIcon size={20}/></button>
+          <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-10 shadow-2xl relative overflow-hidden animate-in fade-in zoom-in duration-300">
+             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
              <h3 className="text-3xl font-black italic mb-8">{editingProduct?.id ? 'Editar Produto' : 'Novo Produto'}</h3>
              <form onSubmit={handleProductSubmit} className="space-y-4">
                 <div>
@@ -281,17 +304,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
       {selectedTable && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
-          <div className="relative bg-white w-full max-w-6xl rounded-[4rem] p-8 md:p-12 shadow-2xl flex flex-col md:flex-row gap-8 max-h-[92vh] border-[12px] border-yellow-400 overflow-hidden">
-            <button onClick={() => setSelectedTableId(null)} className="absolute top-6 right-6 p-3 bg-gray-100 rounded-full hover:bg-gray-200 z-10"><CloseIcon size={24} /></button>
+          <div className="relative bg-white w-full max-w-6xl rounded-[4rem] p-8 md:p-12 shadow-2xl flex flex-col md:flex-row gap-8 max-h-[92vh] border-[12px] border-yellow-400 overflow-hidden animate-in slide-in-from-bottom duration-500">
+            <button onClick={() => setSelectedTableId(null)} className="absolute top-6 right-6 p-3 bg-gray-100 rounded-full hover:bg-gray-200 z-10 transition-colors"><CloseIcon size={24} /></button>
             <div className="flex-[1.2] flex flex-col min-w-0">
               <div className="flex items-center gap-4 mb-4">
-                <h3 className="text-5xl font-black italic tracking-tighter">{selectedTable.id === 900 ? '🚚 Entregas' : selectedTable.id === 901 ? '🛍️ Balcão' : 'Mesa ' + selectedTable.id}</h3>
+                <h3 className="text-5xl font-black italic tracking-tighter">
+                  {selectedTable.id === 900 ? '🚚 Entregas' : selectedTable.id === 901 ? '🛍️ Balcão' : 'Mesa ' + selectedTable.id}
+                </h3>
               </div>
 
               {selectedTable.currentOrder?.address && (
-                <div className="bg-red-50 border-2 border-red-100 p-6 rounded-[2rem] mb-6 shadow-sm">
-                  <p className="text-[10px] font-black uppercase text-red-600 tracking-widest mb-1">Endereço de Entrega</p>
-                  <p className="text-lg font-bold text-gray-900 leading-tight">{selectedTable.currentOrder.address}</p>
+                <div className="bg-red-50 border-4 border-red-100 p-6 rounded-[2.5rem] mb-6 shadow-md">
+                  <p className="text-[10px] font-black uppercase text-red-600 tracking-widest mb-1 flex items-center gap-2">
+                    <span className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></span>
+                    Endereço de Entrega
+                  </p>
+                  <p className="text-xl font-extrabold text-gray-900 leading-tight italic">
+                    {selectedTable.currentOrder.address}
+                  </p>
                 </div>
               )}
 
@@ -304,7 +334,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
                       ))}
                     </div>
                     {selectedTable.currentOrder.items.map((item, idx) => (
-                      <div key={idx} className="flex justify-between items-center bg-gray-50 p-5 rounded-2xl border border-gray-100 group">
+                      <div key={idx} className="flex justify-between items-center bg-gray-50 p-5 rounded-2xl border border-gray-100 group hover:border-yellow-400 transition-colors">
                         <div className="flex items-center gap-3"><span className="bg-black text-white w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black">{item.quantity}</span><span className="font-black text-sm">{item.name}</span></div>
                         <span className="font-black text-sm text-yellow-700">R$ {(item.price * item.quantity).toFixed(2).replace('.', ',')}</span>
                       </div>
@@ -318,23 +348,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
                 <div className="pt-6 border-t space-y-4">
                   <div className="flex justify-between items-end"><span className="text-gray-400 font-black uppercase text-[10px]">Total Acumulado</span><span className="text-4xl font-black italic">R$ {selectedTable.currentOrder.total.toFixed(2).replace('.', ',')}</span></div>
                   <div className="grid grid-cols-3 gap-3">
-                    <button onClick={() => handlePrint(selectedTable.currentOrder!, 'kitchen')} className="bg-black text-white py-5 rounded-2xl font-black uppercase text-[10px] hover:brightness-110 border shadow-sm">COZINHA</button>
-                    <button onClick={() => handlePrint(selectedTable.currentOrder!, 'customer')} className="bg-gray-100 py-5 rounded-2xl font-black uppercase text-[10px] hover:bg-gray-200 border shadow-sm">CLIENTE</button>
-                    <button onClick={() => { if(confirm('Finalizar conta e liberar mesa?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-green-700 transition-all">FECHAR</button>
+                    <button onClick={() => handlePrint(selectedTable.currentOrder!, 'kitchen')} className="bg-black text-white py-5 rounded-2xl font-black uppercase text-[10px] hover:brightness-110 border shadow-sm transition-all active:scale-95">COZINHA</button>
+                    <button onClick={() => handlePrint(selectedTable.currentOrder!, 'customer')} className="bg-gray-100 py-5 rounded-2xl font-black uppercase text-[10px] hover:bg-gray-200 border shadow-sm transition-all active:scale-95">CLIENTE</button>
+                    <button onClick={() => { if(confirm('Finalizar conta e liberar mesa?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-green-700 transition-all active:scale-95">FECHAR</button>
                   </div>
                 </div>
               )}
             </div>
             <div className="flex-1 bg-gray-50 rounded-[3rem] p-8 flex flex-col min-w-0 border border-gray-100">
               <h4 className="text-xl font-black italic mb-4">Lançamento Rápido</h4>
-              <input type="text" placeholder="Buscar no cardápio..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-gray-200 rounded-2xl px-5 py-4 text-sm font-bold mb-6 outline-none focus:ring-4 focus:ring-yellow-400/20" />
+              <input type="text" placeholder="Buscar no cardápio..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-gray-200 rounded-2xl px-5 py-4 text-sm font-bold mb-6 outline-none focus:ring-4 focus:ring-yellow-400/20 shadow-inner" />
               <div className="flex-1 overflow-y-auto no-scrollbar space-y-3">
                 {filteredItemsToAdd.map(item => (
                   <button 
                     key={item.id} 
                     disabled={!item.isAvailable}
                     onClick={() => { if (selectedTable.status === 'free' || !selectedTable.currentOrder) { onUpdateTable(selectedTable.id, 'occupied', { id: 'NEW-'+Date.now(), customerName: 'Atendimento Local', items: [{...item, quantity: 1}], total: item.price, paymentMethod: 'Pix', timestamp: new Date().toISOString(), tableId: selectedTable.id, orderType: selectedTable.id > 800 ? (selectedTable.id === 900 ? 'delivery' : 'counter') : 'table', status: 'pending' }); } else { onAddToOrder(selectedTable.id, item); } }} 
-                    className={`w-full flex items-center gap-4 bg-white p-4 rounded-2xl border hover:border-yellow-400 transition-all text-left ${!item.isAvailable ? 'opacity-40 grayscale pointer-events-none' : 'shadow-sm active:scale-95'}`}
+                    className={`w-full flex items-center gap-4 bg-white p-4 rounded-2xl border hover:border-yellow-400 transition-all text-left ${!item.isAvailable ? 'opacity-40 grayscale pointer-events-none' : 'shadow-sm active:scale-95 hover:shadow-md'}`}
                   >
                     <img src={item.image} className="w-12 h-12 rounded-xl object-cover" />
                     <div className="flex-1 min-w-0"><p className="font-black text-xs truncate">{item.name}</p><p className="text-yellow-600 font-black text-[10px]">R$ {item.price.toFixed(2)}</p></div>
