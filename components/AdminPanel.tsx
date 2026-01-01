@@ -2,7 +2,6 @@
 import React, { useState, useMemo } from 'react';
 import { Table, Order, Product, CategoryType, OrderStatus } from '../types';
 import { CloseIcon, TrashIcon } from './Icons';
-import { supabase } from '../lib/supabase';
 
 interface AdminPanelProps {
   tables: Table[];
@@ -27,8 +26,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
   const physicalTables = tables.filter(t => t.id <= 12).sort((a,b) => a.id - b.id);
   const deliveryTable = tables.find(t => t.id === 900);
   const counterTable = tables.find(t => t.id === 901);
-
-  const categories: CategoryType[] = ['Combos', 'Cafeteria', 'Lanches', 'Bebidas', 'Conveniência'];
 
   const selectedTable = useMemo(() => 
     tables.find(t => t.id === selectedTableId) || null
@@ -134,23 +131,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
       {selectedTable && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
-          <div className="relative bg-white w-full max-w-5xl rounded-[4rem] p-8 md:p-12 shadow-2xl flex flex-col md:flex-row gap-8 max-h-[92vh] border-[12px] border-yellow-400 overflow-hidden">
-            <div className="flex-1 flex flex-col min-w-0">
+          <div className="relative bg-white w-full max-w-6xl rounded-[4rem] p-8 md:p-12 shadow-2xl flex flex-col md:flex-row gap-8 max-h-[92vh] border-[12px] border-yellow-400 overflow-hidden">
+            {/* Botão de Fechar Modal */}
+            <button onClick={() => setSelectedTableId(null)} className="absolute top-6 right-6 p-3 bg-gray-100 rounded-full hover:bg-gray-200 z-10">
+              <CloseIcon size={24} />
+            </button>
+
+            <div className="flex-[1.2] flex flex-col min-w-0">
               <h3 className="text-5xl font-black italic tracking-tighter mb-4">
                 {selectedTable.id === 900 ? '🚚 Entregas' : selectedTable.id === 901 ? '🛍️ Balcão' : 'Mesa ' + selectedTable.id}
               </h3>
-              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 mb-6">
+              
+              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 mb-6 pr-2">
                 {selectedTable.currentOrder ? (
                   <>
-                    <div className="flex gap-2 flex-wrap mb-4">
+                    <div className="flex gap-2 flex-wrap mb-6">
                       {(['pending', 'preparing', 'ready', 'delivered'] as OrderStatus[]).map(st => (
-                        <button key={st} onClick={() => onUpdateTable(selectedTable.id, 'occupied', { ...selectedTable.currentOrder!, status: st })} className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase border-2 transition-all ${selectedTable.currentOrder?.status === st ? 'bg-yellow-400 text-black border-yellow-400 shadow-md' : 'bg-black text-white/40 border-white/10'}`}>{getStatusLabel(st).text}</button>
+                        <button 
+                          key={st} 
+                          onClick={() => onUpdateTable(selectedTable.id, 'occupied', { ...selectedTable.currentOrder!, status: st })} 
+                          className={`px-4 py-3 rounded-xl text-[10px] font-black uppercase border-2 transition-all flex-1 min-w-[100px] ${selectedTable.currentOrder?.status === st ? 'bg-black text-yellow-400 border-black shadow-lg scale-105' : 'bg-gray-50 text-gray-400 border-gray-100 hover:border-yellow-400'}`}
+                        >
+                          {getStatusLabel(st).text}
+                        </button>
                       ))}
                     </div>
                     {selectedTable.currentOrder.items.map((item, idx) => (
-                      <div key={idx} className="flex justify-between items-center bg-gray-50 p-5 rounded-2xl border border-gray-100">
+                      <div key={idx} className="flex justify-between items-center bg-gray-50 p-5 rounded-2xl border border-gray-100 group">
                         <div className="flex items-center gap-3">
-                          <span className="bg-black text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black">{item.quantity}</span>
+                          <span className="bg-black text-white w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black">{item.quantity}</span>
                           <span className="font-black text-sm">{item.name}</span>
                         </div>
                         <span className="font-black text-sm text-yellow-700">R$ {(item.price * item.quantity).toFixed(2).replace('.', ',')}</span>
@@ -159,24 +168,69 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, onUpdateTabl
                   </>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
-                    <p className="text-gray-400 font-black uppercase text-[10px] tracking-widest">Aguardando novos pedidos...</p>
+                    <p className="text-gray-400 font-black uppercase text-[10px] tracking-widest text-center">Nenhum pedido ativo.<br/>Abra uma comanda ou adicione itens ao lado.</p>
                   </div>
                 )}
               </div>
-              {selectedTable.currentOrder ? (
+
+              {selectedTable.currentOrder && (
                 <div className="pt-6 border-t space-y-4">
                   <div className="flex justify-between items-end">
-                    <span className="text-gray-400 font-black uppercase text-[10px]">Total</span>
-                    <span className="text-3xl font-black italic">R$ {selectedTable.currentOrder.total.toFixed(2).replace('.', ',')}</span>
+                    <span className="text-gray-400 font-black uppercase text-[10px]">Total Acumulado</span>
+                    <span className="text-4xl font-black italic">R$ {selectedTable.currentOrder.total.toFixed(2).replace('.', ',')}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => handlePrint(selectedTable.currentOrder!)} className="bg-gray-100 py-4 rounded-2xl font-black uppercase text-[10px] hover:bg-gray-200 transition-all">Imprimir</button>
-                    <button onClick={() => { if(confirm('Fechar conta?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-green-600 transition-all">Finalizar</button>
+                    <button onClick={() => handlePrint(selectedTable.currentOrder!)} className="bg-gray-100 py-5 rounded-2xl font-black uppercase text-[11px] hover:bg-gray-200 transition-all border shadow-sm">Imprimir Cupom</button>
+                    <button onClick={() => { if(confirm('Finalizar e liberar mesa?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[11px] shadow-xl hover:bg-green-700 transition-all">Fechar Conta</button>
                   </div>
                 </div>
-              ) : (
-                <button onClick={() => onUpdateTable(selectedTable.id, 'occupied', { id: 'NEW-'+Date.now(), customerName: 'Operador', items: [], total: 0, paymentMethod: 'Pix', timestamp: new Date().toISOString(), tableId: selectedTable.id, orderType: 'table', status: 'pending' })} className="w-full bg-yellow-400 py-5 rounded-3xl font-black uppercase text-[10px] shadow-xl active:scale-95 transition-all">Abrir Comanda</button>
               )}
+            </div>
+
+            {/* Coluna de Adição de Itens (FALTAVA ESSA SEÇÃO) */}
+            <div className="flex-1 bg-gray-50 rounded-[3rem] p-8 flex flex-col min-w-0 border border-gray-100">
+              <h4 className="text-xl font-black italic mb-4">Adicionar Itens</h4>
+              <input 
+                type="text" 
+                placeholder="Buscar produto..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-white border border-gray-200 rounded-2xl px-5 py-4 text-sm font-bold mb-6 outline-none focus:ring-4 focus:ring-yellow-400/20 transition-all"
+              />
+              <div className="flex-1 overflow-y-auto no-scrollbar space-y-3">
+                {filteredItemsToAdd.map(item => (
+                  <button 
+                    key={item.id} 
+                    onClick={() => {
+                      if (!selectedTable.currentOrder) {
+                        onUpdateTable(selectedTable.id, 'occupied', {
+                          id: 'NEW-'+Date.now(),
+                          customerName: 'Balcão',
+                          items: [{...item, quantity: 1}],
+                          total: item.price,
+                          paymentMethod: 'Pix',
+                          timestamp: new Date().toISOString(),
+                          tableId: selectedTable.id,
+                          orderType: selectedTable.id > 800 ? (selectedTable.id === 900 ? 'delivery' : 'counter') : 'table',
+                          status: 'pending'
+                        });
+                      } else {
+                        onAddToOrder(selectedTable.id, item);
+                      }
+                    }}
+                    className="w-full flex items-center gap-4 bg-white p-4 rounded-2xl border border-gray-100 hover:border-yellow-400 hover:shadow-md transition-all text-left"
+                  >
+                    <img src={item.image} className="w-12 h-12 rounded-xl object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black text-xs truncate">{item.name}</p>
+                      <p className="text-yellow-600 font-black text-[10px]">R$ {item.price.toFixed(2)}</p>
+                    </div>
+                    <div className="bg-yellow-400 p-2 rounded-lg">
+                      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" /></svg>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
