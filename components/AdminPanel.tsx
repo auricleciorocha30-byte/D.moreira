@@ -70,6 +70,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
     }
   };
 
+  const handleOpenTable = (id: number) => {
+    const table = tables.find(t => t.id === id);
+    // Ao abrir a mesa, se ela tiver o alerta "isUpdated", limpamos ele no banco
+    if (table?.currentOrder?.isUpdated) {
+      onUpdateTable(id, 'occupied', { ...table.currentOrder, isUpdated: false });
+    }
+    setSelectedTableId(id);
+  };
+
   const handlePrint = (order: Order, type: 'kitchen' | 'customer') => {
     const printWindow = window.open('', '_blank', 'width=800,height=800');
     if (!printWindow) return;
@@ -112,12 +121,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
     const isOccupied = table.status === 'occupied' && table.currentOrder;
     const statusInfo = isOccupied ? getStatusLabel(table.currentOrder!.status) : null;
     return (
-      <button onClick={() => setSelectedTableId(table.id)} className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-2 relative h-44 ${!isOccupied ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl scale-105'}`}>
+      <button 
+        onClick={() => handleOpenTable(table.id)} 
+        className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-2 relative h-44 overflow-hidden ${!isOccupied ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl scale-105'}`}
+      >
         {statusInfo && isOccupied && <div className={`absolute top-4 left-4 ${statusInfo.color} text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase`}>{statusInfo.text}</div>}
-        {isOccupied && table.currentOrder?.isUpdated && <div className="absolute top-4 right-4 bg-red-600 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase animate-bounce shadow-lg ring-2 ring-white z-10">NOVO</div>}
+        
+        {isOccupied && table.currentOrder?.isUpdated && (
+          <div className="absolute top-4 right-4 bg-red-600 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase animate-pulse shadow-lg ring-2 ring-white z-10 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
+            NOVO
+          </div>
+        )}
+
         <span className="text-4xl font-black italic">{table.id > 800 ? (table.id === 900 ? '🚚' : '🛍️') : table.id}</span>
-        <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full ${!isOccupied ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>{table.id > 800 ? (!isOccupied ? 'Sem Pedidos' : 'Pedidos Abertos') : (!isOccupied ? 'Livre' : 'Ocupada')}</span>
-        {isOccupied && <span className="text-[10px] font-bold truncate w-full text-center px-2">{table.currentOrder!.customerName}</span>}
+        <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full ${!isOccupied ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>
+          {table.id > 800 ? (!isOccupied ? 'Sem Pedidos' : (table.id === 900 ? 'Entrega Ativa' : 'Balcão Ativo')) : (!isOccupied ? 'Livre' : 'Ocupada')}
+        </span>
+        
+        {isOccupied && (
+          <div className="w-full text-center mt-1">
+            <span className="text-[10px] font-black block truncate px-2">{table.currentOrder!.customerName}</span>
+            {table.id === 900 && table.currentOrder?.address && (
+              <span className="text-[8px] font-bold text-black/60 block truncate px-2 mt-0.5 uppercase tracking-tighter">
+                {table.currentOrder.address}
+              </span>
+            )}
+          </div>
+        )}
       </button>
     );
   };
@@ -147,24 +178,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, audioEnabled
               <span className="text-[8px] font-black uppercase tracking-widest">{audioEnabled ? 'Ativo' : 'Ativar'}</span>
             </button>
           </div>
-          <div className="flex gap-2 sm:gap-4 overflow-x-auto no-scrollbar w-full md:w-auto">
-            <button onClick={() => setActiveTab('tables')} className={`relative whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'tables' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>
-              Mesas {hasNewTables && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full border-2 border-white animate-pulse"></span>}
+          <div className="flex gap-2 sm:gap-4 overflow-x-auto no-scrollbar w-full md:w-auto p-1">
+            <button onClick={() => setActiveTab('tables')} className={`relative whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'tables' ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-400 hover:bg-gray-50'}`}>
+              Mesas {hasNewTables && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-[3px] border-white animate-pulse shadow-sm"></span>}
             </button>
-            <button onClick={() => setActiveTab('delivery')} className={`relative whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'delivery' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>
-              Entregas {hasNewDelivery && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full border-2 border-white animate-pulse"></span>}
+            <button onClick={() => setActiveTab('delivery')} className={`relative whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'delivery' ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-400 hover:bg-gray-50'}`}>
+              Entregas {hasNewDelivery && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-[3px] border-white animate-pulse shadow-sm"></span>}
             </button>
-            <button onClick={() => setActiveTab('takeaway')} className={`relative whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'takeaway' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>
-              Retiradas {hasNewTakeaway && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full border-2 border-white animate-pulse"></span>}
+            <button onClick={() => setActiveTab('takeaway')} className={`relative whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'takeaway' ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-400 hover:bg-gray-50'}`}>
+              Retiradas {hasNewTakeaway && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-[3px] border-white animate-pulse shadow-sm"></span>}
             </button>
-            <button onClick={() => setActiveTab('menu')} className={`whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'menu' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>Cardápio</button>
-            <button onClick={onLogout} className="whitespace-nowrap text-red-500 font-black text-[10px] uppercase ml-4">Sair</button>
+            <button onClick={() => setActiveTab('menu')} className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'menu' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>Cardápio</button>
+            <button onClick={onLogout} className="whitespace-nowrap text-red-500 font-black text-[11px] uppercase ml-4 px-4">Sair</button>
           </div>
         </div>
       </div>
 
       {(activeTab === 'tables' || activeTab === 'delivery' || activeTab === 'takeaway') && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 animate-fade-in">
           {activeTab === 'tables' && physicalTables.map(t => <TableCard key={t.id} table={t} />)}
           {activeTab === 'delivery' && deliveryTable && <TableCard table={deliveryTable} />}
           {activeTab === 'takeaway' && counterTable && <TableCard table={counterTable} />}
