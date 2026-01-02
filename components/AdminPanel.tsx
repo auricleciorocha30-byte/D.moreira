@@ -196,11 +196,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   return (
     <div className="w-full">
       {/* Admin Header */}
-      <div className="bg-black p-8 rounded-[2.5rem] shadow-2xl mb-10 border-b-4 border-yellow-400">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+      <div className="bg-black p-6 md:p-8 rounded-[2.5rem] shadow-2xl mb-10 border-b-4 border-yellow-400 relative overflow-hidden">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-6 relative z-10">
           <div className="text-center md:text-left">
-            <h2 className="text-3xl font-black italic text-yellow-400 leading-none mb-1">D.MOREIRA ADMIN</h2>
-            <div className="flex items-center gap-2">
+            <h2 className="text-2xl md:text-3xl font-black italic text-yellow-400 leading-none mb-1">D.MOREIRA ADMIN</h2>
+            <div className="flex items-center justify-center md:justify-start gap-2">
               <span className={`w-2 h-2 rounded-full ${dbStatus === 'ok' ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></span>
               <p className="text-gray-500 font-bold text-[8px] uppercase tracking-[0.3em]">
                 {dbStatus === 'ok' ? 'Conectado ao Banco' : 'Erro de Sincronização'}
@@ -208,21 +208,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
           
-          <nav className="flex flex-wrap justify-center gap-1.5 p-1 bg-gray-900 rounded-2xl">
+          <nav className="flex flex-wrap justify-center gap-1.5 p-1 bg-gray-900 rounded-2xl w-full md:w-auto">
             {(['tables', 'delivery', 'menu', 'categories'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}>
-                {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Balcão/Delivery' : tab === 'menu' ? 'Cardápio' : 'Categorias'}
+              <button 
+                key={tab} 
+                onClick={() => setActiveTab(tab)} 
+                className={`flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
+              >
+                {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Fila' : tab === 'menu' ? 'Menu' : 'Categorias'}
               </button>
             ))}
           </nav>
           
-          <div className="flex items-center gap-4">
-            <button onClick={onToggleAudio} className={`p-3 rounded-full transition-all active:scale-90 ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/20' : 'bg-gray-800 text-gray-600'}`}>
+          <div className="flex items-center gap-4 w-full md:w-auto justify-center">
+            <button 
+              onClick={onToggleAudio} 
+              className={`p-3.5 rounded-full transition-all active:scale-90 ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/20' : 'bg-gray-800 text-gray-600'}`}
+              aria-label="Toggle Áudio"
+            >
               <VolumeIcon muted={!audioEnabled} size={20}/>
             </button>
             <button 
-              onClick={onLogout} 
-              className="bg-red-500/10 text-red-500 font-black text-xs uppercase px-6 py-3 rounded-xl hover:bg-red-500 hover:text-white active:scale-95 transition-all shadow-sm"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onLogout();
+              }} 
+              className="flex-1 md:flex-none bg-red-600 text-white font-black text-xs uppercase px-8 py-3.5 rounded-xl hover:bg-red-700 active:scale-95 transition-all shadow-lg touch-manipulation relative z-[50]"
             >
               Sair
             </button>

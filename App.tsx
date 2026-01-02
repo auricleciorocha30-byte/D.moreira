@@ -23,6 +23,9 @@ const App: React.FC = () => {
   const [isLoadingLogin, setIsLoadingLogin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
+  
+  // Alerta Visual
+  const [newOrderAlert, setNewOrderAlert] = useState<{ id: number; type: 'table' | 'delivery' | 'counter' } | null>(null);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -48,20 +51,14 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      // Fetch Categories
       const { data: catData, error: cError } = await supabase.from('categories').select('*').order('name');
       if (!cError && catData) {
-        // Se o banco tiver categorias, usa elas. Se estiver vazio, mantém as DEFAULT_CATEGORIES
-        if (catData.length > 0) {
-          setCategories(catData);
-        } else {
-          setCategories(DEFAULT_CATEGORIES);
-        }
+        if (catData.length > 0) setCategories(catData);
+        else setCategories(DEFAULT_CATEGORIES);
       } else if (cError?.code === '42P01' || cError?.code === 'PGRST104') {
         setDbStatus('error_tables_missing');
       }
 
-      // Fetch Products
       const { data: prodData, error: pError } = await supabase.from('products').select('*').order('name');
       if (!pError && prodData && prodData.length > 0) {
         setMenuItems(prodData.map(p => ({
@@ -78,21 +75,33 @@ const App: React.FC = () => {
         setMenuItems(STATIC_MENU);
       }
 
-      // Fetch Tables
       const { data: tData, error: tError } = await supabase.from('tables').select('*').order('id');
       if (!tError && tData) {
         setTables(prev => {
           const updated = [...INITIAL_TABLES];
-          let alertNew = false;
+          let alertedTable: { id: number; type: 'table' | 'delivery' | 'counter' } | null = null;
+          
           tData.forEach(dbT => {
             const idx = updated.findIndex(u => u.id === dbT.id);
             if (idx > -1) {
               const prevT = prev.find(p => p.id === dbT.id);
-              if (dbT.status === 'occupied' && prevT?.status === 'free') alertNew = true;
+              // Se a mesa era free e agora está occupied, gera o alerta
+              if (dbT.status === 'occupied' && (!prevT || prevT.status === 'free')) {
+                alertedTable = { 
+                  id: dbT.id, 
+                  type: dbT.id >= 900 ? (dbT.id === 900 ? 'delivery' : 'counter') : 'table' 
+                };
+              }
               updated[idx] = { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order };
             }
           });
-          if (alertNew && isAdmin) playNotification();
+
+          if (alertedTable && isAdmin) {
+            playNotification();
+            setNewOrderAlert(alertedTable);
+            // Remove o alerta visual após 10 segundos
+            setTimeout(() => setNewOrderAlert(null), 10000);
+          }
           return updated;
         });
       }
@@ -204,25 +213,45 @@ const App: React.FC = () => {
 
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
         {isAdmin && isLoggedIn ? (
-          <AdminPanel 
-            tables={tables} 
-            menuItems={menuItems} 
-            categories={categories}
-            audioEnabled={audioEnabled} 
-            onToggleAudio={() => setAudioEnabled(!audioEnabled)} 
-            onUpdateTable={async (id, status, ord) => { await supabase.from('tables').update({ status, current_order: ord || null }).eq('id', id); fetchData(); }} 
-            onAddToOrder={(tableId, product) => handlePlaceOrder({ ...product, tableId })}
-            onRefreshData={fetchData} 
-            onLogout={handleLogout} 
-            onSaveProduct={async (p) => {
-              const productData = { name: p.name, price: p.price, category: p.category, description: p.description, image: p.image, is_available: p.isAvailable };
-              if (p.id) await supabase.from('products').update(productData).eq('id', p.id);
-              else await supabase.from('products').insert([{ id: 'p_' + Date.now(), ...productData }]);
-              fetchData();
-            }} 
-            onDeleteProduct={async (id) => { await supabase.from('products').delete().eq('id', id); fetchData(); }} 
-            dbStatus={dbStatus} 
-          />
+          <div className="relative">
+            {/* Notificação Toast flutuante de novo pedido */}
+            {newOrderAlert && (
+              <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] w-full max-w-sm px-6 animate-in slide-in-from-top duration-500">
+                <div className="bg-black text-white p-5 rounded-3xl shadow-2xl border-2 border-yellow-400 flex items-center gap-4">
+                  <div className="bg-yellow-400 text-black w-10 h-10 rounded-2xl flex items-center justify-center font-black animate-pulse">!</div>
+                  <div className="flex-1">
+                    <h4 className="font-black text-xs uppercase tracking-widest text-yellow-400">Novo Pedido!</h4>
+                    <p className="text-[10px] font-bold">
+                      {newOrderAlert.type === 'table' ? `Mesa ${newOrderAlert.id}` : newOrderAlert.type === 'delivery' ? 'Nova Entrega' : 'Novo Balcão'}
+                    </p>
+                  </div>
+                  <button onClick={() => setNewOrderAlert(null)} className="text-gray-500 hover:text-white">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            <AdminPanel 
+              tables={tables} 
+              menuItems={menuItems} 
+              categories={categories}
+              audioEnabled={audioEnabled} 
+              onToggleAudio={() => setAudioEnabled(!audioEnabled)} 
+              onUpdateTable={async (id, status, ord) => { await supabase.from('tables').update({ status, current_order: ord || null }).eq('id', id); fetchData(); }} 
+              onAddToOrder={(tableId, product) => handlePlaceOrder({ ...product, tableId })}
+              onRefreshData={fetchData} 
+              onLogout={handleLogout} 
+              onSaveProduct={async (p) => {
+                const productData = { name: p.name, price: p.price, category: p.category, description: p.description, image: p.image, is_available: p.isAvailable };
+                if (p.id) await supabase.from('products').update(productData).eq('id', p.id);
+                else await supabase.from('products').insert([{ id: 'p_' + Date.now(), ...productData }]);
+                fetchData();
+              }} 
+              onDeleteProduct={async (id) => { await supabase.from('products').delete().eq('id', id); fetchData(); }} 
+              dbStatus={dbStatus} 
+            />
+          </div>
         ) : (
           <>
             <div className="flex overflow-x-auto gap-2.5 pb-8 no-scrollbar mask-fade scroll-smooth">
