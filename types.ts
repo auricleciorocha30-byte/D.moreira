@@ -35,6 +35,7 @@ export type OrderType = 'table' | 'takeaway' | 'delivery' | 'counter';
 export interface Order {
   id: string;
   customerName: string;
+  customerPhone?: string;
   items: CartItem[];
   total: number;
   paymentMethod: string;

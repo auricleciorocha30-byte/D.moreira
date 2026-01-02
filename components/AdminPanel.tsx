@@ -42,6 +42,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editCustomerName, setEditCustomerName] = useState('');
+  const [editCustomerPhone, setEditCustomerPhone] = useState('');
   const [editAddress, setEditAddress] = useState('');
 
   // Tabelas Físicas (1-12)
@@ -80,9 +81,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   useEffect(() => {
     if (selectedTable?.currentOrder) {
       setEditCustomerName(selectedTable.currentOrder.customerName || '');
+      setEditCustomerPhone(selectedTable.currentOrder.customerPhone || '');
       setEditAddress(selectedTable.currentOrder.address || '');
     } else {
       setEditCustomerName('');
+      setEditCustomerPhone('');
       setEditAddress('');
     }
   }, [selectedTableId, selectedTable]);
@@ -97,6 +100,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const newOrder: Order = {
       id: Math.random().toString(36).substr(2, 6).toUpperCase(),
       customerName: type === 'delivery' ? 'Nova Entrega' : 'Novo Balcão',
+      customerPhone: '',
       items: [],
       total: 0,
       paymentMethod: 'Pendente',
@@ -108,7 +112,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
     onUpdateTable(newId, 'occupied', newOrder);
     setSelectedTableId(newId);
-    setModalTab('add');
+    setModalTab('items'); // Abrir na aba de itens para preencher dados
   };
 
   const handleUpdateCustomerData = async () => {
@@ -118,6 +122,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       const updatedOrder = { 
         ...selectedTable.currentOrder, 
         customerName: editCustomerName, 
+        customerPhone: editCustomerPhone,
         address: editAddress 
       };
       await supabase.from('tables').upsert({ id: selectedTable.id, status: 'occupied', current_order: updatedOrder });
@@ -166,6 +171,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <div style="font-size: 10px;">
           PEDIDO: #${order?.id || '---'}<br/>
           CLIENTE: ${order?.customerName || 'Consumidor'}<br/>
+          ${order?.customerPhone ? `FONE: ${order.customerPhone}<br/>` : ''}
           ${order?.address ? `END: ${order.address}<br/>` : ''}
           TIPO: ${(order?.orderType || 'N/A').toUpperCase()}
         </div>
@@ -242,7 +248,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {activeTab === 'delivery' && (
           <div className="space-y-10">
-            {/* SEÇÃO ENTREGAS - Estritamente apenas orderType delivery */}
+            {/* SEÇÃO ENTREGAS */}
             <div>
               <div className="flex justify-between items-center mb-6 px-2">
                 <h3 className="text-xl font-black italic uppercase tracking-widest text-gray-800">🚚 Entregas (Delivery)</h3>
@@ -259,6 +265,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full ${statusCfg.bg} ${statusCfg.color}`}>{statusCfg.label}</span>
                       </div>
                       <h4 className="font-black text-sm uppercase truncate mb-1 text-gray-900">{t.currentOrder?.customerName || 'Cliente'}</h4>
+                      <p className="text-[10px] text-yellow-600 font-bold mb-1">{t.currentOrder?.customerPhone || 'Sem telefone'}</p>
                       <p className="text-[10px] text-gray-400 font-bold mb-4 line-clamp-2 min-h-[30px] leading-tight">{t.currentOrder?.address || 'Sem endereço'}</p>
                       <div className="mt-auto pt-4 border-t border-gray-50 flex justify-between items-center">
                         <span className="font-black italic text-black">R$ {Number(t.currentOrder?.total || 0).toFixed(2)}</span>
@@ -275,7 +282,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* SEÇÃO BALCÃO - Estritamente apenas orderType counter ou takeaway */}
+            {/* SEÇÃO BALCÃO */}
             <div>
               <div className="flex justify-between items-center mb-6 px-2">
                 <h3 className="text-xl font-black italic uppercase tracking-widest text-gray-800">🛍️ Pedidos Balcão</h3>
@@ -310,7 +317,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         )}
 
-        {/* Categorias */}
+        {/* Categorias e Produtos mantidos... */}
         {activeTab === 'categories' && (
           <div className="bg-white p-10 rounded-[3rem] shadow-xl max-w-xl mx-auto border border-gray-50 animate-in slide-in-from-bottom duration-500">
             <h3 className="text-2xl font-black italic uppercase mb-6">Categorias</h3>
@@ -329,7 +336,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         )}
 
-        {/* Produtos */}
         {activeTab === 'menu' && (
           <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-50">
             <div className="flex justify-between items-center mb-8">
@@ -353,7 +359,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </div>
 
-      {/* Modal de Pedido (Fixo/Mesa ou Delivery) */}
+      {/* Modal de Pedido */}
       {selectedTable && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-0 md:p-4 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setSelectedTableId(null)} />
@@ -361,24 +367,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             
             <div className="p-6 md:p-10 border-b flex justify-between items-center bg-white sticky top-0 z-20">
               <div className="flex-1 mr-4">
-                <h3 className="text-2xl md:text-4xl font-black italic tracking-tighter uppercase leading-none mb-2 text-gray-900">
+                <h3 className="text-2xl md:text-4xl font-black italic tracking-tighter uppercase leading-none mb-4 text-gray-900">
                   {selectedTable.id >= 950 ? '🛍️ Balcão' : selectedTable.id >= 900 ? '🚚 Entrega' : `Mesa ${selectedTable.id}`}
                 </h3>
-                <div className="flex flex-wrap items-center gap-2">
-                   <input 
-                    type="text" 
-                    value={editCustomerName} 
-                    onChange={e => setEditCustomerName(e.target.value)}
-                    placeholder="Nome do Cliente"
-                    className="text-[10px] font-black uppercase text-gray-700 bg-gray-100 px-4 py-2 rounded-full border-none outline-none focus:ring-2 focus:ring-yellow-400 min-w-[220px] shadow-inner"
-                   />
-                   <button 
-                    onClick={handleUpdateCustomerData} 
-                    disabled={isSaving}
-                    className="text-[8px] font-black uppercase bg-black text-yellow-400 px-4 py-2 rounded-full shadow-lg hover:brightness-125 transition-all"
-                   >
-                     {isSaving ? '...' : 'Salvar Nome'}
-                   </button>
+                <div className="flex flex-col gap-3 max-w-xl">
+                   <div className="flex flex-wrap items-center gap-2">
+                      <input 
+                        type="text" 
+                        value={editCustomerName} 
+                        onChange={e => setEditCustomerName(e.target.value)}
+                        placeholder="Nome do Cliente"
+                        className="text-[10px] font-black uppercase text-gray-700 bg-gray-100 px-4 py-2.5 rounded-full border-none outline-none focus:ring-2 focus:ring-yellow-400 flex-1 min-w-[180px] shadow-inner"
+                      />
+                      <input 
+                        type="tel" 
+                        value={editCustomerPhone} 
+                        onChange={e => setEditCustomerPhone(e.target.value)}
+                        placeholder="Telefone / WhatsApp"
+                        className="text-[10px] font-black uppercase text-gray-700 bg-gray-100 px-4 py-2.5 rounded-full border-none outline-none focus:ring-2 focus:ring-yellow-400 flex-1 min-w-[150px] shadow-inner"
+                      />
+                      <button 
+                        onClick={handleUpdateCustomerData} 
+                        disabled={isSaving}
+                        className="text-[8px] font-black uppercase bg-black text-yellow-400 px-6 py-2.5 rounded-full shadow-lg hover:brightness-125 transition-all"
+                      >
+                        {isSaving ? '...' : 'Salvar Dados'}
+                      </button>
+                   </div>
                 </div>
               </div>
               <div className="flex gap-2">

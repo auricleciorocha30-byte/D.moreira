@@ -16,6 +16,7 @@ interface CartProps {
 
 const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, onRemove, onAdd, onPlaceOrder }) => {
   const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [tableNumber, setTableNumber] = useState('');
   const [orderType, setOrderType] = useState<OrderType>('table');
   const [takeawaySubtype, setTakeawaySubtype] = useState<'counter' | 'table'>('counter');
@@ -35,6 +36,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const handleCheckout = () => {
     if (items.length === 0) return;
     if (!customerName.trim()) return alert('Informe seu nome.');
+    if (orderType === 'delivery' && !customerPhone.trim()) return alert('Informe seu telefone para contato.');
     
     let targetTableId = 0;
     let finalOrderType = orderType;
@@ -58,6 +60,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
     const newOrder: Order = {
       id: Math.random().toString(36).substr(2, 6).toUpperCase(),
       customerName,
+      customerPhone: orderType === 'delivery' ? customerPhone : undefined,
       items: [...items],
       total,
       paymentMethod,
@@ -71,6 +74,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
     onPlaceOrder(newOrder);
     setIsSuccess(true);
     setCustomerName('');
+    setCustomerPhone('');
     setTableNumber('');
     setAddress('');
   };
@@ -131,7 +135,10 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                 )}
 
                 {orderType === 'delivery' && (
-                  <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Endereço de Entrega" className="w-full bg-white border rounded-2xl px-5 py-4 text-sm font-bold outline-none"/>
+                  <div className="space-y-3 animate-in fade-in duration-300">
+                    <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Seu Telefone / WhatsApp" className="w-full bg-white border rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400"/>
+                    <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Endereço de Entrega" className="w-full bg-white border rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400"/>
+                  </div>
                 )}
 
                 <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as any)} className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-4 text-xs font-black uppercase outline-none">

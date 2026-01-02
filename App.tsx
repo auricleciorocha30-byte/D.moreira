@@ -179,6 +179,7 @@ const App: React.FC = () => {
       finalOrder = { 
         id: input.id && input.items ? input.id : Math.random().toString(36).substr(2, 6).toUpperCase(),
         customerName: input.customerName || 'Cliente',
+        customerPhone: input.customerPhone || '',
         items: newItems,
         total: newItems.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0),
         paymentMethod: input.paymentMethod || 'Pendente',
