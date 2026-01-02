@@ -90,6 +90,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     printWindow.document.close();
   };
 
+  const handleRestoreDefaults = async () => {
+    if (!confirm('Deseja importar as categorias padrão (Lanches, Bebidas, Combos, Diversos) para o banco de dados?')) return;
+    
+    setIsSaving(true);
+    const defaults = ['Lanches', 'Bebidas', 'Combos', 'Diversos'];
+    try {
+      const { error } = await supabase.from('categories').insert(defaults.map(name => ({ name })));
+      if (error) {
+        alert('Erro ao restaurar: ' + error.message);
+      } else {
+        onRefreshData();
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = newCategoryName.trim();
@@ -203,7 +222,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {activeTab === 'categories' && (
           <div className="bg-white p-10 rounded-[3rem] shadow-xl max-w-xl mx-auto border border-gray-50">
-            <h3 className="text-2xl font-black italic mb-6">Categorias do Menu</h3>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-black italic">Categorias do Menu</h3>
+              <button 
+                onClick={handleRestoreDefaults}
+                className="text-[9px] font-black uppercase text-gray-400 hover:text-black transition-colors"
+              >
+                Restaurar Padrões
+              </button>
+            </div>
             
             {syncError && (
               <div className="bg-red-50 border-2 border-red-100 p-6 rounded-3xl mb-8 animate-in fade-in zoom-in duration-300">

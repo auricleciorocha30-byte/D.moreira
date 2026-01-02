@@ -48,13 +48,16 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      // Fetch Categories - Silently handle cache errors
+      // Fetch Categories
       const { data: catData, error: cError } = await supabase.from('categories').select('*').order('name');
-      if (!cError && catData && catData.length > 0) {
-        setCategories(catData);
+      if (!cError && catData) {
+        // Se o banco tiver categorias, usa elas. Se estiver vazio, mantém as DEFAULT_CATEGORIES
+        if (catData.length > 0) {
+          setCategories(catData);
+        } else {
+          setCategories(DEFAULT_CATEGORIES);
+        }
       } else if (cError?.code === '42P01' || cError?.code === 'PGRST104') {
-        // Se a tabela não existe ou erro de cache, mantemos as categorias padrão para não quebrar a UI
-        console.warn("Categories table issue:", cError.message);
         setDbStatus('error_tables_missing');
       }
 
@@ -111,7 +114,6 @@ const App: React.FC = () => {
 
     fetchData();
 
-    // Re-tentar fetch se houver erro de cache (delay curto)
     if (dbStatus === 'error_tables_missing') {
       const timer = setTimeout(fetchData, 5000);
       return () => clearTimeout(timer);
