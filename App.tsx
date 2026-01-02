@@ -34,108 +34,140 @@ const App: React.FC = () => {
 
   // Inicializa o áudio e tenta "desbloquear" na primeira interação
   useEffect(() => {
+    // Usando um som de "ding" mais confiável e curto
     notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     notificationSound.current.load();
 
     const unlockAudio = () => {
       if (!audioUnlocked.current && notificationSound.current) {
-        notificationSound.current.play().then(() => {
-          notificationSound.current?.pause();
-          if (notificationSound.current) notificationSound.current.currentTime = 0;
-          audioUnlocked.current = true;
-          console.log("Audio Unlocked");
-        }).catch(() => {});
+        // Tenta tocar e pausar imediatamente para ganhar permissão do navegador
+        const playPromise = notificationSound.current.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            notificationSound.current?.pause();
+            if (notificationSound.current) notificationSound.current.currentTime = 0;
+            audioUnlocked.current = true;
+            console.log("Audio Unlocked Success");
+          }).catch(e => {
+            console.log("Audio Unlock failed, waiting for user interaction:", e);
+          });
+        }
       }
     };
 
     window.addEventListener('click', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
     window.addEventListener('touchstart', unlockAudio);
     return () => {
       window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
       window.removeEventListener('touchstart', unlockAudio);
     };
   }, []);
 
   const fetchData = useCallback(async () => {
     try {
-      const { data: catData } = await supabase.from('categories').select('*').order('name');
-      if (catData) setCategories(catData);
+      setDbStatus('loading');
+      const [catRes, coupRes, prodRes, tableRes] = await Promise.all([
+        supabase.from('categories').select('*').order('name'),
+        supabase.from('coupons').select('*').eq('is_active', true),
+        supabase.from('products').select('*').order('name'),
+        supabase.from('tables').select('*').order('id')
+      ]);
 
-      const { data: couponsData } = await supabase.from('coupons').select('*').eq('is_active', true);
-      if (couponsData) {
-        setActiveCoupons(couponsData.map(c => ({
+      if (catRes.data) setCategories(catRes.data);
+
+      if (coupRes.data) {
+        setActiveCoupons(coupRes.data.map(c => ({
           id: c.id, code: c.code, percentage: c.percentage, isActive: c.is_active,
           scopeType: c.scope_type, scopeValue: c.scope_value
         })));
       }
 
-      const { data: prodData } = await supabase.from('products').select('*').order('name');
-      if (prodData && prodData.length > 0) {
-        setMenuItems(prodData.map(p => ({
+      if (prodRes.data && prodRes.data.length > 0) {
+        setMenuItems(prodRes.data.map(p => ({
           id: p.id, name: p.name, description: p.description || '', price: Number(p.price),
           category: p.category, image: p.image, isAvailable: p.is_available ?? true
         })));
-      } else if (prodData && prodData.length === 0) {
+      } else if (prodRes.data && prodRes.data.length === 0) {
         setMenuItems(STATIC_MENU);
       }
 
-      const { data: tData } = await supabase.from('tables').select('*');
-      if (tData) {
+      if (tableRes.data) {
         setTables(prev => {
-          // Mapeia os dados do banco preservando a estrutura inicial se necessário
-          const newTables = INITIAL_TABLES.map(p => {
-            const dbT = tData.find(dt => dt.id === p.id);
-            return dbT ? { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order } : p;
+          const merged = INITIAL_TABLES.map(t => {
+            const dbT = tableRes.data.find(dt => dt.id === t.id);
+            return dbT ? { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order } : t;
           });
-          // Adiciona mesas que existem no banco mas não na estrutura inicial (pedidos dinâmicos altos)
-          tData.forEach(dt => {
-            if (!newTables.find(nt => nt.id === dt.id)) {
-              newTables.push({ id: dt.id, status: dt.status, currentOrder: dt.current_order });
+          // Adiciona extras (IDs > 12 que não estão em INITIAL_TABLES)
+          tableRes.data.forEach(dt => {
+            if (!merged.find(m => m.id === dt.id)) {
+              merged.push({ id: dt.id, status: dt.status, currentOrder: dt.current_order });
             }
           });
-          return newTables;
+          return merged.sort((a,b) => a.id - b.id);
         });
       }
       setDbStatus('ok');
     } catch (err) {
+      console.error("Fetch error:", err);
       setDbStatus('error');
     }
   }, []);
 
+  // Sincronização em Tempo Real (Realtime)
   useEffect(() => {
     fetchData();
     
-    const channel = supabase.channel('schema-db-changes')
+    // Canal único e persistente para todas as mudanças
+    const channel = supabase.channel('dmoreira-live-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (payload) => {
         const newTable = payload.new as any;
         const oldTable = payload.old as any;
         
-        // Só processa alertas se houver um novo registro ocupado
+        console.log("Realtime change detected in tables:", payload);
+
+        // Lógica de Alerta Sonoro
         if (newTable && newTable.status === 'occupied') {
-          // Verifica se era livre ou se é um INSERT puro
+          // Só toca som se for um pedido novo (antes era livre ou não existia)
           const wasFree = !oldTable || oldTable.status === 'free';
           
           if (wasFree) {
+            // Tenta tocar o som de alerta
             if (audioEnabled && notificationSound.current) {
               notificationSound.current.currentTime = 0;
-              notificationSound.current.play().catch(e => console.error("Erro ao tocar som:", e));
+              notificationSound.current.play().catch(e => console.warn("Audio play blocked by browser:", e));
             }
             
+            // Define o alerta visual
             setNewOrderAlert({ 
               id: newTable.id, 
               type: newTable.id >= 950 ? 'Balcão' : newTable.id >= 900 ? 'Entrega' : 'Mesa' 
             });
             
-            setTimeout(() => setNewOrderAlert(null), 10000);
+            // Remove o alerta após 15 segundos
+            setTimeout(() => setNewOrderAlert(null), 15000);
           }
         }
         
-        // Força atualização dos dados para refletir na UI do Admin
+        // Atualização imediata do estado local das mesas para resposta "instantânea"
+        setTables(currentTables => {
+          const exists = currentTables.find(t => t.id === newTable.id);
+          if (exists) {
+            return currentTables.map(t => t.id === newTable.id ? { ...t, status: newTable.status, currentOrder: newTable.current_order } : t);
+          } else {
+            return [...currentTables, { id: newTable.id, status: newTable.status, currentOrder: newTable.current_order }].sort((a,b) => a.id - b.id);
+          }
+        });
+
+        // Opcional: Re-sincroniza tudo para garantir integridade
         fetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Realtime subscription status:", status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -144,9 +176,11 @@ const App: React.FC = () => {
 
   const handlePlaceOrder = async (order: Order) => {
     let targetId = order.tableId;
+    // Lógica para IDs de Entrega e Balcão
     if (targetId === -900 || targetId === -950) {
       const range = targetId === -900 ? [900, 949] : [950, 999];
       const free = tables.find(t => t.id >= range[0] && t.id <= range[1] && t.status === 'free');
+      // Se não achar livre, pega o próximo ID disponível no range
       targetId = free ? free.id : (Math.max(...tables.filter(t => t.id >= range[0] && t.id <= range[1]).map(t => t.id), range[0] - 1) + 1);
     }
     
@@ -156,10 +190,13 @@ const App: React.FC = () => {
       current_order: { ...order, tableId: targetId } 
     });
     
-    if (!error) {
+    if (error) {
+      console.error("Order error:", error);
+      alert("Erro ao enviar pedido. Tente novamente.");
+    } else {
       setCartItems([]);
       setIsCartOpen(false);
-      fetchData();
+      // O Realtime cuidará do resto
     }
   };
 
@@ -171,23 +208,23 @@ const App: React.FC = () => {
       <Header />
       
       {!isLoggedIn && (
-        <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 bg-white/10 px-3 py-1.5 rounded-full uppercase tracking-widest backdrop-blur-sm border border-black/5">Painel</button>
+        <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 bg-white/10 px-3 py-1.5 rounded-full uppercase tracking-widest backdrop-blur-sm border border-black/5 hover:bg-white/20 transition-all">Painel</button>
       )}
 
-      {/* Alerta Visual de Novo Pedido */}
+      {/* Alerta Visual de Novo Pedido (Global) */}
       {isAdmin && isLoggedIn && newOrderAlert && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-md px-6 animate-in slide-in-from-top duration-700">
-          <div className="bg-black text-white p-6 rounded-[3rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] border-4 border-yellow-400 flex items-center gap-5">
+          <div className="bg-black text-white p-6 rounded-[3rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.5)] border-4 border-yellow-400 flex items-center gap-5 ring-8 ring-black/10">
             <div className="bg-yellow-400 text-black w-14 h-14 rounded-2xl flex items-center justify-center font-black animate-bounce shrink-0 shadow-lg">
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
             </div>
             <div className="flex-1 font-black">
-              <h4 className="text-[10px] uppercase text-yellow-400 tracking-widest mb-1">Novo Pedido Recebido</h4>
-              <p className="text-xl italic uppercase tracking-tighter">{newOrderAlert.type} #{newOrderAlert.id}</p>
+              <h4 className="text-[10px] uppercase text-yellow-400 tracking-[0.3em] mb-1">Novo Pedido Recebido!</h4>
+              <p className="text-xl italic uppercase tracking-tighter leading-none">{newOrderAlert.type} #{newOrderAlert.id}</p>
             </div>
-            <button onClick={() => setNewOrderAlert(null)} className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors">
+            <button onClick={() => setNewOrderAlert(null)} className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors active:scale-90">
               <CloseIcon size={20}/>
             </button>
           </div>
@@ -199,7 +236,11 @@ const App: React.FC = () => {
           <AdminPanel 
             tables={tables} menuItems={menuItems} categories={categories}
             audioEnabled={audioEnabled} onToggleAudio={() => setAudioEnabled(!audioEnabled)}
-            onUpdateTable={async (id, status, ord) => { await supabase.from('tables').upsert({ id, status, current_order: ord || null }); fetchData(); }}
+            onUpdateTable={async (id, status, ord) => { 
+              const { error } = await supabase.from('tables').upsert({ id, status, current_order: ord || null }); 
+              if (error) console.error(error);
+              fetchData(); 
+            }}
             onAddToOrder={(tableId, product) => {
               const table = (tables || []).find(t => t.id === tableId);
               let current = table?.currentOrder;
@@ -255,19 +296,27 @@ const App: React.FC = () => {
 
       {showLogin && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
-          <div className="bg-white p-10 rounded-[3.5rem] w-full max-sm text-center shadow-2xl">
-            <h2 className="text-2xl font-black mb-8 italic uppercase tracking-tighter">Acesso Restrito</h2>
+          <div className="bg-white p-10 rounded-[3.5rem] w-full max-sm text-center shadow-2xl animate-in zoom-in duration-300">
+            <h2 className="text-2xl font-black mb-8 italic uppercase tracking-tighter">Painel D.Moreira</h2>
             <form onSubmit={async (e) => {
               e.preventDefault(); setIsLoadingLogin(true);
               const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPass });
-              if (!error && data.session) { setIsLoggedIn(true); setIsAdmin(true); setShowLogin(false); }
-              else alert('Login inválido.');
+              if (!error && data.session) { 
+                setIsLoggedIn(true); 
+                setIsAdmin(true); 
+                setShowLogin(false);
+                // Pré-carrega os dados para garantir sincronia imediata após login
+                fetchData();
+              }
+              else alert('Credenciais inválidas. Verifique seu acesso.');
               setIsLoadingLogin(false);
             }} className="space-y-4">
-              <input type="email" placeholder="E-MAIL" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none" required />
-              <input type="password" placeholder="SENHA" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none" required />
-              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">Entrar</button>
-              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4">Cancelar</button>
+              <input type="email" placeholder="E-MAIL DE ACESSO" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none focus:border-yellow-400 transition-all uppercase" required />
+              <input type="password" placeholder="SENHA" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none focus:border-yellow-400 transition-all uppercase" required />
+              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase text-[10px] tracking-widest shadow-xl hover:brightness-110 active:scale-95 transition-all">
+                {isLoadingLogin ? 'Autenticando...' : 'Acessar Painel'}
+              </button>
+              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4 hover:text-black transition-colors">Voltar ao Cardápio</button>
             </form>
           </div>
         </div>
@@ -275,12 +324,12 @@ const App: React.FC = () => {
 
       {!isAdmin && cartItems.length > 0 && (
         <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 z-40 animate-in slide-in-from-bottom duration-500">
-          <button onClick={() => setIsCartOpen(true)} className="w-full max-w-md bg-black text-white rounded-[2.5rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30">
+          <button onClick={() => setIsCartOpen(true)} className="w-full max-w-md bg-black text-white rounded-[2.5rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30 active:scale-95 transition-all">
             <div className="flex items-center gap-4">
               <div className="bg-yellow-400 text-black w-9 h-9 flex items-center justify-center rounded-2xl text-xs font-black">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
-              <span className="font-black text-xs uppercase tracking-widest">Ver Sacola</span>
+              <span className="font-black text-xs uppercase tracking-widest">Ver Minha Sacola</span>
             </div>
-            <span className="font-black text-yellow-400 text-xl italic">R$ {cartItems.reduce((a,b)=>a+(b.price*b.quantity),0).toFixed(2)}</span>
+            <span className="font-black text-yellow-400 text-xl italic">R$ {cartItems.reduce((a,b)=>a+(b.price*b.quantity),0).toFixed(2).replace('.', ',')}</span>
           </button>
         </div>
       )}
