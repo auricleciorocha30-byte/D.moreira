@@ -32,7 +32,6 @@ const App: React.FC = () => {
   const notificationSound = useRef<HTMLAudioElement | null>(null);
   const audioUnlocked = useRef(false);
 
-  // Inicializa o som
   useEffect(() => {
     notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     notificationSound.current.load();
@@ -48,7 +47,6 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Sistema de Persistência de Login
   useEffect(() => {
     const checkInitialSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -98,7 +96,7 @@ const App: React.FC = () => {
           id: p.id, name: p.name, description: p.description || '', price: Number(p.price),
           category: p.category, image: p.image, isAvailable: p.is_available ?? true
         })));
-      } else if (prodRes.data && prodRes.data.length === 0) {
+      } else {
         setMenuItems(STATIC_MENU);
       }
 
@@ -123,61 +121,68 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Sincronização Realtime OTIMIZADA
+  // MOTOR REALTIME MASTER
   useEffect(() => {
     fetchData();
     
-    const channel = supabase.channel('dmoreira-realtime-v2')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (payload) => {
-        const newRecord = payload.new as any;
-        const oldRecord = payload.old as any;
+    // Configura o canal de escuta master
+    const channel = supabase.channel('dmoreira_realtime_v3')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'tables' }, 
+        (payload) => {
+          console.log("Evento Realtime Detectado:", payload);
+          const newRec = payload.new as any;
+          const oldRec = payload.old as any;
 
-        console.log("Realtime Update Received:", newRecord);
-        
-        // 1. Atualização Instantânea do Estado (O segredo para não precisar de F5)
-        setTables(currentTables => {
-          const index = currentTables.findIndex(t => t.id === newRecord.id);
-          const updatedTable: Table = {
-            id: newRecord.id,
-            status: newRecord.status,
-            currentOrder: newRecord.current_order
-          };
+          // ATUALIZAÇÃO INSTANTÂNEA DO ESTADO LOCAL
+          // Isso faz com que o pedido apareça na hora sem F5
+          setTables(current => {
+            const index = current.findIndex(t => t.id === newRec.id);
+            const updatedTable: Table = {
+              id: newRec.id,
+              status: newRec.status,
+              currentOrder: newRec.current_order
+            };
 
-          if (index !== -1) {
-            const newList = [...currentTables];
-            newList[index] = updatedTable;
-            return newList;
-          } else {
-            return [...currentTables, updatedTable].sort((a, b) => a.id - b.id);
-          }
-        });
-
-        // 2. Alerta Sonoro e Visual se for novo pedido
-        if (newRecord && newRecord.status === 'occupied') {
-          const wasFree = !oldRecord || oldRecord.status === 'free';
-          if (wasFree) {
-            if (audioEnabled && notificationSound.current) {
-              notificationSound.current.currentTime = 0;
-              notificationSound.current.play().catch(() => {});
+            if (index !== -1) {
+              const newList = [...current];
+              newList[index] = updatedTable;
+              return newList;
+            } else {
+              return [...current, updatedTable].sort((a, b) => a.id - b.id);
             }
-            setNewOrderAlert({ 
-              id: newRecord.id, 
-              type: newRecord.id >= 950 ? 'Balcão' : newRecord.id >= 900 ? 'Entrega' : 'Mesa' 
-            });
-            setTimeout(() => setNewOrderAlert(null), 15000);
+          });
+
+          // LÓGICA DE ALERTA (NOVO PEDIDO)
+          if (newRec && newRec.status === 'occupied') {
+            const wasFree = !oldRec || oldRec.status === 'free';
+            if (wasFree) {
+              if (audioEnabled && notificationSound.current) {
+                notificationSound.current.currentTime = 0;
+                notificationSound.current.play().catch(() => console.log("Áudio bloqueado pelo navegador"));
+              }
+              setNewOrderAlert({ 
+                id: newRec.id, 
+                type: newRec.id >= 950 ? 'Balcão' : newRec.id >= 900 ? 'Entrega' : 'Mesa' 
+              });
+              setTimeout(() => setNewOrderAlert(null), 20000);
+            }
           }
+          
+          // Sincronização de segurança em segundo plano
+          fetchData(true);
         }
-        
-        // 3. Sync de backup para garantir integridade
-        fetchData(true);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => fetchData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => fetchData(true))
+      )
       .subscribe((status) => {
-        console.log("Realtime status:", status);
+        console.log("Status da Conexão Realtime:", status);
+        if (status === 'SUBSCRIBED') {
+          setDbStatus('ok');
+        }
       });
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchData, audioEnabled]);
 
   const handlePlaceOrder = async (order: Order) => {
@@ -188,15 +193,16 @@ const App: React.FC = () => {
       targetId = free ? free.id : (Math.max(...tables.filter(t => t.id >= range[0] && t.id <= range[1]).map(t => t.id), range[0] - 1) + 1);
     }
     
-    // Otimismo: Atualizamos localmente antes de enviar (opcional, mas o realtime já fará isso)
+    // O Supabase enviará o evento para o canal 'postgres_changes' acima
     const { error } = await supabase.from('tables').upsert({ 
       id: targetId, 
       status: 'occupied', 
       current_order: { ...order, tableId: targetId } 
     });
     
-    if (error) alert("Erro ao enviar pedido.");
-    else {
+    if (error) {
+      alert("Erro ao enviar pedido.");
+    } else {
       setCartItems([]);
       setIsCartOpen(false);
     }
@@ -221,9 +227,9 @@ const App: React.FC = () => {
             </div>
             <div className="flex-1 font-black">
               <h4 className="text-[10px] uppercase text-yellow-400 tracking-[0.3em] mb-1">Novo Pedido!</h4>
-              <p className="text-xl italic uppercase tracking-tighter">{newOrderAlert.type} #{newOrderAlert.id}</p>
+              <p className="text-xl italic uppercase tracking-tighter leading-none">{newOrderAlert.type} #{newOrderAlert.id}</p>
             </div>
-            <button onClick={() => setNewOrderAlert(null)} className="p-3 bg-white/10 hover:bg-white/20 rounded-full active:scale-90"><CloseIcon size={20}/></button>
+            <button onClick={() => setNewOrderAlert(null)} className="p-3 bg-white/10 hover:bg-white/20 rounded-full active:scale-90 transition-all"><CloseIcon size={20}/></button>
           </div>
         </div>
       )}
@@ -233,7 +239,7 @@ const App: React.FC = () => {
           <AdminPanel 
             tables={tables} menuItems={menuItems} categories={categories}
             audioEnabled={audioEnabled} onToggleAudio={() => setAudioEnabled(!audioEnabled)}
-            onUpdateTable={async (id, status, ord) => { await supabase.from('tables').upsert({ id, status, current_order: ord || null }); fetchData(true); }}
+            onUpdateTable={async (id, status, ord) => { await supabase.from('tables').upsert({ id, status, current_order: ord || null }); }}
             onAddToOrder={(tableId, product) => {
               const table = (tables || []).find(t => t.id === tableId);
               let current = table?.currentOrder;
@@ -242,18 +248,14 @@ const App: React.FC = () => {
               if (ex >= 0) items[ex].quantity += 1; else items.push({ ...product, quantity: 1 });
               const total = items.reduce((a, b) => a + (b.price * b.quantity), 0);
               
-              if (!current) {
-                const newOrd: Order = {
-                  id: Math.random().toString(36).substr(2, 6).toUpperCase(),
-                  customerName: tableId >= 900 ? (tableId >= 950 ? 'Balcão' : 'Entrega') : `Mesa ${tableId}`,
-                  items, total, finalTotal: total, paymentMethod: 'Pendente',
-                  timestamp: new Date().toISOString(), tableId, status: 'pending',
-                  orderType: tableId >= 900 ? (tableId >= 950 ? 'counter' : 'delivery') : 'table'
-                };
-                handlePlaceOrder(newOrd);
-              } else {
-                handlePlaceOrder({ ...current, items, total, finalTotal: total - (current.discount || 0) });
-              }
+              const newOrd: Order = current ? { ...current, items, total, finalTotal: total - (current.discount || 0) } : {
+                id: Math.random().toString(36).substr(2, 6).toUpperCase(),
+                customerName: tableId >= 900 ? (tableId >= 950 ? 'Balcão' : 'Entrega') : `Mesa ${tableId}`,
+                items, total, finalTotal: total, paymentMethod: 'Pendente',
+                timestamp: new Date().toISOString(), tableId, status: 'pending',
+                orderType: tableId >= 900 ? (tableId >= 950 ? 'counter' : 'delivery') : 'table'
+              };
+              handlePlaceOrder(newOrd);
             }}
             onRefreshData={() => fetchData()} 
             onLogout={async () => { await supabase.auth.signOut(); setIsLoggedIn(false); setIsAdmin(false); }}
@@ -292,7 +294,7 @@ const App: React.FC = () => {
             <h2 className="text-2xl font-black mb-8 italic uppercase tracking-tighter">Painel D.Moreira</h2>
             <form onSubmit={async (e) => {
               e.preventDefault(); setIsLoadingLogin(true);
-              unlockAudio(); // Libera áudio na ação de login
+              unlockAudio();
               const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPass });
               if (!error && data.session) { 
                 setIsLoggedIn(true); setIsAdmin(true); setShowLogin(false);
