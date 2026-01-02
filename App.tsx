@@ -8,6 +8,13 @@ import { MENU_ITEMS as STATIC_MENU, INITIAL_TABLES } from './constants';
 import { Product, CartItem, Table, Order, Category } from './types';
 import { supabase } from './lib/supabase';
 
+const DEFAULT_CATEGORIES: Category[] = [
+  { id: '1', name: 'Lanches' },
+  { id: '2', name: 'Bebidas' },
+  { id: '3', name: 'Combos' },
+  { id: '4', name: 'Diversos' }
+];
+
 const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -23,7 +30,7 @@ const App: React.FC = () => {
   
   const [tables, setTables] = useState<Table[]>(INITIAL_TABLES);
   const [menuItems, setMenuItems] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ok' | 'error_tables_missing'>('loading');
 
   const notificationSound = useRef<HTMLAudioElement | null>(null);
@@ -41,18 +48,21 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      // 1. Buscar Categorias
+      // 1. Buscar Categorias com Fallback
       const { data: catData, error: cError } = await supabase.from('categories').select('*').order('name');
       if (cError) {
+        console.warn("Categorias não encontradas no banco, usando padrão.");
         if (cError.code === '42P01') setDbStatus('error_tables_missing');
-      } else if (catData) {
+      } else if (catData && catData.length > 0) {
         setCategories(catData);
+        setDbStatus('ok');
       }
 
       // 2. Buscar Produtos
-      const { data: prodData } = await supabase.from('products').select('*').order('name');
-      if (prodData && prodData.length > 0) {
-        setDbStatus('ok');
+      const { data: prodData, error: pError } = await supabase.from('products').select('*').order('name');
+      if (pError) {
+         setMenuItems(STATIC_MENU);
+      } else if (prodData && prodData.length > 0) {
         setMenuItems(prodData.map(p => ({
           id: p.id,
           name: p.name,
@@ -62,7 +72,7 @@ const App: React.FC = () => {
           image: p.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=300&fit=crop',
           isAvailable: p.is_available ?? true
         })));
-      } else if (dbStatus !== 'error_tables_missing') {
+      } else {
         setMenuItems(STATIC_MENU);
       }
 
@@ -87,7 +97,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Fetch error:", err);
     }
-  }, [isAdmin, playNotification, dbStatus]);
+  }, [isAdmin, playNotification]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -145,10 +155,10 @@ const App: React.FC = () => {
       if (productToAdd && !order.items) {
         finalOrder = {
           id: Math.random().toString(36).substr(2, 6).toUpperCase(),
-          customerName: 'Admin',
+          customerName: 'Balcão/Mesa',
           items: [{ ...productToAdd, quantity: 1 }],
           total: productToAdd.price,
-          paymentMethod: 'Balcão',
+          paymentMethod: 'Pendente',
           timestamp: new Date().toISOString(),
           tableId: targetTableId,
           orderType: targetTableId >= 900 ? 'counter' : 'table',
