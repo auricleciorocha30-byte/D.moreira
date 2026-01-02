@@ -43,8 +43,11 @@ const App: React.FC = () => {
     try {
       // 1. Buscar Categorias
       const { data: catData, error: cError } = await supabase.from('categories').select('*').order('name');
-      if (cError && cError.code === '42P01') setDbStatus('error_tables_missing');
-      else if (catData) setCategories(catData);
+      if (cError) {
+        if (cError.code === '42P01') setDbStatus('error_tables_missing');
+      } else if (catData) {
+        setCategories(catData);
+      }
 
       // 2. Buscar Produtos
       const { data: prodData } = await supabase.from('products').select('*').order('name');
@@ -82,7 +85,7 @@ const App: React.FC = () => {
         });
       }
     } catch (err) {
-      console.error(err);
+      console.error("Fetch error:", err);
     }
   }, [isAdmin, playNotification, dbStatus]);
 
@@ -109,7 +112,6 @@ const App: React.FC = () => {
   }, [fetchData]);
 
   const handlePlaceOrder = async (order: any) => {
-    // Se for apenas a adição de um produto (Lançamento Manual Admin)
     let targetTableId = order.tableId;
     let productToAdd = order.id ? order : null;
     
@@ -120,13 +122,11 @@ const App: React.FC = () => {
     if (current?.status === 'occupied' && current.current_order) {
       const items = [...current.current_order.items];
       
-      // Se estamos adicionando um único produto
       if (productToAdd && !order.items) {
         const i = items.findIndex(ei => ei.id === productToAdd.id);
         if (i > -1) items[i].quantity += 1;
         else items.push({ ...productToAdd, quantity: 1 });
       } 
-      // Se for um pedido completo vindo do carrinho
       else if (order.items) {
         order.items.forEach((ni: CartItem) => {
           const i = items.findIndex(ei => ei.id === ni.id);
@@ -142,14 +142,13 @@ const App: React.FC = () => {
         isUpdated: true 
       };
     } else {
-      // Criando novo pedido na mesa vazia
       if (productToAdd && !order.items) {
         finalOrder = {
           id: Math.random().toString(36).substr(2, 6).toUpperCase(),
           customerName: 'Admin',
           items: [{ ...productToAdd, quantity: 1 }],
           total: productToAdd.price,
-          paymentMethod: 'Pendente',
+          paymentMethod: 'Balcão',
           timestamp: new Date().toISOString(),
           tableId: targetTableId,
           orderType: targetTableId >= 900 ? 'counter' : 'table',
@@ -190,8 +189,9 @@ const App: React.FC = () => {
             onRefreshData={fetchData} 
             onLogout={() => supabase.auth.signOut()} 
             onSaveProduct={async (p) => {
-              if (p.id) await supabase.from('products').update({ name: p.name, price: p.price, category: p.category, description: p.description, image: p.image, is_available: p.isAvailable }).eq('id', p.id);
-              else await supabase.from('products').insert([{ id: 'p_' + Date.now(), name: p.name, price: p.price, category: p.category, description: p.description, image: p.image, is_available: true }]);
+              const productData = { name: p.name, price: p.price, category: p.category, description: p.description, image: p.image, is_available: p.isAvailable };
+              if (p.id) await supabase.from('products').update(productData).eq('id', p.id);
+              else await supabase.from('products').insert([{ id: 'p_' + Date.now(), ...productData }]);
               fetchData();
             }} 
             onDeleteProduct={async (id) => { await supabase.from('products').delete().eq('id', id); fetchData(); }} 
@@ -201,7 +201,7 @@ const App: React.FC = () => {
           <>
             <div className="flex overflow-x-auto gap-3 pb-8 no-scrollbar mask-fade">
               {categoryNames.map(cat => (
-                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-7 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg ${selectedCategory === cat ? 'bg-black text-white' : 'bg-white text-gray-700 border'}`}>{cat}</button>
+                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-7 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md ${selectedCategory === cat ? 'bg-black text-white' : 'bg-white text-gray-700 border hover:border-black'}`}>{cat}</button>
               ))}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -217,10 +217,10 @@ const App: React.FC = () => {
 
       {!isAdmin && cartItems.length > 0 && (
         <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 z-40">
-          <button onClick={() => setIsCartOpen(true)} className="w-full max-w-md bg-black text-white rounded-[2rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30">
+          <button onClick={() => setIsCartOpen(true)} className="w-full max-w-md bg-black text-white rounded-[2rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30 active:scale-95 transition-all">
             <div className="flex items-center gap-4">
               <div className="bg-yellow-400 text-black w-8 h-8 flex items-center justify-center rounded-xl text-sm font-black">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
-              <span className="font-black text-sm uppercase tracking-widest">Ver Sacola</span>
+              <span className="font-black text-sm uppercase tracking-widest">Sacola D.Moreira</span>
             </div>
             <span className="font-black text-yellow-400 text-xl italic">R$ {cartItems.reduce((a,b)=>a+(b.price*b.quantity),0).toFixed(2).replace('.', ',')}</span>
           </button>
@@ -229,20 +229,20 @@ const App: React.FC = () => {
 
       {showLogin && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
-          <div className="bg-white p-10 rounded-[3rem] w-full max-w-sm text-center">
-            <h2 className="text-3xl font-black mb-6 italic">Acesso Admin</h2>
+          <div className="bg-white p-10 rounded-[3rem] w-full max-w-sm text-center shadow-2xl">
+            <h2 className="text-3xl font-black mb-6 italic">Acesso Restrito</h2>
             <form onSubmit={async (e) => {
               e.preventDefault();
               setIsLoadingLogin(true);
               const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPass });
-              if (error) alert(error.message);
+              if (error) alert('Acesso Negado: ' + error.message);
               else setShowLogin(false);
               setIsLoadingLogin(false);
             }} className="space-y-4">
-              <input type="email" placeholder="E-mail" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold text-black outline-none" required />
-              <input type="password" placeholder="Senha" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold text-black outline-none" required />
-              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl uppercase text-xs tracking-widest">{isLoadingLogin ? 'Entrando...' : 'Entrar'}</button>
-              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4">Cancelar</button>
+              <input type="email" placeholder="E-mail" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold text-black outline-none focus:border-yellow-400" required />
+              <input type="password" placeholder="Senha" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold text-black outline-none focus:border-yellow-400" required />
+              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase text-xs tracking-widest shadow-xl hover:brightness-110 active:scale-95 transition-all">{isLoadingLogin ? 'Verificando...' : 'Entrar'}</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4">Voltar ao Cardápio</button>
             </form>
           </div>
         </div>
