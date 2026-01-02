@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Table, Order, Product, Category, Coupon, LoyaltyConfig, LoyaltyUser, OrderStatus, OrderType } from '../types';
-import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon } from './Icons';
+import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon, EditIcon } from './Icons';
 import { supabase } from '../lib/supabase';
 import { STORE_INFO } from '../constants';
 
@@ -303,7 +303,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="flex justify-between items-center mt-2">
                       <span className="text-yellow-700 font-black italic text-xs">R$ {(item.price || 0).toFixed(2)}</span>
                       <div className="flex gap-1">
-                        <button onClick={() => { setEditingProduct(item); setIsProductModalOpen(true); }} className="p-2 bg-white text-blue-500 rounded-xl shadow-sm"><PrinterIcon size={14}/></button>
+                        <button onClick={() => { setEditingProduct(item); setIsProductModalOpen(true); }} className="p-2 bg-white text-blue-500 rounded-xl shadow-sm"><EditIcon size={14}/></button>
                         <button onClick={() => onDeleteProduct(item.id)} className="p-2 bg-white text-red-500 rounded-xl shadow-sm"><TrashIcon size={14}/></button>
                       </div>
                     </div>
@@ -477,7 +477,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Outros modais (Categoria, Produto, Novo Externo) */}
+      {/* Modal Novo Pedido Manual Externo */}
       {isNewOrderModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-sm rounded-[3.5rem] p-10 relative shadow-2xl animate-in zoom-in duration-300">
@@ -503,7 +503,52 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         </div>
       )}
-      {/* ... (restante dos modais inalterado para brevidade mas mantido na lógica de renderização) */}
+
+      {/* Modal de Nova Categoria */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
+          <div className="bg-white w-full max-w-md rounded-[3.5rem] p-10 relative shadow-2xl animate-in zoom-in duration-300">
+             <button onClick={() => setIsCategoryModalOpen(false)} className="absolute top-8 right-8 p-4 bg-gray-100 rounded-full"><CloseIcon size={20}/></button>
+             <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">Nova Categoria</h3>
+             <form onSubmit={handleAddCategory} className="space-y-6">
+                <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="NOME DA CATEGORIA" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-5 text-sm font-black outline-none transition-all uppercase" required />
+                <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-2xl font-black text-sm uppercase shadow-xl hover:brightness-125 transition-all">Criar Categoria</button>
+             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Produto (Novo ou Edição) */}
+      {isProductModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
+          <div className="bg-white w-full max-w-2xl rounded-[4rem] p-12 relative shadow-2xl animate-in zoom-in duration-300">
+             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-12 right-12 p-5 bg-gray-100 rounded-full"><CloseIcon size={24}/></button>
+             <h3 className="text-4xl font-black italic mb-12 uppercase tracking-tighter">
+               {editingProduct?.id ? 'Editar Produto' : 'Novo Produto'}
+             </h3>
+             <form onSubmit={(e) => { 
+               e.preventDefault(); 
+               onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price || 0) }); 
+               setIsProductModalOpen(false); 
+             }} className="space-y-8">
+                <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="NOME DO ITEM" className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-sm font-black outline-none transition-all uppercase" required />
+                <div className="grid grid-cols-2 gap-6">
+                    <input type="number" step="0.01" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} placeholder="PREÇO" className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-sm font-black outline-none" required />
+                    <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-sm font-black outline-none uppercase">
+                      <option value="">SELECIONE UMA CATEGORIA</option>
+                      {categories?.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
+                    </select>
+                </div>
+                <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} placeholder="URL DA IMAGEM" className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-xs font-bold outline-none" />
+                <div className="flex items-center gap-4 bg-gray-50 p-6 rounded-3xl">
+                   <input type="checkbox" checked={editingProduct?.isAvailable ?? true} onChange={e => setEditingProduct({...editingProduct!, isAvailable: e.target.checked})} className="w-6 h-6 rounded-lg accent-yellow-400" id="available" />
+                   <label htmlFor="available" className="font-black text-xs uppercase cursor-pointer">Disponível no Cardápio</label>
+                </div>
+                <button type="submit" className="w-full bg-black text-yellow-400 py-7 rounded-[2.5rem] font-black text-sm uppercase shadow-2xl hover:brightness-125 transition-all">Salvar Alterações</button>
+             </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
