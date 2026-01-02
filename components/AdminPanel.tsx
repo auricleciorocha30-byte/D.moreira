@@ -17,151 +17,61 @@ interface AdminPanelProps {
   onLogout: () => void;
   onSaveProduct: (product: Partial<Product>) => void;
   onDeleteProduct: (id: string) => void;
-  dbStatus: 'loading' | 'ok' | 'error_tables_missing';
+  dbStatus: 'loading' | 'ok';
 }
 
-const STATUS_CONFIG: Record<string, { label: string, color: string, bg: string }> = {
+const STATUS_CFG: Record<string, any> = {
   'pending': { label: 'Pendente', color: 'text-orange-600', bg: 'bg-orange-100' },
   'preparing': { label: 'Preparando', color: 'text-blue-600', bg: 'bg-blue-100' },
   'ready': { label: 'Pronto', color: 'text-green-600', bg: 'bg-green-100' },
-  'delivered': { label: 'Entregue', color: 'text-gray-600', bg: 'bg-gray-100' },
-  'fallback': { label: 'Status...', color: 'text-gray-400', bg: 'bg-gray-50' }
+  'delivered': { label: 'Entregue', color: 'text-gray-400', bg: 'bg-gray-50' }
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
   tables, menuItems, categories, audioEnabled, onToggleAudio, 
   onUpdateTable, onRefreshData, onLogout, onSaveProduct, onDeleteProduct, dbStatus, onAddToOrder 
 }) => {
-  const [activeTab, setActiveTab] = useState<'tables' | 'delivery' | 'menu' | 'categories' | 'marketing'>('tables');
+  const [activeTab, setActiveTab] = useState<'tables' | 'delivery' | 'menu' | 'marketing'>('tables');
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
-  const [editingCategoryName, setEditingCategoryName] = useState('');
-
-  const [editCustomerName, setEditCustomerName] = useState('');
-  const [editCustomerPhone, setEditCustomerPhone] = useState('');
-  const [editAddress, setEditAddress] = useState('');
-
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loyalty, setLoyalty] = useState<LoyaltyConfig>({ isActive: false, spendingGoal: 100, scopeType: 'all', scopeValue: '' });
   const [loyaltyUsers, setLoyaltyUsers] = useState<LoyaltyUser[]>([]);
-  const [couponScopeType, setCouponScopeType] = useState<'all' | 'category' | 'product'>('all');
 
-  useEffect(() => {
-    fetchMarketingData();
-  }, []);
+  useEffect(() => { fetchMarketing(); }, []);
 
-  const fetchMarketingData = async () => {
+  const fetchMarketing = async () => {
+    // Buscar Cupons
     const { data: cData } = await supabase.from('coupons').select('*');
-    if (cData) {
-      setCoupons(cData.map(c => ({
-        id: c.id,
-        code: c.code,
-        percentage: c.percentage,
-        isActive: c.is_active,
-        scopeType: c.scope_type,
-        scopeValue: c.scope_value
-      })));
-    }
+    if (cData) setCoupons(cData.map(c => ({ 
+      id: c.id, code: c.code, percentage: c.percentage, isActive: c.is_active, 
+      scopeType: c.scope_type, scopeValue: c.scope_value 
+    })));
     
+    // Buscar Config de Fidelidade
     const { data: lConfig } = await supabase.from('loyalty_config').select('*').maybeSingle();
-    if (lConfig) {
-      // Usando camelCase conforme erro relatado pelo usuário (is_active não encontrado em loyalty_config)
-      setLoyalty({
-        isActive: lConfig.isActive,
-        spendingGoal: lConfig.spendingGoal,
-        scopeType: lConfig.scopeType,
-        scopeValue: lConfig.scopeValue || ''
-      });
-    }
+    if (lConfig) setLoyalty({ 
+      isActive: lConfig.isActive, 
+      spendingGoal: lConfig.spendingGoal, 
+      scopeType: lConfig.scopeType, 
+      scopeValue: lConfig.scopeValue || '' 
+    });
 
+    // Buscar Ranking de Clientes
     const { data: lUsers } = await supabase.from('loyalty_users').select('*').order('accumulated', { ascending: false });
     if (lUsers) setLoyaltyUsers(lUsers);
   };
 
-  const handleTestSound = () => {
-    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-    audio.play().then(() => alert('Som OK!')).catch(e => alert('Erro: ' + e.message));
-  };
-
-  const physicalTables = useMemo(() => (tables || []).filter(t => t.id >= 1 && t.id <= 12).sort((a,b) => a.id - b.id), [tables]);
-  const activeDeliveries = useMemo(() => (tables || []).filter(t => t.id >= 900 && t.id <= 949 && t.status === 'occupied' && t.currentOrder?.orderType === 'delivery').sort((a,b) => a.id - b.id), [tables]);
-  const activeCounters = useMemo(() => (tables || []).filter(t => t.id >= 950 && t.id <= 999 && t.status === 'occupied' && (t.currentOrder?.orderType === 'counter' || t.currentOrder?.orderType === 'takeaway')).sort((a,b) => a.id - b.id), [tables]);
-  const selectedTable = useMemo(() => (tables || []).find(t => t.id === selectedTableId) || null, [tables, selectedTableId]);
-
-  useEffect(() => {
-    if (selectedTable?.currentOrder) {
-      setEditCustomerName(selectedTable.currentOrder.customerName || '');
-      setEditCustomerPhone(selectedTable.currentOrder.customerPhone || '');
-      setEditAddress(selectedTable.currentOrder.address || '');
-    }
-  }, [selectedTableId, selectedTable]);
-
-  const filteredMenu = useMemo(() => {
-    return menuItems.filter(item => 
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.category.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [menuItems, searchTerm]);
-
-  const handlePrint = (order: Order) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    const itemsHtml = order.items.map(item => `<div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-family: monospace;"><span>${item.quantity}x ${item.name}</span><span>R$ ${(item.price * item.quantity).toFixed(2)}</span></div>`).join('');
-    printWindow.document.write(`<html><head><title>Pedido #${order.id}</title><style>body { font-family: monospace; padding: 20px; width: 300px; }.header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }.total { border-top: 1px dashed #000; margin-top: 10px; padding-top: 10px; font-weight: bold; }</style></head><body><div class="header"><h2>${STORE_INFO.name}</h2><p>Pedido: #${order.id}</p><p>Ref: ${order.tableId}</p><p>${new Date(order.timestamp).toLocaleString()}</p></div><div class="items">${itemsHtml}</div><div class="total"><div style="display: flex; justify-content: space-between;"><span>Total:</span><span>R$ ${order.finalTotal.toFixed(2)}</span></div></div><script>window.onload=()=>{window.print();window.close();};</script></body></html>`);
-    printWindow.document.close();
-  };
-
-  const handleCreateManualOrder = (type: 'delivery' | 'counter') => {
-    const rangeStart = type === 'delivery' ? 900 : 950;
-    const rangeEnd = type === 'delivery' ? 949 : 999;
-    const freeSlot = (tables || []).find(t => t.id >= rangeStart && t.id <= rangeEnd && t.status === 'free');
-    const newId = freeSlot ? freeSlot.id : (Math.max(...(tables || []).filter(t => t.id >= rangeStart && t.id <= rangeEnd).map(t => t.id), rangeStart - 1) + 1);
-    const newOrder: Order = {
-      id: Math.random().toString(36).substr(2, 6).toUpperCase(),
-      customerName: type === 'delivery' ? 'Nova Entrega' : 'Novo Balcão',
-      customerPhone: '',
-      items: [],
-      total: 0,
-      finalTotal: 0,
-      paymentMethod: 'Pendente',
-      timestamp: new Date().toISOString(),
-      tableId: newId,
-      orderType: type === 'delivery' ? 'delivery' : 'counter',
-      status: 'pending'
-    };
-    onUpdateTable(newId, 'occupied', newOrder);
-    setSelectedTableId(newId);
-  };
-
-  const handleUpdateCustomerData = async () => {
-    if (!selectedTable || !selectedTable.currentOrder) return;
-    setIsSaving(true);
-    try {
-      const updatedOrder = { ...selectedTable.currentOrder, customerName: editCustomerName, customerPhone: editCustomerPhone, address: editAddress };
-      await supabase.from('tables').upsert({ id: selectedTable.id, status: 'occupied', current_order: updatedOrder });
-      onRefreshData();
-    } catch (err: any) { alert('Erro: ' + err.message); } finally { setIsSaving(false); }
-  };
-
-  const handleUpdateOrderStatus = async (status: OrderStatus) => {
-    if (!selectedTable || !selectedTable.currentOrder) return;
-    setIsSaving(true);
-    try {
-      const updatedOrder = { ...selectedTable.currentOrder, status };
-      await supabase.from('tables').upsert({ id: selectedTable.id, status: 'occupied', current_order: updatedOrder });
-      onRefreshData();
-    } catch (err: any) { alert('Erro: ' + err.message); } finally { setIsSaving(false); }
-  };
-
-  const handleToggleCoupon = async (id: string, current: boolean) => {
-    await supabase.from('coupons').update({ is_active: !current }).eq('id', id);
-    fetchMarketingData();
+  const handleUpdateLoyalty = async (updates: Partial<LoyaltyConfig>) => {
+    const next = { ...loyalty, ...updates };
+    setLoyalty(next);
+    // Usando camelCase conforme mapeado no esquema loyalty_config
+    const { error } = await supabase.from('loyalty_config').upsert({ id: 1, ...next });
+    if (error) alert('Erro ao salvar fidelidade: ' + error.message);
+    fetchMarketing();
   };
 
   const handleAddCoupon = async (e: any) => {
@@ -177,262 +87,304 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     };
     const { error } = await supabase.from('coupons').insert([newCoupon]);
     if (error) alert('Erro: ' + error.message);
-    else { e.target.reset(); fetchMarketingData(); }
+    else { e.target.reset(); fetchMarketing(); }
   };
 
-  const handleUpdateLoyalty = async (updates: Partial<LoyaltyConfig>) => {
-    const nextLoyalty = { ...loyalty, ...updates };
-    setLoyalty(nextLoyalty); 
-    
-    // Mapeando para camelCase para a tabela loyalty_config conforme erro
-    const dbUpdates: any = {};
-    if (updates.isActive !== undefined) dbUpdates.isActive = updates.isActive;
-    if (updates.spendingGoal !== undefined) dbUpdates.spendingGoal = updates.spendingGoal;
-    if (updates.scopeType !== undefined) dbUpdates.scopeType = updates.scopeType;
-    if (updates.scopeValue !== undefined) dbUpdates.scopeValue = updates.scopeValue;
-    
-    const { error } = await supabase.from('loyalty_config').upsert({ id: 1, ...dbUpdates });
-    if (error) alert('Erro ao salvar fidelidade: ' + error.message);
-    else fetchMarketingData();
+  const handleToggleCoupon = async (id: string, current: boolean) => {
+    await supabase.from('coupons').update({ is_active: !current }).eq('id', id);
+    fetchMarketing();
   };
 
-  const productsInPromotion = useMemo(() => {
-    const activeC = coupons.filter(c => c.isActive);
-    return menuItems.filter(p => activeC.some(c => 
-      c.scopeType === 'all' || 
-      (c.scopeType === 'category' && c.scopeValue === p.category) ||
-      (c.scopeType === 'product' && c.scopeValue === p.id)
-    )).map(p => {
-      const c = activeC.find(c => c.scopeType === 'all' || (c.scopeType === 'category' && c.scopeValue === p.category) || (c.scopeType === 'product' && c.scopeValue === p.id));
-      return { ...p, promoCode: c?.code };
-    });
-  }, [menuItems, coupons]);
+  const handlePrint = (order: Order) => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+    const items = order.items.map(i => `<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span>${i.quantity}x ${i.name}</span><span>R$ ${(i.price*i.quantity).toFixed(2)}</span></div>`).join('');
+    w.document.write(`<html><body style="font-family:monospace;width:280px;padding:10px;"><h2 style="text-align:center;margin-bottom:5px;">${STORE_INFO.name}</h2><p style="text-align:center;font-size:10px;">Pedido #${order.id} - Mesa ${order.tableId}</p><hr/>${items}<hr/><div style="display:flex;justify-content:space-between;font-weight:bold;"><span>TOTAL:</span><span>R$ ${order.finalTotal.toFixed(2)}</span></div><p style="text-align:center;font-size:9px;margin-top:20px;">Obrigado pela preferência!</p><script>window.onload=()=>{window.print();window.close();};</script></body></html>`);
+    w.document.close();
+  };
+
+  const physicalTables = tables.filter(t => t.id <= 12).sort((a,b) => a.id - b.id);
+  const activeDeliveries = tables.filter(t => t.id >= 900 && t.id <= 999 && t.status === 'occupied');
+  const selectedTable = tables.find(t => t.id === selectedTableId) || null;
+  const filteredMenu = menuItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || i.category.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="w-full">
-      <div className="bg-black p-5 md:p-8 rounded-[2.5rem] shadow-2xl mb-8 border-b-4 border-yellow-400">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="text-center md:text-left">
-            <h2 className="text-2xl md:text-3xl font-black italic text-yellow-400 mb-1 uppercase tracking-tighter leading-none">D.MOREIRA ADMIN</h2>
-            <div className="flex items-center justify-center md:justify-start gap-2">
-              <span className={`w-2 h-2 rounded-full ${dbStatus === 'ok' ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></span>
-              <p className="text-gray-500 font-bold text-[8px] uppercase tracking-[0.3em]">{dbStatus === 'ok' ? 'Online' : 'Conectando...'}</p>
-            </div>
+      {/* Header Admin */}
+      <div className="bg-black p-6 rounded-[2.5rem] shadow-2xl mb-8 border-b-4 border-yellow-400 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div>
+          <h2 className="text-2xl font-black italic text-yellow-400 uppercase tracking-tighter">D.MOREIRA ADMIN</h2>
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${dbStatus === 'ok' ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></span>
+            <p className="text-[8px] text-gray-500 uppercase font-black tracking-widest">{dbStatus === 'ok' ? 'Online' : 'Conectando...'}</p>
           </div>
-          <nav className="flex flex-wrap justify-center gap-1.5 p-1 bg-gray-900 rounded-2xl w-full md:w-auto">
-            {(['tables', 'delivery', 'menu', 'categories', 'marketing'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-3.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}>
-                {tab === 'marketing' ? 'Marketing' : tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Entregas' : tab === 'menu' ? 'Produtos' : 'Categorias'}
-              </button>
-            ))}
-          </nav>
-          <div className="flex items-center gap-4">
-            <button onClick={handleTestSound} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all">Testar Som</button>
-            <button onClick={onToggleAudio} className={`p-4 rounded-full transition-all ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-gray-600'}`}>
-              <VolumeIcon muted={!audioEnabled} size={24}/>
+        </div>
+        <nav className="flex bg-gray-900 p-1.5 rounded-2xl gap-1 overflow-x-auto no-scrollbar max-w-full">
+          {(['tables', 'delivery', 'menu', 'marketing'] as const).map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-3 rounded-xl text-[9px] font-black uppercase transition-all whitespace-nowrap ${activeTab === tab ? 'bg-yellow-400 text-black' : 'text-gray-500 hover:text-white'}`}>
+              {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Pedidos' : tab === 'menu' ? 'Produtos' : 'Marketing'}
             </button>
-            <button onClick={onLogout} className="bg-red-600 text-white font-black text-xs uppercase px-8 py-4 rounded-2xl shadow-xl hover:brightness-110 active:scale-95 transition-all">Sair</button>
-          </div>
+          ))}
+        </nav>
+        <div className="flex gap-4">
+          <button onClick={onToggleAudio} className={`p-4 rounded-full transition-all ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-gray-600'}`}>
+            <VolumeIcon muted={!audioEnabled} size={20}/>
+          </button>
+          <button onClick={onLogout} className="bg-red-600 text-white font-black text-[10px] uppercase px-6 py-4 rounded-2xl shadow-xl hover:brightness-110 active:scale-95 transition-all">Sair</button>
         </div>
       </div>
 
-      <div className="transition-all duration-300">
-        {activeTab === 'marketing' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in duration-500">
-            {/* Cupons */}
-            <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
-              <h3 className="text-xl font-black italic uppercase mb-6 flex items-center gap-2">🎫 Cupons de Desconto</h3>
-              <form onSubmit={handleAddCoupon} className="grid grid-cols-2 gap-3 mb-8 bg-gray-50 p-6 rounded-[2rem]">
-                <input name="code" placeholder="CÓDIGO" className="bg-white border p-3 rounded-xl font-bold text-xs uppercase" required />
-                <input name="percentage" type="number" placeholder="% OFF" className="bg-white border p-3 rounded-xl font-bold text-xs" required />
-                <select name="scopeType" value={couponScopeType} onChange={e => setCouponScopeType(e.target.value as any)} className="bg-white border p-3 rounded-xl font-bold text-[10px] uppercase">
-                  <option value="all">Toda a Loja</option>
-                  <option value="category">Por Categoria</option>
-                  <option value="product">Por Produto</option>
-                </select>
-                {couponScopeType !== 'all' && (
-                  <select name="scopeValue" className="bg-white border p-3 rounded-xl font-bold text-[10px] uppercase" required>
-                    <option value="">Selecione...</option>
-                    {couponScopeType === 'category' ? categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>) : menuItems.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                )}
-                <button type="submit" className="col-span-2 bg-black text-yellow-400 py-4 rounded-xl font-black text-[10px] uppercase">Criar Cupom</button>
-              </form>
-              <div className="space-y-4">
-                <p className="text-[10px] font-black uppercase text-gray-400 ml-1">Cupons Criados</p>
-                <div className="space-y-3 max-h-[300px] overflow-y-auto no-scrollbar">
-                  {coupons.map(c => (
-                    <div key={c.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border hover:border-yellow-400 transition-all">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2"><span className="font-black text-sm">{c.code}</span><span className="bg-yellow-400 text-black px-2 py-0.5 rounded text-[10px] font-black">{c.percentage}%</span></div>
-                        <p className="text-[8px] text-gray-400 font-bold uppercase mt-1">Alvo: {c.scopeType} {c.scopeValue}</p>
-                      </div>
-                      <button onClick={() => handleToggleCoupon(c.id, c.isActive)} className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase transition-all shadow-sm ${c.isActive ? 'bg-green-500 text-white shadow-green-200' : 'bg-gray-300 text-gray-600'}`}>
-                        {c.isActive ? 'Ativado' : 'Desativado'}
-                      </button>
-                    </div>
-                  ))}
+      <div className="animate-in fade-in duration-500">
+        {/* ABA MESAS */}
+        {activeTab === 'tables' && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-5">
+            {physicalTables.map(t => (
+              <button key={t.id} onClick={() => setSelectedTableId(t.id)} className={`h-48 p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl ring-4 ring-yellow-400/20'}`}>
+                {t.currentOrder?.status === 'pending' && <span className="absolute top-0 right-0 bg-red-600 text-white text-[8px] font-black px-4 py-2 rounded-bl-2xl animate-pulse">NOVO</span>}
+                <span className="text-5xl font-black italic text-black">{t.id}</span>
+                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>{t.status === 'free' ? 'Livre' : 'Ocupada'}</span>
+                {t.currentOrder && <span className="text-[11px] font-black mt-2 italic bg-white/40 px-2 py-0.5 rounded">R$ {Number(t.currentOrder.finalTotal).toFixed(2)}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ABA PEDIDOS (ENTREGA/BALCÃO) */}
+        {activeTab === 'delivery' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {activeDeliveries.length > 0 ? activeDeliveries.map(t => (
+              <button key={t.id} onClick={() => setSelectedTableId(t.id)} className="bg-white border-2 border-yellow-400 p-6 rounded-[2.5rem] shadow-xl text-left hover:brightness-105 transition-all">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-2xl">{t.id >= 950 ? '🏪' : '🚚'}</span>
+                  <span className="bg-yellow-100 text-[9px] font-black px-2 py-1 rounded-full uppercase">#{t.id}</span>
                 </div>
+                <h4 className="font-black text-sm uppercase truncate">{t.currentOrder?.customerName}</h4>
+                <p className="text-[9px] text-gray-400 font-bold truncate mb-3">{t.currentOrder?.address || 'Retirada no Balcão'}</p>
+                <div className={`${STATUS_CFG[t.currentOrder?.status || 'pending'].bg} ${STATUS_CFG[t.currentOrder?.status || 'pending'].color} text-[8px] font-black px-3 py-1.5 rounded-full inline-block uppercase tracking-wider`}>
+                  {STATUS_CFG[t.currentOrder?.status || 'pending'].label}
+                </div>
+              </button>
+            )) : (
+              <div className="col-span-full py-20 text-center bg-white rounded-[3rem] border border-dashed border-gray-300">
+                <p className="text-gray-400 font-black text-xs uppercase tracking-widest">Nenhum pedido ativo no momento.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ABA PRODUTOS */}
+        {activeTab === 'menu' && (
+          <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-50">
+            <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
+              <h3 className="text-2xl font-black italic uppercase">Gestão de Estoque</h3>
+              <div className="flex w-full md:w-auto gap-4">
+                <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="PESQUISAR..." className="flex-1 md:w-64 bg-gray-50 border-2 border-transparent focus:border-yellow-400 rounded-2xl px-6 py-4 text-xs font-black outline-none transition-all" />
+                <button onClick={() => { setEditingProduct({ name: '', price: '', category: categories[0]?.name, image: '', isAvailable: true }); setIsProductModalOpen(true); }} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl hover:scale-105 transition-all">+ Novo</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-6">
+              {filteredMenu.map(item => (
+                <div key={item.id} className={`bg-gray-50 p-4 rounded-[2.5rem] border transition-all ${!item.isAvailable ? 'opacity-50 grayscale' : 'hover:border-yellow-400'}`}>
+                  <img src={item.image} className="w-full aspect-square object-cover rounded-3xl mb-4 shadow-sm" />
+                  <h4 className="font-black text-[10px] uppercase truncate">{item.name}</h4>
+                  <p className="text-[8px] text-gray-400 font-bold uppercase mb-2">{item.category}</p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-yellow-700 font-black italic text-xs">R$ {item.price.toFixed(2)}</span>
+                    <div className="flex gap-1">
+                      <button onClick={() => { setEditingProduct(item); setIsProductModalOpen(true); }} className="p-2 bg-white text-blue-500 rounded-xl shadow-sm hover:bg-blue-50"><PrinterIcon size={14}/></button>
+                      <button onClick={() => onDeleteProduct(item.id)} className="p-2 bg-white text-red-500 rounded-xl shadow-sm hover:bg-red-50"><TrashIcon size={14}/></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ABA MARKETING */}
+        {activeTab === 'marketing' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Fidelidade */}
+            <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-xl font-black italic uppercase">💎 Fidelidade</h3>
+                <button onClick={() => handleUpdateLoyalty({ isActive: !loyalty.isActive })} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase transition-all shadow-sm ${loyalty.isActive ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                  {loyalty.isActive ? 'Ativado' : 'Inativo'}
+                </button>
+              </div>
+              
+              <div className="bg-yellow-50 p-6 rounded-[2.5rem] border-2 border-yellow-100 mb-8 space-y-6">
+                 <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-1">
+                      <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Meta R$</p>
+                      <input type="number" value={loyalty.spendingGoal} onChange={e => handleUpdateLoyalty({ spendingGoal: Number(e.target.value) })} className="w-full bg-white p-4 rounded-xl border-2 border-yellow-200 font-black text-sm outline-none focus:border-yellow-400" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Escopo</p>
+                      <select value={loyalty.scopeType} onChange={e => handleUpdateLoyalty({ scopeType: e.target.value as any, scopeValue: '' })} className="w-full bg-white p-4 rounded-xl border-2 border-yellow-200 font-black text-[10px] uppercase outline-none focus:border-yellow-400">
+                        <option value="all">Loja Toda</option>
+                        <option value="category">Por Categoria</option>
+                        <option value="product">Por Produto</option>
+                      </select>
+                    </div>
+                 </div>
+                 {loyalty.scopeType !== 'all' && (
+                   <div className="space-y-1 animate-in slide-in-from-top-2">
+                     <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Selecionar Alvo</p>
+                     <select value={loyalty.scopeValue} onChange={e => handleUpdateLoyalty({ scopeValue: e.target.value })} className="w-full bg-white p-4 rounded-xl border-2 border-yellow-200 font-black text-[10px] uppercase outline-none">
+                       <option value="">Escolher...</option>
+                       {loyalty.scopeType === 'category' 
+                         ? categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>) 
+                         : menuItems.map(p => <option key={p.id} value={p.id}>{p.name}</option>)
+                       }
+                     </select>
+                   </div>
+                 )}
+              </div>
+
+              <div className="flex-1 space-y-3 overflow-y-auto no-scrollbar max-h-80">
+                <p className="text-[10px] font-black uppercase text-gray-400 mb-4 tracking-widest">Ranking Clientes</p>
+                {loyaltyUsers.map((u, i) => (
+                  <div key={u.phone} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border-l-8 border-yellow-400 shadow-sm">
+                    <div className="flex items-center gap-4">
+                      <span className="w-6 h-6 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[10px] font-black">{i+1}</span>
+                      <div><p className="font-black text-xs uppercase">{u.name}</p><p className="text-[9px] text-gray-400 font-bold">{u.phone}</p></div>
+                    </div>
+                    <span className="text-yellow-700 font-black italic text-xs">R$ {u.accumulated.toFixed(2)}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Fidelidade */}
+            {/* Cupons */}
             <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-black italic uppercase flex items-center gap-2">💎 Fidelidade</h3>
-                <button 
-                  onClick={() => handleUpdateLoyalty({ isActive: !loyalty.isActive })} 
-                  className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase transition-all ${loyalty.isActive ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}
-                >
-                  {loyalty.isActive ? 'Ativo' : 'Inativo'}
-                </button>
-              </div>
-              <div className="space-y-4 mb-8 bg-yellow-50 p-6 rounded-[2rem] border-2 border-yellow-100">
-                <div className="space-y-1">
-                  <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Meta de Gastos (R$)</p>
-                  <input type="number" value={loyalty.spendingGoal} onChange={e => handleUpdateLoyalty({ spendingGoal: Number(e.target.value) })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-sm" placeholder="Meta R$" />
-                </div>
-                
-                <div className="space-y-1">
-                  <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">O que pontua?</p>
-                  <select value={loyalty.scopeType} onChange={e => handleUpdateLoyalty({ scopeType: e.target.value as any, scopeValue: '' })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-[10px] uppercase">
-                    <option value="all">Loja Toda</option>
-                    <option value="category">Categoria Específica</option>
-                    <option value="product">Produto Específico</option>
-                  </select>
-                </div>
+              <h3 className="text-xl font-black italic uppercase mb-8">🎫 Cupons de Desconto</h3>
+              <form onSubmit={handleAddCoupon} className="grid grid-cols-2 gap-4 mb-8 bg-gray-50 p-6 rounded-[2.5rem] border border-gray-200">
+                <input name="code" placeholder="CÓDIGO" className="bg-white border-2 border-transparent focus:border-yellow-400 p-4 rounded-xl font-black text-xs uppercase outline-none" required />
+                <input name="percentage" type="number" placeholder="% OFF" className="bg-white border-2 border-transparent focus:border-yellow-400 p-4 rounded-xl font-black text-xs outline-none" required />
+                <select name="scopeType" className="bg-white border-2 border-transparent focus:border-yellow-400 p-4 rounded-xl font-black text-[10px] uppercase outline-none">
+                  <option value="all">Loja Toda</option>
+                  <option value="category">Por Categoria</option>
+                  <option value="product">Por Produto</option>
+                </select>
+                <button type="submit" className="bg-black text-yellow-400 rounded-xl font-black text-[10px] uppercase hover:brightness-125">Criar Cupom</button>
+              </form>
 
-                {loyalty.scopeType !== 'all' && (
-                  <div className="space-y-1 animate-in slide-in-from-top-2 duration-300">
-                    <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Selecione o Alvo</p>
-                    <select 
-                      value={loyalty.scopeValue} 
-                      onChange={e => handleUpdateLoyalty({ scopeValue: e.target.value })} 
-                      className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-[10px] uppercase"
-                    >
-                      <option value="">Selecione...</option>
-                      {loyalty.scopeType === 'category' 
-                        ? categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>) 
-                        : menuItems.map(p => <option key={p.id} value={p.id}>{p.name}</option>)
-                      }
-                    </select>
-                  </div>
-                )}
-              </div>
-              
-              <div className="max-h-[300px] overflow-y-auto space-y-2 no-scrollbar">
-                <p className="text-[10px] font-black uppercase text-gray-400 mb-2 ml-1">Ranking de Clientes</p>
-                {loyaltyUsers.map((user, i) => (
-                  <div key={user.phone} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-transparent hover:border-yellow-200 transition-all">
-                    <div className="flex items-center gap-3"><span className="w-6 h-6 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[10px] font-black">{i+1}</span><div><p className="font-black text-xs uppercase">{user.name}</p><p className="text-[9px] text-gray-400">{user.phone}</p></div></div>
-                    <p className="text-[10px] font-black text-yellow-700 italic">R$ {user.accumulated.toFixed(2)}</p>
+              <div className="flex-1 space-y-3 overflow-y-auto no-scrollbar max-h-80">
+                {coupons.map(c => (
+                  <div key={c.id} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                    <div>
+                      <div className="flex items-center gap-2"><span className="font-black text-sm">{c.code}</span><span className="bg-yellow-400 text-black px-2 py-0.5 rounded text-[10px] font-black">{c.percentage}%</span></div>
+                      <p className="text-[8px] text-gray-400 font-bold uppercase mt-1">Alvo: {c.scopeType} {c.scopeValue}</p>
+                    </div>
+                    <button onClick={() => handleToggleCoupon(c.id, c.isActive)} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${c.isActive ? 'bg-green-500 text-white shadow-lg shadow-green-100' : 'bg-gray-300 text-gray-500'}`}>
+                      {c.isActive ? 'Ativo' : 'Desativado'}
+                    </button>
                   </div>
                 ))}
               </div>
             </div>
           </div>
         )}
-
-        {activeTab === 'tables' && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5">
-            {physicalTables.map(t => {
-              const statusKey = t.currentOrder?.status || 'fallback';
-              const statusCfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG.fallback;
-              return (
-                <button key={t.id} onClick={() => { setSelectedTableId(t.id); }} className={`h-52 p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative overflow-hidden ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl ring-4 ring-yellow-400/20'}`}>
-                  {t.currentOrder?.status === 'pending' && <div className="absolute top-0 right-0 bg-red-600 text-white text-[9px] font-black uppercase px-4 py-2 rounded-bl-2xl shadow-lg animate-pulse">NOVO</div>}
-                  <span className="text-5xl font-black italic text-black">{t.id}</span>
-                  <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>{t.status === 'free' ? 'Livre' : 'Ocupada'}</span>
-                  {t.status === 'occupied' && (
-                    <div className="flex flex-col items-center gap-1 mt-1">
-                      <span className="text-[11px] font-black text-black bg-white/40 px-2 py-0.5 rounded-md italic">R$ {Number(t.currentOrder?.finalTotal || 0).toFixed(2)}</span>
-                      <span className={`text-[7px] font-black uppercase px-2 py-0.5 rounded-full border border-black/10 ${statusCfg.bg} ${statusCfg.color}`}>{statusCfg.label}</span>
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        
-        {activeTab === 'delivery' && (
-          <div className="space-y-10">
-            <div className="flex justify-between items-center px-2">
-              <h3 className="text-xl font-black italic uppercase tracking-widest text-gray-800">🚚 Entregas Ativas</h3>
-              <button onClick={() => handleCreateManualOrder('delivery')} className="bg-black text-yellow-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg">+ Entrega</button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {activeDeliveries.map(t => (
-                <button key={t.id} onClick={() => setSelectedTableId(t.id)} className="bg-white border-2 border-yellow-400 p-6 rounded-[2.5rem] shadow-xl text-left">
-                  <div className="flex justify-between mb-4"><span className="text-2xl">🚚</span><span className="text-[9px] font-black uppercase px-2 py-1 bg-yellow-100 rounded-full">#{t.id}</span></div>
-                  <h4 className="font-black text-sm uppercase truncate mb-1">{t.currentOrder?.customerName}</h4>
-                  <p className="text-[9px] text-gray-400 font-bold truncate">{t.currentOrder?.address}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'menu' && (
-          <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-50">
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="text-2xl font-black italic uppercase">Produtos</h3>
-              <div className="flex items-center gap-4">
-                <input 
-                  type="text" 
-                  value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)} 
-                  placeholder="Pesquisar..." 
-                  className="bg-gray-50 border-2 border-transparent focus:border-yellow-400 rounded-xl px-4 py-2 text-xs font-bold outline-none transition-all"
-                />
-                <button onClick={() => { setEditingProduct({ name: '', price: '', category: categories[0]?.name, image: '', isAvailable: true }); setIsProductModalOpen(true); }} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-xl">+ Novo</button>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
-              {filteredMenu.map(item => (
-                <div key={item.id} className="bg-gray-50 p-5 rounded-[2.5rem] border relative">
-                  <img src={item.image} className="w-full aspect-square object-cover rounded-[2rem] mb-4" />
-                  <h4 className="font-black text-xs uppercase truncate">{item.name}</h4>
-                  <div className="flex justify-between items-center mt-2"><span className="text-yellow-700 font-black italic text-xs">R$ {item.price.toFixed(2)}</span><button onClick={() => onDeleteProduct(item.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><TrashIcon/></button></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
+      {/* MODAL DETALHES DO PEDIDO */}
       {selectedTable && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-0 md:p-4 animate-in fade-in duration-200">
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setSelectedTableId(null)} />
-          <div className="relative bg-white w-full max-w-5xl h-full md:h-[85vh] md:rounded-[3.5rem] flex flex-col overflow-hidden shadow-2xl border-t-8 border-yellow-400">
-            <div className="p-6 md:p-10 border-b flex justify-between items-center bg-white">
-              <div><h3 className="text-2xl font-black uppercase italic">{selectedTable.id >= 900 ? 'Entrega/Balcão' : `Mesa ${selectedTable.id}`}</h3><p className="text-[10px] font-bold text-gray-400">{selectedTable.currentOrder?.customerName}</p></div>
-              <div className="flex gap-2"><button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-3 bg-gray-100 rounded-full"><PrinterIcon/></button><button onClick={() => setSelectedTableId(null)} className="p-3 bg-gray-100 rounded-full"><CloseIcon/></button></div>
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 sm:p-8 animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
+          <div className="relative bg-white w-full max-w-5xl h-full sm:h-[85vh] rounded-[3.5rem] flex flex-col overflow-hidden shadow-2xl border-t-8 border-yellow-400">
+            <div className="p-8 border-b flex justify-between items-center bg-white sticky top-0 z-10">
+              <div>
+                <h3 className="text-3xl font-black uppercase italic tracking-tighter leading-none">
+                  {selectedTable.id >= 950 ? 'Retirada Balcão' : selectedTable.id >= 900 ? 'Entrega Delivery' : `Mesa ${selectedTable.id}`}
+                </h3>
+                <p className="text-[11px] font-black text-gray-400 mt-2 uppercase tracking-widest">
+                  Cliente: <span className="text-black">{selectedTable.currentOrder?.customerName}</span> • <span className="text-yellow-600">{selectedTable.currentOrder?.paymentMethod}</span>
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-4 bg-gray-100 rounded-full hover:bg-yellow-400 hover:text-black transition-all shadow-sm"><PrinterIcon size={24}/></button>
+                <button onClick={() => setSelectedTableId(null)} className="p-4 bg-gray-100 rounded-full hover:bg-red-50 hover:text-red-500 transition-all shadow-sm"><CloseIcon size={24}/></button>
+              </div>
             </div>
+
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-               <div className="flex-1 p-6 overflow-y-auto">
-                  <div className="space-y-3 mb-8">
+               {/* LADO ESQUERDO: ITENS E RESUMO */}
+               <div className="flex-1 p-8 overflow-y-auto no-scrollbar space-y-6">
+                  <div className="space-y-4">
                     {selectedTable.currentOrder?.items.map((item, i) => (
-                      <div key={i} className="flex justify-between bg-gray-50 p-4 rounded-2xl"><span className="font-black text-xs uppercase">{item.quantity}x {item.name}</span><span className="font-black text-xs">R$ {(item.price*item.quantity).toFixed(2)}</span></div>
+                      <div key={i} className="flex gap-6 bg-gray-50 p-6 rounded-3xl border border-gray-100 shadow-sm items-center">
+                        <img src={item.image} className="w-20 h-20 rounded-2xl object-cover shadow-sm" />
+                        <div className="flex-1">
+                          <h4 className="font-black text-sm uppercase leading-tight">{item.name}</h4>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">{item.category}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-black text-gray-400 uppercase">{item.quantity}x R$ {item.price.toFixed(2)}</p>
+                          <p className="text-lg font-black italic text-black">R$ {(item.price*item.quantity).toFixed(2)}</p>
+                        </div>
+                      </div>
                     ))}
                   </div>
-                  <div className="border-t pt-6 sticky bottom-0 bg-white">
-                    <div className="flex justify-between items-end mb-6"><span className="text-[10px] font-black uppercase text-gray-400">Total</span><span className="text-3xl font-black italic">R$ {selectedTable.currentOrder?.finalTotal.toFixed(2)}</span></div>
-                    <button onClick={() => { onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="w-full bg-green-600 text-white py-4 rounded-xl font-black uppercase text-[10px]">Concluir Pedido</button>
+
+                  <div className="pt-10 border-t-2 border-dashed mt-10">
+                    <div className="flex justify-between items-end mb-8">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] mb-1">Total Final à Receber</span>
+                        <span className="text-5xl font-black italic tracking-tighter text-black">R$ {selectedTable.currentOrder?.finalTotal.toFixed(2).replace('.', ',')}</span>
+                      </div>
+                      {selectedTable.currentOrder?.discount && selectedTable.currentOrder.discount > 0 && (
+                        <div className="bg-green-100 text-green-700 px-4 py-2 rounded-2xl text-[10px] font-black uppercase shadow-sm">Desconto: R$ {selectedTable.currentOrder.discount.toFixed(2)}</div>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <button 
+                        onClick={() => { onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} 
+                        className="bg-green-600 text-white py-6 rounded-[2rem] font-black uppercase text-xs shadow-2xl shadow-green-200 hover:brightness-110 active:scale-95 transition-all"
+                      >
+                        Concluir e Liberar 🏁
+                      </button>
+                      <button 
+                        onClick={() => { onUpdateTable(selectedTable.id, 'occupied', { ...selectedTable.currentOrder!, status: 'preparing' }); }} 
+                        className={`py-6 rounded-[2rem] font-black uppercase text-xs transition-all border-4 ${selectedTable.currentOrder?.status === 'preparing' ? 'bg-black text-white border-black' : 'bg-white text-black border-black hover:bg-gray-50'}`}
+                      >
+                        Começar Preparo 🍳
+                      </button>
+                    </div>
                   </div>
                </div>
-               <div className="w-full md:w-80 bg-gray-50 border-l p-6 overflow-y-auto max-h-[40vh] md:max-h-full">
-                  <h4 className="text-[10px] font-black uppercase mb-4">Mudar Status</h4>
-                  <div className="grid grid-cols-3 gap-1 mb-6">
-                    {['preparing', 'ready', 'delivered'].map(s => (
-                      <button key={s} onClick={() => handleUpdateOrderStatus(s as any)} className={`py-3 rounded-lg text-[8px] font-black uppercase border-2 ${selectedTable.currentOrder?.status === s ? 'bg-black text-white border-black' : 'bg-white text-gray-400'}`}>{s}</button>
-                    ))}
+
+               {/* LADO DIREITO: ACOES RAPIDAS / ADD ITENS */}
+               <div className="w-full md:w-96 bg-gray-50 border-l p-8 overflow-y-auto no-scrollbar space-y-8">
+                  <div>
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-6">Status da Produção</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {(['pending', 'preparing', 'ready', 'delivered'] as OrderStatus[]).map(s => (
+                        <button 
+                          key={s} 
+                          onClick={() => onUpdateTable(selectedTable.id, 'occupied', { ...selectedTable.currentOrder!, status: s })}
+                          className={`py-4 rounded-2xl text-[9px] font-black uppercase border-2 transition-all ${selectedTable.currentOrder?.status === s ? 'bg-black text-white border-black shadow-lg' : 'bg-white text-gray-400 border-gray-100'}`}
+                        >
+                          {STATUS_CFG[s].label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <h4 className="text-[10px] font-black uppercase mb-4">Adicionar Itens</h4>
-                  <div className="space-y-2">
-                    {menuItems.filter(p => p.isAvailable).map(p => (
-                      <button key={p.id} onClick={() => onAddToOrder(selectedTable.id, p)} className="w-full bg-white p-3 rounded-xl border flex justify-between items-center text-[10px] font-black uppercase"><span>{p.name}</span><span className="text-yellow-600">+ ADD</span></button>
-                    ))}
+
+                  <div>
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-6">Adicionar Item à Comanda</h4>
+                    <div className="space-y-2">
+                      {menuItems.filter(p => p.isAvailable).map(p => (
+                        <button key={p.id} onClick={() => onAddToOrder(selectedTable.id, p)} className="w-full bg-white p-5 rounded-[1.5rem] border border-gray-200 flex justify-between items-center text-[10px] font-black uppercase hover:border-yellow-400 hover:shadow-md transition-all group">
+                          <div className="flex flex-col text-left">
+                            <span>{p.name}</span>
+                            <span className="text-gray-400 font-bold">R$ {p.price.toFixed(2)}</span>
+                          </div>
+                          <span className="text-yellow-600 text-2xl group-hover:scale-125 transition-transform">+</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                </div>
             </div>
@@ -440,21 +392,42 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* MODAL PRODUTO (NOVO/EDITAR) */}
       {isProductModalOpen && (
-        <div className="fixed inset-0 z-[400] flex items-center justify-center p-6 bg-black/95 backdrop-blur-xl animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-xl rounded-[3.5rem] p-10 relative shadow-2xl animate-in zoom-in">
-             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-10 right-10 p-4 bg-gray-100 rounded-full"><CloseIcon size={24}/></button>
-             <h3 className="text-3xl font-black italic mb-10 uppercase tracking-tighter">Dados do Produto</h3>
-             <form onSubmit={(e) => { e.preventDefault(); onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price) }); setIsProductModalOpen(false); }} className="space-y-6">
-                <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="Nome" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400" required />
-                <div className="grid grid-cols-2 gap-4">
-                    <input type="number" step="0.01" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} placeholder="Preço" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none" required />
-                    <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none">
-                      {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
-                    </select>
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
+          <div className="bg-white w-full max-w-2xl rounded-[4rem] p-12 relative shadow-2xl animate-in zoom-in duration-300">
+             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-12 right-12 p-5 bg-gray-100 rounded-full hover:bg-red-50 transition-all"><CloseIcon size={24}/></button>
+             <h3 className="text-4xl font-black italic mb-12 uppercase tracking-tighter">Produto</h3>
+             <form onSubmit={(e) => { 
+               e.preventDefault(); 
+               onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price) }); 
+               setIsProductModalOpen(false); 
+             }} className="space-y-8">
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black uppercase text-gray-400 ml-2">Nome do Item</p>
+                  <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="X-TUDO MONSTRO" className="w-full bg-gray-50 border-2 border-transparent focus:border-yellow-400 rounded-3xl px-8 py-5 text-sm font-black outline-none transition-all uppercase" required />
                 </div>
-                <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} placeholder="URL Imagem" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none" />
-                <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-3xl font-black text-xs uppercase shadow-2xl">Salvar Alterações</button>
+                <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase text-gray-400 ml-2">Preço de Venda</p>
+                      <input type="number" step="0.01" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} placeholder="0.00" className="w-full bg-gray-50 border-2 border-transparent focus:border-yellow-400 rounded-3xl px-8 py-5 text-sm font-black outline-none transition-all" required />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase text-gray-400 ml-2">Categoria</p>
+                      <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border-2 border-transparent focus:border-yellow-400 rounded-3xl px-8 py-5 text-sm font-black outline-none transition-all uppercase">
+                        {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
+                      </select>
+                    </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black uppercase text-gray-400 ml-2">URL da Imagem</p>
+                  <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} placeholder="https://..." className="w-full bg-gray-50 border-2 border-transparent focus:border-yellow-400 rounded-3xl px-8 py-5 text-xs font-bold outline-none transition-all" />
+                </div>
+                <div className="flex items-center gap-4 bg-gray-50 p-6 rounded-3xl">
+                   <input type="checkbox" checked={editingProduct?.isAvailable} onChange={e => setEditingProduct({...editingProduct!, isAvailable: e.target.checked})} className="w-6 h-6 rounded-lg accent-yellow-400" id="available" />
+                   <label htmlFor="available" className="font-black text-xs uppercase cursor-pointer">Produto Disponível no Cardápio</label>
+                </div>
+                <button type="submit" className="w-full bg-black text-yellow-400 py-7 rounded-[2.5rem] font-black text-sm uppercase shadow-2xl shadow-yellow-400/10 hover:brightness-125 transition-all">Salvar Alterações</button>
              </form>
           </div>
         </div>

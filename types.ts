@@ -45,7 +45,6 @@ export interface Order {
   orderType: OrderType;
   address?: string;
   couponCode?: string;
-  // Fix: Added isUpdated to allow flagging modified orders as used in handlePlaceOrder in App.tsx
   isUpdated?: boolean;
 }
 
@@ -55,14 +54,13 @@ export interface Table {
   currentOrder: Order | null;
 }
 
-// Novos Tipos para Marketing
 export interface Coupon {
   id: string;
   code: string;
   percentage: number;
   isActive: boolean;
   scopeType: 'all' | 'category' | 'product';
-  scopeValue: string; // ID do produto ou nome da categoria
+  scopeValue: string;
 }
 
 export interface LoyaltyConfig {
