@@ -8,15 +8,26 @@ export const STORE_INFO: StoreInfo = {
   whatsapp: '558591076984'
 };
 
-// Mesas 1 a 12 (Físicas), 900 (Entregas), 901 (Retiradas/Balcão)
+// Mesas 1 a 12 (Físicas)
+// 900-949 (Entregas Dinâmicas)
+// 950-999 (Balcão Dinâmico)
 export const INITIAL_TABLES: Table[] = [
   ...Array.from({ length: 12 }, (_, i) => ({
     id: i + 1,
     status: 'free' as const,
     currentOrder: null
   })),
-  { id: 900, status: 'free', currentOrder: null }, // Entrega
-  { id: 901, status: 'free', currentOrder: null }  // Retirada/Balcão
+  // Criamos alguns slots iniciais para garantir que a tabela exista no banco
+  ...Array.from({ length: 10 }, (_, i) => ({
+    id: 900 + i,
+    status: 'free' as const,
+    currentOrder: null
+  })),
+  ...Array.from({ length: 10 }, (_, i) => ({
+    id: 950 + i,
+    status: 'free' as const,
+    currentOrder: null
+  }))
 ];
 
 export const MENU_ITEMS: Product[] = [

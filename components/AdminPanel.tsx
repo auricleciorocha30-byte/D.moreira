@@ -43,24 +43,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [isCategoryEditModalOpen, setIsCategoryEditModalOpen] = useState(false);
   
-  // Estados para edição de dados do cliente pelo operador
   const [editCustomerName, setEditCustomerName] = useState('');
   const [editAddress, setEditAddress] = useState('');
 
-  const physicalTables = tables.filter(t => t.id <= 12).sort((a,b) => a.id - b.id);
-  const deliveryTables = tables.filter(t => t.id >= 900).sort((a,b) => a.id - b.id);
+  const physicalTables = useMemo(() => tables.filter(t => t.id <= 12).sort((a,b) => a.id - b.id), [tables]);
+  
+  // Pegamos apenas as entregas/balcão que estão OCUPADAS para mostrar na fila
+  const activeDeliveries = useMemo(() => tables.filter(t => t.id >= 900 && t.id <= 949 && t.status === 'occupied').sort((a,b) => a.id - b.id), [tables]);
+  const activeCounters = useMemo(() => tables.filter(t => t.id >= 950 && t.id <= 999 && t.status === 'occupied').sort((a,b) => a.id - b.id), [tables]);
+
   const selectedTable = useMemo(() => tables.find(t => t.id === selectedTableId) || null, [tables, selectedTableId]);
 
-  // Sincroniza campos de edição ao abrir o modal
   useMemo(() => {
     if (selectedTable?.currentOrder) {
       setEditCustomerName(selectedTable.currentOrder.customerName || '');
       setEditAddress(selectedTable.currentOrder.address || '');
-    } else {
-      setEditCustomerName('');
-      setEditAddress('');
     }
-  }, [selectedTableId]);
+  }, [selectedTableId, selectedTable]);
+
+  const handleCreateManualOrder = (type: 'delivery' | 'counter') => {
+    const rangeStart = type === 'delivery' ? 900 : 950;
+    const rangeEnd = type === 'delivery' ? 949 : 999;
+    
+    // Encontrar primeiro slot livre
+    const freeSlot = tables.find(t => t.id >= rangeStart && t.id <= rangeEnd && t.status === 'free');
+    const newId = freeSlot ? freeSlot.id : (Math.max(...tables.filter(t => t.id >= rangeStart && t.id <= rangeEnd).map(t => t.id), rangeStart - 1) + 1);
+    
+    const newOrder: Order = {
+      id: Math.random().toString(36).substr(2, 6).toUpperCase(),
+      customerName: type === 'delivery' ? 'Nova Entrega' : 'Novo Balcão',
+      items: [],
+      total: 0,
+      paymentMethod: 'Pendente',
+      timestamp: new Date().toISOString(),
+      tableId: newId,
+      orderType: type === 'delivery' ? 'delivery' : 'counter',
+      status: 'pending'
+    };
+
+    onUpdateTable(newId, 'occupied', newOrder);
+    setSelectedTableId(newId);
+    setModalTab('add'); // Abre direto na tela de adicionar itens
+  };
 
   const handleUpdateCustomerData = async () => {
     if (!selectedTable || !selectedTable.currentOrder) return;
@@ -71,15 +95,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         customerName: editCustomerName, 
         address: editAddress 
       };
-      const { error } = await supabase
-        .from('tables')
-        .update({ current_order: updatedOrder })
-        .eq('id', selectedTable.id);
-      
-      if (error) throw error;
+      await supabase.from('tables').upsert({ id: selectedTable.id, status: 'occupied', current_order: updatedOrder });
       onRefreshData();
     } catch (err: any) {
-      alert('Erro ao atualizar dados: ' + err.message);
+      alert('Erro: ' + err.message);
     } finally {
       setIsSaving(false);
     }
@@ -101,34 +120,36 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     setIsSaving(true);
     try {
       const updatedOrder = { ...selectedTable.currentOrder, status };
-      const { error } = await supabase.from('tables').update({ current_order: updatedOrder }).eq('id', selectedTable.id);
-      if (error) throw error;
+      await supabase.from('tables').upsert({ id: selectedTable.id, status: 'occupied', current_order: updatedOrder });
       onRefreshData();
     } catch (err: any) { alert('Erro: ' + err.message); } finally { setIsSaving(false); }
   };
 
   const handlePrint = (order: Order) => {
     const printWindow = window.open('', '_blank', 'width=300,height=600');
-    if (!printWindow) return alert('Habilite os pop-ups.');
+    if (!printWindow) return alert('Habilite pop-ups.');
     const itemsHtml = order.items.map(item => `
-      <div style="display: flex; justify-content: space-between; font-family: monospace; font-size: 12px;">
+      <div style="display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; margin-bottom: 2px;">
         <span>${item.quantity}x ${item.name.substring(0, 16)}</span>
         <span>R$ ${(item.price * item.quantity).toFixed(2)}</span>
       </div>
     `).join('');
-    const date = new Date().toLocaleString('pt-BR');
     printWindow.document.write(`
-      <html><body style="font-family: monospace; width: 58mm; padding: 5px;">
-        <div style="text-align: center; font-weight: bold;">${STORE_INFO.name}</div>
+      <html><body style="font-family: monospace; width: 58mm; padding: 5px; margin: 0;">
+        <div style="text-align: center; font-weight: bold; font-size: 14px;">${STORE_INFO.name}</div>
+        <div style="text-align: center; font-size: 8px; margin-bottom: 5px;">PARADA OBRIGATÓRIA</div>
         <hr/>
-        <div>PEDIDO: #${order.id}</div>
-        <div>MESA/LOCAL: ${order.tableId >= 900 ? (order.tableId === 900 ? 'ENTREGA' : 'BALCÃO') : order.tableId}</div>
-        <div>CLIENTE: ${order.customerName}</div>
-        ${order.address ? `<div>END: ${order.address}</div>` : ''}
+        <div style="font-size: 10px;">
+          PEDIDO: #${order.id}<br/>
+          DATA: ${new Date().toLocaleString('pt-BR')}<br/>
+          CLIENTE: ${order.customerName}<br/>
+          ${order.address ? `END: ${order.address}<br/>` : ''}
+          TIPO: ${order.orderType.toUpperCase()}
+        </div>
         <hr/>
         ${itemsHtml}
         <hr/>
-        <div style="font-weight: bold; display: flex; justify-content: space-between;">
+        <div style="font-weight: bold; display: flex; justify-content: space-between; font-size: 12px;">
           <span>TOTAL:</span><span>R$ ${order.total.toFixed(2)}</span>
         </div>
         <script>window.onload = function() { window.print(); window.close(); }</script>
@@ -152,47 +173,113 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="flex items-center justify-center md:justify-start gap-2">
               <span className={`w-2 h-2 rounded-full ${dbStatus === 'ok' ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></span>
               <p className="text-gray-500 font-bold text-[8px] uppercase tracking-[0.3em]">
-                {dbStatus === 'ok' ? 'Online' : 'Sincronizando...'}
+                {dbStatus === 'ok' ? 'Sistema Ativo' : 'Conectando...'}
               </p>
             </div>
           </div>
           <nav className="flex flex-wrap justify-center gap-1.5 p-1 bg-gray-900 rounded-2xl w-full md:w-auto">
             {(['tables', 'delivery', 'menu', 'categories'] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 md:flex-none px-4 py-3.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}>
-                {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Fila' : tab === 'menu' ? 'Menu' : 'Categorias'}
+                {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Entregas/Fila' : tab === 'menu' ? 'Menu' : 'Categorias'}
               </button>
             ))}
           </nav>
           <div className="flex items-center gap-4 w-full md:w-auto justify-center">
-            <button onClick={onToggleAudio} className={`p-4 rounded-full transition-all active:scale-90 ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/20' : 'bg-gray-800 text-gray-600'}`}>
+            <button onClick={onToggleAudio} className={`p-4 rounded-full transition-all active:scale-90 ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-gray-600'}`}>
               <VolumeIcon muted={!audioEnabled} size={24}/>
             </button>
-            <button type="button" onClick={(e) => { e.preventDefault(); onLogout(); }} className="flex-1 md:flex-none bg-red-600 text-white font-black text-[10px] md:text-xs uppercase px-10 py-4 rounded-2xl hover:bg-red-700 active:scale-95 transition-all shadow-xl border-b-4 border-red-900 relative z-[60]">Sair</button>
+            <button type="button" onClick={() => onLogout()} className="flex-1 md:flex-none bg-red-600 text-white font-black text-xs uppercase px-10 py-4 rounded-2xl shadow-xl hover:brightness-110 active:scale-95 transition-all relative z-[60]">Sair</button>
           </div>
         </div>
       </div>
 
       <div className="transition-all duration-500">
-        {(activeTab === 'tables' || activeTab === 'delivery') && (
+        {activeTab === 'tables' && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5">
-            {(activeTab === 'tables' ? physicalTables : deliveryTables).map(t => {
+            {physicalTables.map(t => {
               const statusCfg = t.currentOrder ? STATUS_CONFIG[t.currentOrder.status || 'pending'] : null;
-              const isNew = t.currentOrder?.status === 'pending';
-              const isDeliveryTab = activeTab === 'delivery';
               return (
-                <button key={t.id} onClick={() => { setSelectedTableId(t.id); setModalTab('items'); }} className={`h-52 p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative group overflow-hidden ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400 shadow-sm' : 'bg-yellow-400 border-black shadow-xl ring-4 ring-yellow-400/20'} ${isNew && isDeliveryTab ? 'ring-8 ring-red-500/30' : ''}`}>
-                  {isNew && <div className="absolute top-0 right-0 bg-red-600 text-white text-[9px] font-black uppercase px-4 py-2 rounded-bl-2xl shadow-lg animate-pulse z-10">NOVO</div>}
-                  <span className="text-5xl font-black italic text-black leading-none">{t.id >= 900 ? (t.id === 900 ? '🚚' : '🛍️') : t.id}</span>
+                <button key={t.id} onClick={() => { setSelectedTableId(t.id); setModalTab('items'); }} className={`h-52 p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative overflow-hidden ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400 shadow-sm' : 'bg-yellow-400 border-black shadow-xl ring-4 ring-yellow-400/20'}`}>
+                  {t.currentOrder?.status === 'pending' && <div className="absolute top-0 right-0 bg-red-600 text-white text-[9px] font-black uppercase px-4 py-2 rounded-bl-2xl shadow-lg animate-pulse">NOVO</div>}
+                  <span className="text-5xl font-black italic text-black">{t.id}</span>
                   <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>{t.status === 'free' ? 'Livre' : 'Ocupada'}</span>
                   {t.status === 'occupied' && (
                     <div className="flex flex-col items-center gap-1 mt-1">
-                      <span className="text-[11px] font-black text-black bg-white/40 px-2 py-0.5 rounded-md">R$ {t.currentOrder?.total.toFixed(2)}</span>
-                      {statusCfg && <span className={`text-[8px] font-black uppercase px-2.5 py-1 rounded-full border border-black/10 shadow-sm ${statusCfg.bg} ${statusCfg.color}`}>{statusCfg.label}</span>}
+                      <span className="text-[11px] font-black text-black bg-white/40 px-2 py-0.5 rounded-md text-xs italic">R$ {t.currentOrder?.total.toFixed(2)}</span>
+                      {statusCfg && <span className={`text-[7px] font-black uppercase px-2 py-0.5 rounded-full border border-black/10 ${statusCfg.bg} ${statusCfg.color}`}>{statusCfg.label}</span>}
                     </div>
                   )}
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {activeTab === 'delivery' && (
+          <div className="space-y-10">
+            {/* Seção Delivery */}
+            <div>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black italic uppercase tracking-widest text-gray-800">🚚 Entregas Ativas</h3>
+                <button onClick={() => handleCreateManualOrder('delivery')} className="bg-black text-yellow-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg hover:scale-105 active:scale-95 transition-all">Nova Entrega Manual</button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {activeDeliveries.map(t => {
+                  const statusCfg = STATUS_CONFIG[t.currentOrder?.status || 'pending'];
+                  return (
+                    <button key={t.id} onClick={() => { setSelectedTableId(t.id); setModalTab('items'); }} className="bg-white border-2 border-yellow-400 p-6 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all flex flex-col text-left group">
+                      <div className="flex justify-between items-start mb-4">
+                        <span className="text-3xl">🚚</span>
+                        <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full ${statusCfg.bg} ${statusCfg.color}`}>{statusCfg.label}</span>
+                      </div>
+                      <h4 className="font-black text-sm uppercase truncate mb-1">{t.currentOrder?.customerName}</h4>
+                      <p className="text-[10px] text-gray-400 font-bold mb-4 line-clamp-2 min-h-[30px]">{t.currentOrder?.address || 'Sem endereço informado'}</p>
+                      <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between items-center">
+                        <span className="font-black italic text-black">R$ {t.currentOrder?.total.toFixed(2)}</span>
+                        <span className="text-[8px] font-black text-gray-300 uppercase">Slot #{t.id}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+                {activeDeliveries.length === 0 && (
+                  <div className="col-span-full py-12 text-center bg-gray-100 rounded-[2.5rem] border-2 border-dashed border-gray-200">
+                    <p className="text-gray-400 font-black uppercase text-xs tracking-widest">Nenhuma entrega no momento</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Seção Balcão */}
+            <div>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black italic uppercase tracking-widest text-gray-800">🛍️ Pedidos Balcão</h3>
+                <button onClick={() => handleCreateManualOrder('counter')} className="bg-black text-yellow-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg hover:scale-105 active:scale-95 transition-all">Novo Pedido Balcão</button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {activeCounters.map(t => {
+                  const statusCfg = STATUS_CONFIG[t.currentOrder?.status || 'pending'];
+                  return (
+                    <button key={t.id} onClick={() => { setSelectedTableId(t.id); setModalTab('items'); }} className="bg-white border-2 border-black p-6 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all flex flex-col text-left group">
+                      <div className="flex justify-between items-start mb-4">
+                        <span className="text-3xl">🛍️</span>
+                        <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full ${statusCfg.bg} ${statusCfg.color}`}>{statusCfg.label}</span>
+                      </div>
+                      <h4 className="font-black text-sm uppercase truncate mb-1">{t.currentOrder?.customerName}</h4>
+                      <p className="text-[10px] text-gray-400 font-bold mb-4">Aguardando no Balcão</p>
+                      <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between items-center">
+                        <span className="font-black italic text-black">R$ {t.currentOrder?.total.toFixed(2)}</span>
+                        <span className="text-[8px] font-black text-gray-300 uppercase">Slot #{t.id}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+                {activeCounters.length === 0 && (
+                  <div className="col-span-full py-12 text-center bg-gray-100 rounded-[2.5rem] border-2 border-dashed border-gray-200">
+                    <p className="text-gray-400 font-black uppercase text-xs tracking-widest">Nenhum pedido de balcão</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -204,11 +291,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="Nova..." className="flex-1 bg-gray-50 border rounded-xl px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400" />
               <button type="submit" className="bg-black text-yellow-400 px-8 py-4 rounded-xl font-black text-xs uppercase shadow-lg">Adicionar</button>
             </form>
-            <div className="space-y-2">
+            <div className="space-y-2 overflow-y-auto max-h-[400px] no-scrollbar">
               {categories.map(cat => (
                 <div key={cat.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-transparent hover:border-yellow-400 transition-all">
                   <span className="font-black text-gray-800 uppercase text-xs italic">{cat.name}</span>
-                  <button onClick={() => { if(confirm('Excluir?')) supabase.from('categories').delete().eq('id', cat.id).then(() => onRefreshData()); }} className="p-2 text-red-400"><TrashIcon/></button>
+                  <button onClick={() => { if(confirm('Excluir?')) supabase.from('categories').delete().eq('id', cat.id).then(() => onRefreshData()); }} className="p-2 text-red-400 hover:scale-110 transition-transform"><TrashIcon/></button>
                 </div>
               ))}
             </div>
@@ -245,11 +332,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setSelectedTableId(null)} />
           <div className="relative bg-white w-full max-w-5xl h-full md:h-[85vh] md:rounded-[3.5rem] flex flex-col overflow-hidden shadow-2xl border-t-8 border-yellow-400 animate-in fade-in zoom-in duration-300">
             
-            {/* Header do Modal */}
             <div className="p-6 md:p-10 border-b flex justify-between items-center bg-white sticky top-0 z-20">
               <div className="flex-1 mr-4">
                 <h3 className="text-2xl md:text-4xl font-black italic tracking-tighter uppercase leading-none mb-2">
-                  {selectedTable.id >= 900 ? (selectedTable.id === 900 ? '🚚 Entrega' : '🛍️ Balcão') : `Mesa ${selectedTable.id}`}
+                  {selectedTable.id >= 950 ? '🛍️ Balcão' : selectedTable.id >= 900 ? '🚚 Entrega' : `Mesa ${selectedTable.id}`}
                 </h3>
                 <div className="flex flex-wrap items-center gap-2">
                    <input 
@@ -257,14 +343,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={editCustomerName} 
                     onChange={e => setEditCustomerName(e.target.value)}
                     placeholder="Nome do Cliente"
-                    className="text-[10px] font-black uppercase text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border-none outline-none focus:ring-2 focus:ring-yellow-400 min-w-[150px]"
+                    className="text-[10px] font-black uppercase text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full border-none outline-none focus:ring-2 focus:ring-yellow-400 min-w-[200px]"
                    />
                    <button 
                     onClick={handleUpdateCustomerData} 
                     disabled={isSaving}
                     className="text-[8px] font-black uppercase bg-black text-yellow-400 px-3 py-1.5 rounded-full shadow hover:scale-105 active:scale-95 transition-all"
                    >
-                     {isSaving ? '...' : 'Salvar Dados'}
+                     {isSaving ? '...' : 'Salvar Info'}
                    </button>
                 </div>
               </div>
@@ -276,18 +362,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* Tabs Mobile */}
             <div className="flex md:hidden bg-gray-50 p-2 gap-2">
-               <button onClick={() => setModalTab('items')} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${modalTab === 'items' ? 'bg-black text-white shadow-lg' : 'text-gray-400'}`}>Pedido</button>
-               <button onClick={() => setModalTab('add')} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${modalTab === 'add' ? 'bg-yellow-400 text-black shadow-md' : 'text-gray-400'}`}>+ Itens</button>
+               <button onClick={() => setModalTab('items')} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${modalTab === 'items' ? 'bg-black text-white shadow-lg' : 'text-gray-400'}`}>Carrinho</button>
+               <button onClick={() => setModalTab('add')} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${modalTab === 'add' ? 'bg-yellow-400 text-black shadow-md' : 'text-gray-400'}`}>+ Lançar</button>
             </div>
 
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-              {/* Esquerda: Itens do Pedido */}
               <div className={`flex-1 p-6 md:p-10 overflow-y-auto flex flex-col ${modalTab !== 'items' ? 'hidden md:flex' : 'flex'}`}>
                  
-                 {/* Endereço de Entrega Editável */}
-                 {selectedTable.id === 900 && selectedTable.status === 'occupied' && (
+                 {selectedTable.id >= 900 && selectedTable.id <= 949 && (
                    <div className="bg-yellow-100 border-2 border-yellow-400 p-5 rounded-3xl mb-8 shadow-lg">
                       <p className="text-[10px] font-black uppercase text-yellow-800 mb-2 tracking-widest flex items-center gap-2">
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"/></svg>
@@ -296,8 +379,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       <textarea 
                         value={editAddress}
                         onChange={e => setEditAddress(e.target.value)}
-                        placeholder="Endereço completo, ponto de referência..."
-                        className="w-full bg-white/50 border-none rounded-2xl p-4 text-xs font-black text-black leading-tight uppercase italic outline-none focus:ring-2 focus:ring-yellow-500 h-20 resize-none"
+                        placeholder="Rua, Número, Bairro, Ponto de Referência..."
+                        className="w-full bg-white/50 border-none rounded-2xl p-4 text-xs font-black text-black leading-tight uppercase italic outline-none focus:ring-2 focus:ring-yellow-500 h-24 resize-none"
                       />
                    </div>
                  )}
@@ -319,23 +402,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                        <span className="font-black text-xs text-gray-800 uppercase">{item.quantity}x {item.name}</span>
                        <span className="font-black text-xs text-yellow-700 italic">R$ {(item.price * item.quantity).toFixed(2)}</span>
                      </div>
-                   )) || <div className="text-center py-20 text-gray-300 font-black uppercase text-[10px]">Vazio</div>}
+                   )) || <div className="text-center py-20 text-gray-300 font-black uppercase text-[10px]">Pedido Vazio</div>}
                  </div>
 
                  {selectedTable.status === 'occupied' && (
                    <div className="border-t-2 pt-6">
                       <div className="flex justify-between items-end mb-6"><span className="text-gray-400 font-black text-[10px] uppercase">Total</span><span className="text-4xl md:text-5xl font-black italic text-black leading-none">R$ {selectedTable.currentOrder?.total.toFixed(2)}</span></div>
                       <div className="grid grid-cols-2 gap-4 pb-4">
-                        <button onClick={() => setSelectedTableId(null)} className="bg-gray-100 text-black py-5 rounded-2xl font-black uppercase text-[10px]">Voltar</button>
-                        <button onClick={() => { if(confirm('Liberar mesa?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-green-800">Finalizar</button>
+                        <button onClick={() => setSelectedTableId(null)} className="bg-gray-100 text-black py-5 rounded-2xl font-black uppercase text-[10px]">Fechar</button>
+                        <button onClick={() => { if(confirm('Liberar slot e concluir?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-green-800 active:scale-95 transition-all">Finalizar Conta</button>
                       </div>
                    </div>
                  )}
               </div>
 
-              {/* Direita: Lançamento Rápido */}
               <div className={`w-full md:w-[24rem] bg-gray-50 p-6 md:p-10 flex flex-col border-t md:border-t-0 md:border-l ${modalTab !== 'add' ? 'hidden md:flex' : 'flex'}`}>
-                 <h4 className="text-[10px] font-black uppercase mb-6 bg-yellow-400 px-5 py-2 rounded-full w-fit">Lançar Itens</h4>
+                 <h4 className="text-[10px] font-black uppercase mb-6 bg-yellow-400 px-5 py-2 rounded-full w-fit">Adicionar Itens</h4>
                  <div className="relative mb-6">
                    <input type="text" placeholder="Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-white border-2 rounded-xl px-5 py-4 text-xs font-bold outline-none focus:border-black" />
                  </div>
@@ -358,7 +440,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-6 bg-black/95 backdrop-blur-xl">
           <div className="bg-white w-full max-w-xl rounded-[3.5rem] p-10 relative shadow-2xl animate-in zoom-in duration-300">
              <button onClick={() => setIsProductModalOpen(false)} className="absolute top-10 right-10 p-3 bg-gray-100 rounded-full"><CloseIcon size={24}/></button>
-             <h3 className="text-3xl font-black italic mb-10 uppercase">Produto</h3>
+             <h3 className="text-3xl font-black italic mb-10 uppercase">Editar Produto</h3>
              <form onSubmit={(e) => { e.preventDefault(); onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price) }); setIsProductModalOpen(false); }} className="space-y-6">
                 <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="Nome" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400" required />
                 <div className="grid grid-cols-2 gap-4">
@@ -368,7 +450,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </select>
                 </div>
                 <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} placeholder="URL Imagem" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none" />
-                <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-3xl font-black text-xs uppercase shadow-2xl">Salvar</button>
+                <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-3xl font-black text-xs uppercase shadow-2xl">Confirmar</button>
              </form>
           </div>
         </div>
