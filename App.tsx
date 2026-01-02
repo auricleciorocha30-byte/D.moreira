@@ -185,6 +185,13 @@ const App: React.FC = () => {
     fetchData();
   };
 
+  const handleLogout = async () => {
+    // Feedback imediato limpando o estado antes de esperar o servidor
+    setIsLoggedIn(false);
+    setIsAdmin(false);
+    await supabase.auth.signOut();
+  };
+
   const categoryNames = useMemo(() => ['Todos', ...categories.map(c => c.name)], [categories]);
   const filteredItems = useMemo(() => menuItems.filter(i => selectedCategory === 'Todos' || i.category === selectedCategory), [menuItems, selectedCategory]);
 
@@ -192,7 +199,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans antialiased relative">
       <Header />
       {!isLoggedIn && (
-        <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[9px] font-black text-black/30 hover:text-black uppercase tracking-widest transition-colors">Admin Access</button>
+        <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 hover:text-black bg-white/10 px-3 py-1.5 rounded-full uppercase tracking-widest transition-colors backdrop-blur-sm border border-black/5">Acesso Restrito</button>
       )}
 
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
@@ -206,7 +213,7 @@ const App: React.FC = () => {
             onUpdateTable={async (id, status, ord) => { await supabase.from('tables').update({ status, current_order: ord || null }).eq('id', id); fetchData(); }} 
             onAddToOrder={(tableId, product) => handlePlaceOrder({ ...product, tableId })}
             onRefreshData={fetchData} 
-            onLogout={() => supabase.auth.signOut()} 
+            onLogout={handleLogout} 
             onSaveProduct={async (p) => {
               const productData = { name: p.name, price: p.price, category: p.category, description: p.description, image: p.image, is_available: p.isAvailable };
               if (p.id) await supabase.from('products').update(productData).eq('id', p.id);

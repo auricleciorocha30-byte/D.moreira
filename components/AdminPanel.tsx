@@ -216,11 +216,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             ))}
           </nav>
           
-          <div className="flex items-center gap-3">
-            <button onClick={onToggleAudio} className={`p-2.5 rounded-full ${audioEnabled ? 'bg-yellow-400 text-black' : 'bg-gray-800 text-gray-600'}`}>
-              <VolumeIcon muted={!audioEnabled} size={18}/>
+          <div className="flex items-center gap-4">
+            <button onClick={onToggleAudio} className={`p-3 rounded-full transition-all active:scale-90 ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/20' : 'bg-gray-800 text-gray-600'}`}>
+              <VolumeIcon muted={!audioEnabled} size={20}/>
             </button>
-            <button onClick={onLogout} className="text-red-500 font-black text-[9px] uppercase px-4 py-2 hover:bg-red-500/10 rounded-xl transition-all">Sair</button>
+            <button 
+              onClick={onLogout} 
+              className="bg-red-500/10 text-red-500 font-black text-xs uppercase px-6 py-3 rounded-xl hover:bg-red-500 hover:text-white active:scale-95 transition-all shadow-sm"
+            >
+              Sair
+            </button>
           </div>
         </div>
       </div>
