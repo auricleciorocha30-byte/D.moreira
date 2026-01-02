@@ -120,13 +120,18 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                   </div>
                   <div className="space-y-4">
                     {items.map(item => (
-                      <div key={item.id} className="flex gap-5 bg-white p-5 rounded-[2rem] border items-center">
+                      <div key={item.id} className="flex gap-5 bg-white p-5 rounded-[2rem] border items-center group">
                         <img src={item.image} className="w-20 h-20 rounded-2xl object-cover shrink-0 shadow-sm" />
                         <div className="flex-1 font-black"><h4 className="text-xs uppercase leading-none truncate">{item.name}</h4><p className="text-yellow-700 text-sm italic mt-2">R$ {item.price.toFixed(2)}</p></div>
-                        <div className="flex items-center gap-3 bg-gray-50 p-1 rounded-xl font-black">
-                          <button onClick={() => onUpdateQuantity(item.id, -1)} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center">-</button>
-                          <span className="text-sm w-4 text-center">{item.quantity}</span>
-                          <button onClick={() => onUpdateQuantity(item.id, 1)} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center">+</button>
+                        <div className="flex flex-col items-end gap-2">
+                          <button onClick={() => onRemove(item.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-lg transition-colors">
+                            <TrashIcon size={18} />
+                          </button>
+                          <div className="flex items-center gap-3 bg-gray-50 p-1 rounded-xl font-black">
+                            <button onClick={() => onUpdateQuantity(item.id, -1)} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center hover:bg-gray-100 transition-colors">-</button>
+                            <span className="text-sm w-4 text-center">{item.quantity}</span>
+                            <button onClick={() => onUpdateQuantity(item.id, 1)} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center hover:bg-gray-100 transition-colors">+</button>
+                          </div>
                         </div>
                       </div>
                     ))}
