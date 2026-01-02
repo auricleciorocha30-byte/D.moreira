@@ -30,7 +30,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  
+  // Estados para Categorias
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [isCategoryEditModalOpen, setIsCategoryEditModalOpen] = useState(false);
+  
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const physicalTables = tables.filter(t => t.id <= 12).sort((a,b) => a.id - b.id);
@@ -106,6 +111,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       }
     } catch (err: any) {
       console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory || isSaving) return;
+    
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .update({ name: editingCategory.name })
+        .eq('id', editingCategory.id);
+        
+      if (error) throw error;
+      
+      setIsCategoryEditModalOpen(false);
+      setEditingCategory(null);
+      onRefreshData();
+    } catch (err: any) {
+      alert('Erro ao renomear: ' + err.message);
     } finally {
       setIsSaving(false);
     }
@@ -206,7 +234,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               {categories.map(cat => (
                 <div key={cat.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-transparent hover:border-yellow-400 transition-all">
                   <span className="font-black text-gray-800 uppercase text-xs italic tracking-wide">{cat.name}</span>
-                  <button onClick={() => { if(confirm('Excluir?')) supabase.from('categories').delete().eq('id', cat.id).then(() => onRefreshData()); }} className="p-2 text-red-400 hover:text-red-600 transition-colors"><TrashIcon/></button>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => { setEditingCategory(cat); setIsCategoryEditModalOpen(true); }}
+                      className="p-2 text-gray-400 hover:text-black transition-colors"
+                    >
+                      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                    </button>
+                    <button onClick={() => { if(confirm('Excluir categoria e todos os produtos nela?')) supabase.from('categories').delete().eq('id', cat.id).then(() => onRefreshData()); }} className="p-2 text-red-400 hover:text-red-600 transition-colors"><TrashIcon/></button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -350,6 +386,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
 
                 <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-xs uppercase shadow-xl mt-4 active:scale-95 transition-all">Confirmar e Salvar</button>
+             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Renomear Categoria */}
+      {isCategoryEditModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
+          <div className="bg-white w-full max-w-sm rounded-[3rem] p-10 relative shadow-2xl animate-in zoom-in duration-300">
+             <button onClick={() => setIsCategoryEditModalOpen(false)} className="absolute top-8 right-8 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
+             <h3 className="text-2xl font-black italic mb-8">Editar Categoria</h3>
+             <form onSubmit={handleUpdateCategory} className="space-y-4">
+                <input 
+                  type="text" 
+                  value={editingCategory?.name || ''} 
+                  onChange={e => setEditingCategory(prev => prev ? {...prev, name: e.target.value} : null)} 
+                  placeholder="Nome da Categoria" 
+                  className="w-full bg-gray-50 border rounded-xl px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400" 
+                  required 
+                />
+                <button type="submit" disabled={isSaving} className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-xs uppercase shadow-xl mt-4 active:scale-95 transition-all">
+                  {isSaving ? 'Salvando...' : 'Atualizar Nome'}
+                </button>
              </form>
           </div>
         </div>
