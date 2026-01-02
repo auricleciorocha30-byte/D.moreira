@@ -30,11 +30,30 @@ const App: React.FC = () => {
   const [newOrderAlert, setNewOrderAlert] = useState<{ id: number; type: string } | null>(null);
 
   const notificationSound = useRef<HTMLAudioElement | null>(null);
+  const audioUnlocked = useRef(false);
 
+  // Inicializa o áudio e tenta "desbloquear" na primeira interação
   useEffect(() => {
-    // Som de notificação mais nítido para ambiente de loja
     notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     notificationSound.current.load();
+
+    const unlockAudio = () => {
+      if (!audioUnlocked.current && notificationSound.current) {
+        notificationSound.current.play().then(() => {
+          notificationSound.current?.pause();
+          if (notificationSound.current) notificationSound.current.currentTime = 0;
+          audioUnlocked.current = true;
+          console.log("Audio Unlocked");
+        }).catch(() => {});
+      }
+    };
+
+    window.addEventListener('click', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio);
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -62,10 +81,20 @@ const App: React.FC = () => {
 
       const { data: tData } = await supabase.from('tables').select('*');
       if (tData) {
-        setTables(prev => prev.map(p => {
-          const dbT = tData.find(dt => dt.id === p.id);
-          return dbT ? { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order } : p;
-        }));
+        setTables(prev => {
+          // Mapeia os dados do banco preservando a estrutura inicial se necessário
+          const newTables = INITIAL_TABLES.map(p => {
+            const dbT = tData.find(dt => dt.id === p.id);
+            return dbT ? { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order } : p;
+          });
+          // Adiciona mesas que existem no banco mas não na estrutura inicial (pedidos dinâmicos altos)
+          tData.forEach(dt => {
+            if (!newTables.find(nt => nt.id === dt.id)) {
+              newTables.push({ id: dt.id, status: dt.status, currentOrder: dt.current_order });
+            }
+          });
+          return newTables;
+        });
       }
       setDbStatus('ok');
     } catch (err) {
@@ -76,20 +105,20 @@ const App: React.FC = () => {
   useEffect(() => {
     fetchData();
     
-    // Canal Realtime para mudanças nas mesas (Pedidos)
-    const channel = supabase.channel('realtime_dmoreira')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
+    const channel = supabase.channel('schema-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (payload) => {
         const newTable = payload.new as any;
         const oldTable = payload.old as any;
         
-        // Lógica de Alerta: Se a mesa mudou de livre para ocupada ou se o pedido foi atualizado
-        // IMPORTANTE: Só dispara alerta se o usuário estiver logado como admin
+        // Só processa alertas se houver um novo registro ocupado
         if (newTable && newTable.status === 'occupied') {
-          const isNewOrder = !oldTable || oldTable.status === 'free';
+          // Verifica se era livre ou se é um INSERT puro
+          const wasFree = !oldTable || oldTable.status === 'free';
           
-          if (isNewOrder) {
-            if (audioEnabled) {
-              notificationSound.current?.play().catch(e => console.log('Audio playback blocked:', e));
+          if (wasFree) {
+            if (audioEnabled && notificationSound.current) {
+              notificationSound.current.currentTime = 0;
+              notificationSound.current.play().catch(e => console.error("Erro ao tocar som:", e));
             }
             
             setNewOrderAlert({ 
@@ -97,25 +126,24 @@ const App: React.FC = () => {
               type: newTable.id >= 950 ? 'Balcão' : newTable.id >= 900 ? 'Entrega' : 'Mesa' 
             });
             
-            // Auto-hide após 10 segundos
             setTimeout(() => setNewOrderAlert(null), 10000);
           }
         }
         
-        // Atualiza os dados locais independente de ser alerta ou não
+        // Força atualização dos dados para refletir na UI do Admin
         fetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'coupons' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchData, audioEnabled]);
 
   const handlePlaceOrder = async (order: Order) => {
     let targetId = order.tableId;
-    // Se for um novo pedido dinâmico (Entrega ou Balcão)
     if (targetId === -900 || targetId === -950) {
       const range = targetId === -900 ? [900, 949] : [950, 999];
       const free = tables.find(t => t.id >= range[0] && t.id <= range[1] && t.status === 'free');
@@ -146,17 +174,17 @@ const App: React.FC = () => {
         <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 bg-white/10 px-3 py-1.5 rounded-full uppercase tracking-widest backdrop-blur-sm border border-black/5">Painel</button>
       )}
 
-      {/* Alerta Visual de Novo Pedido (Global) */}
+      {/* Alerta Visual de Novo Pedido */}
       {isAdmin && isLoggedIn && newOrderAlert && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-md px-6 animate-in slide-in-from-top duration-700">
-          <div className="bg-black text-white p-6 rounded-[3rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-4 border-yellow-400 flex items-center gap-5 ring-8 ring-black/5">
+          <div className="bg-black text-white p-6 rounded-[3rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] border-4 border-yellow-400 flex items-center gap-5">
             <div className="bg-yellow-400 text-black w-14 h-14 rounded-2xl flex items-center justify-center font-black animate-bounce shrink-0 shadow-lg">
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
             </div>
             <div className="flex-1 font-black">
-              <h4 className="text-[10px] uppercase text-yellow-400 tracking-widest mb-1">Novo Pedido Chegando!</h4>
+              <h4 className="text-[10px] uppercase text-yellow-400 tracking-widest mb-1">Novo Pedido Recebido</h4>
               <p className="text-xl italic uppercase tracking-tighter">{newOrderAlert.type} #{newOrderAlert.id}</p>
             </div>
             <button onClick={() => setNewOrderAlert(null)} className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors">
@@ -175,25 +203,18 @@ const App: React.FC = () => {
             onAddToOrder={(tableId, product) => {
               const table = (tables || []).find(t => t.id === tableId);
               let current = table?.currentOrder;
-              
               const items = current ? [...(current.items || [])] : [];
               const ex = items.findIndex(i => i.id === product.id);
               if (ex >= 0) items[ex].quantity += 1;
               else items.push({ ...product, quantity: 1 });
-              
               const total = items.reduce((a, b) => a + (b.price * b.quantity), 0);
               
               if (!current) {
                 const newOrd: Order = {
                   id: Math.random().toString(36).substr(2, 6).toUpperCase(),
                   customerName: tableId >= 900 ? (tableId >= 950 ? 'Pedido Balcão' : 'Pedido Entrega') : `Mesa ${tableId}`,
-                  items: items,
-                  total: total,
-                  finalTotal: total,
-                  paymentMethod: 'Pendente',
-                  timestamp: new Date().toISOString(),
-                  tableId: tableId,
-                  status: 'pending',
+                  items: items, total, finalTotal: total, paymentMethod: 'Pendente',
+                  timestamp: new Date().toISOString(), tableId, status: 'pending',
                   orderType: tableId >= 900 ? (tableId >= 950 ? 'counter' : 'delivery') : 'table'
                 };
                 handlePlaceOrder(newOrd);
