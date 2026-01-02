@@ -29,7 +29,14 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
 
   useEffect(() => {
     if (isOpen) {
-      supabase.from('loyalty_config').select('*').single().then(({ data }) => { if (data) setLoyaltyConfig(data); });
+      supabase.from('loyalty_config').select('*').single().then(({ data }) => { 
+        if (data) setLoyaltyConfig({
+          isActive: data.is_active,
+          spendingGoal: data.spending_goal,
+          scopeType: data.scope_type,
+          scopeValue: data.scope_value
+        }); 
+      });
     }
   }, [isOpen]);
 
@@ -48,7 +55,8 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const handleCheckout = async () => {
     if (items.length === 0 || !customerName.trim()) return alert('Informe seu nome.');
     setIsProcessing(true);
-    let targetTableId = orderType === 'table' ? parseInt(tableNumber) : orderType === 'delivery' ? -900 : -950;
+    let targetTableId = orderType === 'table' ? (parseInt(tableNumber) || 0) : orderType === 'delivery' ? -900 : -950;
+    
     const newOrder: Order = {
       id: Math.random().toString(36).substr(2, 6).toUpperCase(),
       customerName, customerPhone: customerPhone.trim() || undefined,
@@ -57,79 +65,82 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
       orderType: orderType === 'takeaway' ? 'counter' : orderType,
       address: orderType === 'delivery' ? address : undefined, status: 'pending', couponCode: appliedCoupon?.code
     };
+
     try {
       if (loyaltyConfig?.isActive && customerPhone.trim()) {
         const eligible = items.reduce((acc, item) => {
           const ok = loyaltyConfig.scopeType === 'all' || (loyaltyConfig.scopeType === 'category' && item.category === loyaltyConfig.scopeValue) || (loyaltyConfig.scopeType === 'product' && item.id === loyaltyConfig.scopeValue);
           return ok ? acc + (item.price * item.quantity) : acc;
         }, 0);
+        
         const { data: user } = await supabase.from('loyalty_users').select('*').eq('phone', customerPhone).maybeSingle();
         if (user) await supabase.from('loyalty_users').update({ accumulated: Number(user.accumulated) + eligible }).eq('phone', customerPhone);
         else await supabase.from('loyalty_users').insert([{ phone: customerPhone, name: customerName, accumulated: eligible }]);
       }
       onPlaceOrder(newOrder);
       setIsSuccess(true);
-    } catch (err) { alert('Erro no checkout.'); } finally { setIsProcessing(false); }
+    } catch (err) { 
+      alert('Erro no checkout.'); 
+    } finally { 
+      setIsProcessing(false); 
+    }
   };
-
-  if (isSuccess) {
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => { setIsSuccess(false); onClose(); }} />
-        <div className="relative bg-white w-full max-w-sm rounded-[3.5rem] p-12 text-center shadow-2xl border-t-8 border-green-500 font-black">
-          <div className="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce"><svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg></div>
-          <h2 className="text-3xl mb-4 italic uppercase">Recebido!</h2>
-          <p className="text-gray-500 uppercase text-[10px] tracking-widest">Já estamos preparando sua parada.</p>
-          <button onClick={() => { setIsSuccess(false); onClose(); }} className="w-full bg-black text-white py-5 rounded-[2rem] uppercase mt-10 text-[10px] tracking-widest">Concluir</button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <>
       <div className={`fixed inset-0 bg-black/70 backdrop-blur-md z-[50] transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={onClose}/>
       <div className={`fixed right-0 top-0 h-full w-full max-w-md bg-white z-[60] shadow-2xl transition-transform duration-500 transform ${isOpen ? 'translate-x-0' : 'translate-x-full'} flex flex-col`}>
-        <div className="p-8 border-b flex justify-between items-center bg-white sticky top-0 z-10 font-black italic">
-          <div><h2 className="text-3xl uppercase tracking-tighter">Minha Sacola</h2><span className="text-[10px] text-gray-400 not-italic uppercase tracking-widest">{items.length} Itens</span></div>
-          <button onClick={onClose} className="p-3 hover:bg-gray-100 rounded-full transition-all active:scale-90"><CloseIcon size={28} /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar pb-32">
-          {items.length > 0 ? (
-            <>
-              <div className="bg-gray-50 p-7 rounded-[3rem] border border-gray-100 space-y-5 font-black uppercase">
-                <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="SEU NOME" className="w-full bg-white border-2 rounded-2xl px-6 py-5 text-xs outline-none shadow-sm"/>
-                <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="WHATSAPP (OPCIONAL)" className="w-full bg-white border-2 rounded-2xl px-6 py-5 text-xs outline-none shadow-sm"/>
-                <div className="grid grid-cols-3 gap-2">{(['table', 'takeaway', 'delivery'] as OrderType[]).map(type => (
-                  <button key={type} onClick={() => setOrderType(type)} className={`py-4 rounded-2xl text-[9px] border-2 transition-all ${orderType === type ? 'bg-black text-white' : 'bg-white text-gray-400'}`}>{type === 'table' ? 'Mesa' : type === 'takeaway' ? 'Balcão' : 'Entrega'}</button>
-                ))}</div>
-                {orderType === 'table' && <div className="grid grid-cols-4 gap-2 pt-2">{Array.from({ length: 12 }, (_, i) => i + 1).map(num => (
-                  <button key={num} onClick={() => setTableNumber(num.toString())} className={`py-3 rounded-xl text-xs transition-all ${tableNumber === num.toString() ? 'bg-yellow-400 text-black' : 'bg-white text-gray-400 border'}`}>{num}</button>
-                ))}</div>}
-                {orderType === 'delivery' && <textarea value={address} onChange={(e) => setAddress(e.target.value)} placeholder="ENDEREÇO COMPLETO" className="w-full bg-white border-2 rounded-2xl px-6 py-5 text-xs outline-none h-28 resize-none shadow-sm"/>}
-                <div className="flex gap-3 pt-4"><input type="text" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} placeholder="CUPOM" className="flex-1 bg-white border-2 rounded-2xl px-6 py-4 text-[10px] outline-none shadow-sm"/><button onClick={async () => { const { data } = await supabase.from('coupons').select('*').eq('code', couponCode.toUpperCase()).eq('is_active', true).single(); if (data) setAppliedCoupon({ id: data.id, code: data.code, percentage: data.percentage, isActive: data.is_active, scopeType: data.scope_type, scopeValue: data.scope_value }); else alert('Invalido'); }} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl text-[10px] shadow-lg">Validar</button></div>
-              </div>
-              <div className="space-y-4">
-                {items.map(item => (
-                  <div key={item.id} className="flex gap-5 bg-white p-5 rounded-[2rem] border items-center">
-                    <img src={item.image} className="w-20 h-20 rounded-2xl object-cover shrink-0 shadow-sm" />
-                    <div className="flex-1 font-black"><h4 className="text-xs uppercase leading-none truncate">{item.name}</h4><p className="text-yellow-700 text-sm italic mt-2">R$ {item.price.toFixed(2)}</p></div>
-                    <div className="flex items-center gap-3 bg-gray-50 p-1 rounded-xl font-black">
-                      <button onClick={() => onUpdateQuantity(item.id, -1)} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center">-</button>
-                      <span className="text-sm w-4 text-center">{item.quantity}</span>
-                      <button onClick={() => onUpdateQuantity(item.id, 1)} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center">+</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : <div className="text-center py-20 opacity-30 font-black uppercase text-xs">Sacola Vazia</div>}
-        </div>
-        {items.length > 0 && (
-          <div className="p-10 border-t-4 bg-white sticky bottom-0 rounded-t-[4rem] z-20 font-black italic shadow-2xl">
-            <div className="flex justify-between items-center mb-8"><div><span className="text-[10px] text-gray-400 not-italic uppercase tracking-widest">Total</span><span className="text-4xl block">R$ {finalTotal.toFixed(2)}</span></div>{discount > 0 && <span className="text-green-600 text-sm">- R$ {discount.toFixed(2)}</span>}</div>
-            <button onClick={handleCheckout} disabled={isProcessing} className="w-full bg-yellow-400 text-black py-6 rounded-[2.5rem] uppercase text-[12px] tracking-widest shadow-xl active:scale-95 transition-all">{isProcessing ? 'Enviando...' : 'Finalizar Pedido'}</button>
+        {isSuccess ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center font-black">
+            <div className="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce"><svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg></div>
+            <h2 className="text-3xl mb-4 italic uppercase">Recebido!</h2>
+            <p className="text-gray-500 uppercase text-[10px] tracking-widest">Já estamos preparando sua parada.</p>
+            <button onClick={() => { setIsSuccess(false); onClose(); }} className="w-full bg-black text-white py-5 rounded-[2rem] uppercase mt-10 text-[10px] tracking-widest">Concluir</button>
           </div>
+        ) : (
+          <>
+            <div className="p-8 border-b flex justify-between items-center bg-white sticky top-0 z-10 font-black italic">
+              <div><h2 className="text-3xl uppercase tracking-tighter">Minha Sacola</h2><span className="text-[10px] text-gray-400 not-italic uppercase tracking-widest">{items.length} Itens</span></div>
+              <button onClick={onClose} className="p-3 hover:bg-gray-100 rounded-full transition-all active:scale-90"><CloseIcon size={28} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar pb-32">
+              {items.length > 0 ? (
+                <>
+                  <div className="bg-gray-50 p-7 rounded-[3rem] border border-gray-100 space-y-5 font-black uppercase">
+                    <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="SEU NOME" className="w-full bg-white border-2 rounded-2xl px-6 py-5 text-xs outline-none shadow-sm"/>
+                    <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="WHATSAPP (OPCIONAL)" className="w-full bg-white border-2 rounded-2xl px-6 py-5 text-xs outline-none shadow-sm"/>
+                    <div className="grid grid-cols-3 gap-2">{(['table', 'takeaway', 'delivery'] as OrderType[]).map(type => (
+                      <button key={type} onClick={() => setOrderType(type)} className={`py-4 rounded-2xl text-[9px] border-2 transition-all ${orderType === type ? 'bg-black text-white' : 'bg-white text-gray-400'}`}>{type === 'table' ? 'Mesa' : type === 'takeaway' ? 'Balcão' : 'Entrega'}</button>
+                    ))}</div>
+                    {orderType === 'table' && <div className="grid grid-cols-4 gap-2 pt-2">{Array.from({ length: 12 }, (_, i) => i + 1).map(num => (
+                      <button key={num} onClick={() => setTableNumber(num.toString())} className={`py-3 rounded-xl text-xs transition-all ${tableNumber === num.toString() ? 'bg-yellow-400 text-black' : 'bg-white text-gray-400 border'}`}>{num}</button>
+                    ))}</div>}
+                    {orderType === 'delivery' && <textarea value={address} onChange={(e) => setAddress(e.target.value)} placeholder="ENDEREÇO COMPLETO" className="w-full bg-white border-2 rounded-2xl px-6 py-5 text-xs outline-none h-28 resize-none shadow-sm"/>}
+                    <div className="flex gap-3 pt-4"><input type="text" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} placeholder="CUPOM" className="flex-1 bg-white border-2 rounded-2xl px-6 py-4 text-[10px] outline-none shadow-sm"/><button onClick={async () => { const { data } = await supabase.from('coupons').select('*').eq('code', couponCode.toUpperCase()).eq('is_active', true).single(); if (data) setAppliedCoupon({ id: data.id, code: data.code, percentage: data.percentage, isActive: data.is_active, scopeType: data.scope_type, scopeValue: data.scope_value }); else alert('Invalido'); }} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl text-[10px] shadow-lg">Validar</button></div>
+                  </div>
+                  <div className="space-y-4">
+                    {items.map(item => (
+                      <div key={item.id} className="flex gap-5 bg-white p-5 rounded-[2rem] border items-center">
+                        <img src={item.image} className="w-20 h-20 rounded-2xl object-cover shrink-0 shadow-sm" />
+                        <div className="flex-1 font-black"><h4 className="text-xs uppercase leading-none truncate">{item.name}</h4><p className="text-yellow-700 text-sm italic mt-2">R$ {item.price.toFixed(2)}</p></div>
+                        <div className="flex items-center gap-3 bg-gray-50 p-1 rounded-xl font-black">
+                          <button onClick={() => onUpdateQuantity(item.id, -1)} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center">-</button>
+                          <span className="text-sm w-4 text-center">{item.quantity}</span>
+                          <button onClick={() => onUpdateQuantity(item.id, 1)} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center">+</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : <div className="text-center py-20 opacity-30 font-black uppercase text-xs">Sacola Vazia</div>}
+            </div>
+            {items.length > 0 && (
+              <div className="p-10 border-t-4 bg-white sticky bottom-0 rounded-t-[4rem] z-20 font-black italic shadow-2xl">
+                <div className="flex justify-between items-center mb-8"><div><span className="text-[10px] text-gray-400 not-italic uppercase tracking-widest">Total</span><span className="text-4xl block">R$ {finalTotal.toFixed(2)}</span></div>{discount > 0 && <span className="text-green-600 text-sm">- R$ {discount.toFixed(2)}</span>}</div>
+                <button onClick={handleCheckout} disabled={isProcessing} className="w-full bg-yellow-400 text-black py-6 rounded-[2.5rem] uppercase text-[12px] tracking-widest shadow-xl active:scale-95 transition-all">{isProcessing ? 'Enviando...' : 'Finalizar Pedido'}</button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </>

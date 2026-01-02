@@ -51,8 +51,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     
     const { data: lConfig } = await supabase.from('loyalty_config').select('*').maybeSingle();
     if (lConfig) setLoyalty({ 
-      isActive: lConfig.isActive, spendingGoal: lConfig.spendingGoal, 
-      scopeType: lConfig.scopeType, scopeValue: lConfig.scopeValue || '' 
+      isActive: lConfig.is_active, 
+      spendingGoal: lConfig.spending_goal, 
+      scopeType: lConfig.scope_type, 
+      scopeValue: lConfig.scope_value || '' 
     });
 
     const { data: lUsers } = await supabase.from('loyalty_users').select('*').order('accumulated', { ascending: false });
@@ -62,7 +64,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleUpdateLoyalty = async (updates: Partial<LoyaltyConfig>) => {
     const next = { ...loyalty, ...updates };
     setLoyalty(next);
-    const { error } = await supabase.from('loyalty_config').upsert({ id: 1, ...next });
+    const { error } = await supabase.from('loyalty_config').upsert({ 
+      id: 1, 
+      is_active: next.isActive,
+      spending_goal: next.spendingGoal,
+      scope_type: next.scopeType,
+      scope_value: next.scopeValue
+    });
     if (error) alert('Erro: ' + error.message);
     fetchMarketing();
   };
@@ -168,14 +176,31 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             {/* Cupons */}
             <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
               <h3 className="text-xl font-black italic uppercase mb-8">🎫 Cupons</h3>
-              <form onSubmit={async (e: any) => { e.preventDefault(); const f = new FormData(e.target); await supabase.from('coupons').insert([{ id: 'c_'+Date.now(), code: f.get('code')?.toString().toUpperCase(), percentage: Number(f.get('percentage')), is_active: true, scope_type: 'all' }]); fetchMarketing(); e.target.reset(); }} className="grid grid-cols-2 gap-4 mb-8 bg-gray-50 p-6 rounded-[2.5rem]">
+              <form onSubmit={async (e: any) => { 
+                e.preventDefault(); 
+                const f = new FormData(e.target); 
+                await supabase.from('coupons').insert([{ 
+                  id: 'c_'+Date.now(), 
+                  code: f.get('code')?.toString().toUpperCase(), 
+                  percentage: Number(f.get('percentage')), 
+                  is_active: true, 
+                  scope_type: 'all' 
+                }]); 
+                fetchMarketing(); 
+                e.target.reset(); 
+              }} className="grid grid-cols-2 gap-4 mb-8 bg-gray-50 p-6 rounded-[2.5rem]">
                 <input name="code" placeholder="CÓDIGO" className="bg-white p-4 rounded-xl font-black text-xs uppercase outline-none" required />
                 <input name="percentage" type="number" placeholder="% OFF" className="bg-white p-4 rounded-xl font-black text-xs outline-none" required />
                 <button type="submit" className="col-span-2 bg-black text-yellow-400 py-4 rounded-xl font-black text-[10px] uppercase">Criar Cupom</button>
               </form>
               <div className="flex-1 space-y-3 overflow-y-auto max-h-80">
                 {coupons.map(c => (
-                  <div key={c.id} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border border-gray-100"><div><span className="font-black text-sm">{c.code}</span><span className="bg-yellow-400 text-black px-2 py-0.5 rounded text-[10px] font-black ml-2">{c.percentage}%</span></div><button onClick={async () => { await supabase.from('coupons').update({ is_active: !c.isActive }).eq('id', c.id); fetchMarketing(); }} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase ${c.isActive ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-500'}`}>{c.isActive ? 'Ativo' : 'Off'}</button></div>
+                  <div key={c.id} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                    <div><span className="font-black text-sm">{c.code}</span><span className="bg-yellow-400 text-black px-2 py-0.5 rounded text-[10px] font-black ml-2">{c.percentage}%</span></div>
+                    <button onClick={async () => { await supabase.from('coupons').update({ is_active: !c.isActive }).eq('id', c.id); fetchMarketing(); }} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase ${c.isActive ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-500'}`}>
+                      {c.isActive ? 'Ativo' : 'Off'}
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -228,7 +253,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="bg-white w-full max-w-2xl rounded-[4rem] p-12 relative shadow-2xl animate-in zoom-in duration-300">
              <button onClick={() => setIsProductModalOpen(false)} className="absolute top-12 right-12 p-5 bg-gray-100 rounded-full"><CloseIcon size={24}/></button>
              <h3 className="text-4xl font-black italic mb-12 uppercase tracking-tighter">Produto</h3>
-             <form onSubmit={(e) => { e.preventDefault(); onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price) }); setIsProductModalOpen(false); }} className="space-y-8">
+             <form onSubmit={(e) => { 
+               e.preventDefault(); 
+               onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price) }); 
+               setIsProductModalOpen(false); 
+             }} className="space-y-8">
                 <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="NOME DO ITEM" className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-sm font-black outline-none transition-all uppercase" required />
                 <div className="grid grid-cols-2 gap-6">
                     <input type="number" step="0.01" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} placeholder="PREÇO" className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-sm font-black outline-none" required />
