@@ -121,21 +121,18 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // MOTOR REALTIME MASTER
+  // MOTOR REALTIME MASTER V3.1 - FOCO EM UPDATE INSTANTÂNEO
   useEffect(() => {
     fetchData();
     
-    // Configura o canal de escuta master
-    const channel = supabase.channel('dmoreira_realtime_v3')
+    const channel = supabase.channel('realtime_master_dmoreira')
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'tables' }, 
         (payload) => {
-          console.log("Evento Realtime Detectado:", payload);
           const newRec = payload.new as any;
           const oldRec = payload.old as any;
 
-          // ATUALIZAÇÃO INSTANTÂNEA DO ESTADO LOCAL
-          // Isso faz com que o pedido apareça na hora sem F5
+          // ATUALIZAÇÃO FORÇADA DE ESTADO (ISSO ELIMINA O F5)
           setTables(current => {
             const index = current.findIndex(t => t.id === newRec.id);
             const updatedTable: Table = {
@@ -153,32 +150,26 @@ const App: React.FC = () => {
             }
           });
 
-          // LÓGICA DE ALERTA (NOVO PEDIDO)
+          // ALERTA SONORO
           if (newRec && newRec.status === 'occupied') {
             const wasFree = !oldRec || oldRec.status === 'free';
             if (wasFree) {
               if (audioEnabled && notificationSound.current) {
                 notificationSound.current.currentTime = 0;
-                notificationSound.current.play().catch(() => console.log("Áudio bloqueado pelo navegador"));
+                notificationSound.current.play().catch(() => {});
               }
               setNewOrderAlert({ 
                 id: newRec.id, 
                 type: newRec.id >= 950 ? 'Balcão' : newRec.id >= 900 ? 'Entrega' : 'Mesa' 
               });
-              setTimeout(() => setNewOrderAlert(null), 20000);
+              setTimeout(() => setNewOrderAlert(null), 15000);
             }
           }
           
-          // Sincronização de segurança em segundo plano
-          fetchData(true);
-        }
-      )
-      .subscribe((status) => {
-        console.log("Status da Conexão Realtime:", status);
-        if (status === 'SUBSCRIBED') {
           setDbStatus('ok');
         }
-      });
+      )
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -193,7 +184,6 @@ const App: React.FC = () => {
       targetId = free ? free.id : (Math.max(...tables.filter(t => t.id >= range[0] && t.id <= range[1]).map(t => t.id), range[0] - 1) + 1);
     }
     
-    // O Supabase enviará o evento para o canal 'postgres_changes' acima
     const { error } = await supabase.from('tables').upsert({ 
       id: targetId, 
       status: 'occupied', 
