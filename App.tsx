@@ -47,35 +47,10 @@ const App: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    const checkInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setIsLoggedIn(true);
-        setIsAdmin(true);
-        fetchData();
-      }
-    };
-    checkInitialSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        setIsLoggedIn(true);
-        setIsAdmin(true);
-      } else if (event === 'SIGNED_OUT') {
-        setIsLoggedIn(false);
-        setIsAdmin(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   const fetchData = useCallback(async (isSilent = false) => {
     try {
       if (!isSilent) setDbStatus('loading');
-      else setDbStatus('syncing');
-
+      
       const [catRes, coupRes, prodRes, tableRes] = await Promise.all([
         supabase.from('categories').select('*').order('name'),
         supabase.from('coupons').select('*').eq('is_active', true),
@@ -102,14 +77,12 @@ const App: React.FC = () => {
 
       if (tableRes.data) {
         setTables(prev => {
-          const merged = INITIAL_TABLES.map(t => {
-            const dbT = tableRes.data.find(dt => dt.id === t.id);
-            return dbT ? { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order } : t;
-          });
-          tableRes.data.forEach(dt => {
-            if (!merged.find(m => m.id === dt.id)) {
-              merged.push({ id: dt.id, status: dt.status, currentOrder: dt.current_order });
-            }
+          const merged = [...INITIAL_TABLES];
+          tableRes.data.forEach(dbT => {
+            const idx = merged.findIndex(t => t.id === dbT.id);
+            const tableObj = { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order };
+            if (idx >= 0) merged[idx] = tableObj;
+            else merged.push(tableObj);
           });
           return merged.sort((a,b) => a.id - b.id);
         });
@@ -121,42 +94,71 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // MOTOR REALTIME MASTER V3.1 - FOCO EM UPDATE INSTANTÂNEO
   useEffect(() => {
-    fetchData();
-    
-    const channel = supabase.channel('realtime_master_dmoreira')
+    const checkInitialSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setIsLoggedIn(true);
+        setIsAdmin(true);
+      }
+      fetchData();
+    };
+    checkInitialSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        setIsLoggedIn(true);
+        setIsAdmin(true);
+      } else if (event === 'SIGNED_OUT') {
+        setIsLoggedIn(false);
+        setIsAdmin(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [fetchData]);
+
+  // MOTOR REALTIME MASTER V4 - FOCO EM EVENTOS GRANULARES
+  useEffect(() => {
+    const channel = supabase.channel('dmoreira_realtime_v4')
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'tables' }, 
         (payload) => {
+          console.log("🔥 Evento Realtime Recebido:", payload.eventType, payload.new);
+          
+          if (payload.eventType === 'DELETE') {
+            const oldId = (payload.old as any).id;
+            setTables(current => current.map(t => t.id === oldId ? { ...t, status: 'free', currentOrder: null } : t));
+            return;
+          }
+
           const newRec = payload.new as any;
           const oldRec = payload.old as any;
 
-          // ATUALIZAÇÃO FORÇADA DE ESTADO (ISSO ELIMINA O F5)
+          // Atualização de Estado Ultra-Rápida
           setTables(current => {
-            const index = current.findIndex(t => t.id === newRec.id);
+            const exists = current.some(t => t.id === newRec.id);
             const updatedTable: Table = {
               id: newRec.id,
               status: newRec.status,
               currentOrder: newRec.current_order
             };
 
-            if (index !== -1) {
-              const newList = [...current];
-              newList[index] = updatedTable;
-              return newList;
+            if (exists) {
+              return current.map(t => t.id === newRec.id ? updatedTable : t);
             } else {
               return [...current, updatedTable].sort((a, b) => a.id - b.id);
             }
           });
 
-          // ALERTA SONORO
+          // Lógica de Notificação de Novo Pedido
           if (newRec && newRec.status === 'occupied') {
+            // Se o status mudou de livre para ocupado ou se é um novo insert
             const wasFree = !oldRec || oldRec.status === 'free';
             if (wasFree) {
               if (audioEnabled && notificationSound.current) {
                 notificationSound.current.currentTime = 0;
-                notificationSound.current.play().catch(() => {});
+                notificationSound.current.play().catch(e => console.warn("Áudio pausado pelo navegador", e));
               }
               setNewOrderAlert({ 
                 id: newRec.id, 
@@ -165,16 +167,19 @@ const App: React.FC = () => {
               setTimeout(() => setNewOrderAlert(null), 15000);
             }
           }
-          
-          setDbStatus('ok');
         }
       )
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => fetchData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => fetchData(true))
+      .subscribe((status) => {
+        console.log("🛰️ Status da Conexão:", status);
+        if (status === 'SUBSCRIBED') setDbStatus('ok');
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchData, audioEnabled]);
+  }, [audioEnabled, fetchData]);
 
   const handlePlaceOrder = async (order: Order) => {
     let targetId = order.tableId;
@@ -184,6 +189,7 @@ const App: React.FC = () => {
       targetId = free ? free.id : (Math.max(...tables.filter(t => t.id >= range[0] && t.id <= range[1]).map(t => t.id), range[0] - 1) + 1);
     }
     
+    // O Realtime via UPSERT
     const { error } = await supabase.from('tables').upsert({ 
       id: targetId, 
       status: 'occupied', 
@@ -191,7 +197,7 @@ const App: React.FC = () => {
     });
     
     if (error) {
-      alert("Erro ao enviar pedido.");
+      alert("Erro ao enviar pedido ao servidor.");
     } else {
       setCartItems([]);
       setIsCartOpen(false);
@@ -229,7 +235,13 @@ const App: React.FC = () => {
           <AdminPanel 
             tables={tables} menuItems={menuItems} categories={categories}
             audioEnabled={audioEnabled} onToggleAudio={() => setAudioEnabled(!audioEnabled)}
-            onUpdateTable={async (id, status, ord) => { await supabase.from('tables').upsert({ id, status, current_order: ord || null }); }}
+            onUpdateTable={async (id, status, ord) => { 
+              if (status === 'free') {
+                await supabase.from('tables').update({ status: 'free', current_order: null }).eq('id', id);
+              } else {
+                await supabase.from('tables').upsert({ id, status, current_order: ord || null });
+              }
+            }}
             onAddToOrder={(tableId, product) => {
               const table = (tables || []).find(t => t.id === tableId);
               let current = table?.currentOrder;
@@ -240,10 +252,10 @@ const App: React.FC = () => {
               
               const newOrd: Order = current ? { ...current, items, total, finalTotal: total - (current.discount || 0) } : {
                 id: Math.random().toString(36).substr(2, 6).toUpperCase(),
-                customerName: tableId >= 900 ? (tableId >= 950 ? 'Balcão' : 'Entrega') : `Mesa ${tableId}`,
+                customerName: tableId >= 950 ? 'Balcão' : tableId >= 900 ? 'Entrega' : `Mesa ${tableId}`,
                 items, total, finalTotal: total, paymentMethod: 'Pendente',
                 timestamp: new Date().toISOString(), tableId, status: 'pending',
-                orderType: tableId >= 900 ? (tableId >= 950 ? 'counter' : 'delivery') : 'table'
+                orderType: tableId >= 950 ? 'counter' : tableId >= 900 ? 'delivery' : 'table'
               };
               handlePlaceOrder(newOrd);
             }}
