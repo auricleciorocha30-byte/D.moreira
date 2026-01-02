@@ -44,13 +44,13 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
       targetTableId = parseInt(tableNumber);
     } else if (orderType === 'delivery') {
       if (!address.trim()) return alert('Informe o endereço.');
-      targetTableId = 900; // Mesa Virtual de Entregas
+      targetTableId = -900; // CÓDIGO ESPECIAL: Solicitação de Nova Entrega
     } else if (orderType === 'takeaway') {
       if (takeawaySubtype === 'table') {
         if (!tableNumber) return alert('Informe a mesa que você está.');
         targetTableId = parseInt(tableNumber);
       } else {
-        targetTableId = 901; // Mesa Virtual de Retirada/Balcão
+        targetTableId = -950; // CÓDIGO ESPECIAL: Solicitação de Novo Balcão
         finalOrderType = 'counter';
       }
     }

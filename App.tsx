@@ -133,10 +133,10 @@ const App: React.FC = () => {
   const handlePlaceOrder = async (input: any) => {
     let targetTableId = input.tableId;
     
-    // Se for um novo pedido de entrega/balcão vindo do cliente (ID temporário 900/901)
-    if (targetTableId === 900 || targetTableId === 901) {
-      const rangeStart = targetTableId === 900 ? 900 : 950;
-      const rangeEnd = targetTableId === 900 ? 949 : 999;
+    // TRATAMENTO DE NOVOS PEDIDOS (SINAIS NEGATIVOS)
+    if (targetTableId === -900 || targetTableId === -950) {
+      const rangeStart = targetTableId === -900 ? 900 : 950;
+      const rangeEnd = targetTableId === -900 ? 949 : 999;
       
       const freeSlot = tables.find(t => t.id >= rangeStart && t.id <= rangeEnd && t.status === 'free');
       if (freeSlot) {
@@ -150,13 +150,13 @@ const App: React.FC = () => {
     // Buscamos o estado atual da mesa no banco para garantir consistência
     const { data: current } = await supabase.from('tables').select('current_order, status').eq('id', targetTableId).single();
     
-    // Normalizamos os itens: se vier um array (pedido completo) ou um item único (admin)
+    // Normalizamos os itens
     const newItems: CartItem[] = input.items ? input.items : [{ ...input, quantity: 1 }];
     
     let finalOrder: Order;
     
     if (current?.status === 'occupied' && current.current_order) {
-      // Se a mesa já está ocupada, mesclamos os itens
+      // Se a mesa já está ocupada, mesclamos os itens preservando o TIPO DE PEDIDO ORIGINAL
       const existingItems = Array.isArray(current.current_order.items) ? [...current.current_order.items] : [];
       
       newItems.forEach((newItem) => {
@@ -175,7 +175,7 @@ const App: React.FC = () => {
         isUpdated: true 
       };
     } else {
-      // Se for um novo pedido em mesa livre
+      // Se for um novo pedido
       finalOrder = { 
         id: input.id && input.items ? input.id : Math.random().toString(36).substr(2, 6).toUpperCase(),
         customerName: input.customerName || 'Cliente',
@@ -193,7 +193,6 @@ const App: React.FC = () => {
 
     await supabase.from('tables').upsert({ id: targetTableId, status: 'occupied', current_order: finalOrder });
     
-    // Se veio do carrinho do cliente, limpamos o carrinho local
     if (input.items) {
       setCartItems([]);
       setIsCartOpen(false);
