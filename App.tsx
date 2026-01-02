@@ -47,7 +47,7 @@ const App: React.FC = () => {
   const playNotification = useCallback(() => {
     if (audioEnabled && notificationSound.current) {
       notificationSound.current.currentTime = 0;
-      notificationSound.current.play().catch(e => console.error("Erro ao tocar áudio:", e));
+      notificationSound.current.play().catch(e => console.warn("Interação necessária para áudio:", e));
     }
   }, [audioEnabled]);
 
@@ -79,33 +79,43 @@ const App: React.FC = () => {
       const { data: tData } = await supabase.from('tables').select('*').order('id');
       if (tData) {
         setTables(prev => {
-          const updated = prev.map(p => {
+          // Apenas atualiza o estado. Os efeitos sonoros foram movidos para um useEffect observador
+          return prev.map(p => {
             const dbT = tData.find(dt => dt.id === p.id);
             if (dbT) return { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order };
             return p;
           });
-
-          tData.forEach(dbT => {
-            const prevT = prev.find(p => p.id === dbT.id);
-            if (dbT.status === 'occupied' && (!prevT || prevT.status === 'free')) {
-              if (isAdmin) {
-                playNotification();
-                setNewOrderAlert({ 
-                  id: dbT.id, 
-                  type: dbT.id >= 950 ? 'counter' : dbT.id >= 900 ? 'delivery' : 'table' 
-                });
-                setTimeout(() => setNewOrderAlert(null), 15000);
-              }
-            }
-          });
-
-          return updated;
         });
       }
     } catch (err) {
       console.error("Fetch error:", err);
     }
-  }, [isAdmin, playNotification]);
+  }, []);
+
+  // Monitor de Novos Pedidos (Som e Alerta)
+  useEffect(() => {
+    if (!isAdmin || !isLoggedIn) return;
+
+    const channel = supabase.channel('order_monitor')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tables' }, payload => {
+        const newTable = payload.new as any;
+        const oldTable = payload.old as any;
+        
+        // Se mudou de livre para ocupado, é um novo pedido
+        if (newTable.status === 'occupied' && oldTable.status === 'free') {
+          playNotification();
+          setNewOrderAlert({ 
+            id: newTable.id, 
+            type: newTable.id >= 950 ? 'counter' : newTable.id >= 900 ? 'delivery' : 'table' 
+          });
+          setTimeout(() => setNewOrderAlert(null), 10000);
+          fetchData(); // Atualiza a lista
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [isAdmin, isLoggedIn, playNotification, fetchData]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -120,10 +130,9 @@ const App: React.FC = () => {
 
     fetchData();
 
-    const channel = supabase.channel('realtime_changes')
+    const channel = supabase.channel('realtime_sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'coupons' }, fetchData)
       .subscribe();
 

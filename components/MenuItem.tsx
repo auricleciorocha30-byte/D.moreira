@@ -12,7 +12,8 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd, activeCoupons }) =>
   const isCombo = product.category === 'Combos';
   const isAvailable = product.isAvailable !== false;
 
-  // Verifica se existe algum cupom ativo para este produto específico ou para a categoria dele
+  // Verifica se existe algum cupom ativo ESPECÍFICO para este produto ou sua categoria
+  // Se o admin não selecionou este produto/categoria, o selo não aparece
   const hasCoupon = activeCoupons.some(c => 
     c.isActive && (
       (c.scopeType === 'product' && c.scopeValue === product.id) ||
@@ -31,7 +32,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd, activeCoupons }) =>
 
       {hasCoupon && isAvailable && (
         <div className="absolute top-4 right-4 z-10 bg-green-600 text-white text-[9px] font-black uppercase px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1 border-b-2 border-green-800">
-          <span>CUPOM</span> 🎫
+          <span>PROMO</span> 🎫
         </div>
       )}
 

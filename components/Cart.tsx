@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { CartItem, Product, Order, OrderType, Coupon, LoyaltyConfig } from '../types';
-import { CloseIcon } from './Icons';
+import { CloseIcon, TrashIcon } from './Icons';
 import { supabase } from '../lib/supabase';
 
 interface CartProps {
@@ -68,10 +68,8 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const handleCheckout = async () => {
     if (items.length === 0) return;
     if (!customerName.trim()) return alert('Informe seu nome.');
+    if (!customerPhone.trim()) return alert('Informe seu WhatsApp/Telefone para contato.');
     
-    const isLoyaltyEnabled = loyaltyConfig?.isActive;
-    if (isLoyaltyEnabled && !customerPhone.trim()) return alert('Informe seu número para acumular pontos de fidelidade!');
-
     let targetTableId = 0;
     let finalOrderType = orderType;
 
@@ -104,7 +102,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
     };
 
     // Registrar acúmulo de fidelidade
-    if (isLoyaltyEnabled && customerPhone) {
+    if (loyaltyConfig?.isActive && customerPhone) {
       const eligibleLoyaltyValue = items.reduce((acc, item) => {
         const isEligible = loyaltyConfig.scopeType === 'all' || 
           (loyaltyConfig.scopeType === 'category' && item.category === loyaltyConfig.scopeValue) ||
@@ -159,18 +157,13 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
               <div className="bg-gray-50 p-6 rounded-[2.5rem] border border-gray-100 space-y-4 shadow-sm">
                 <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="SEU NOME" className="w-full bg-white border-2 border-transparent focus:border-yellow-400 rounded-2xl px-5 py-4 text-xs font-black uppercase outline-none transition-all"/>
                 
-                {loyaltyConfig?.isActive && (
-                  <div className="bg-yellow-400/10 p-4 rounded-2xl border border-yellow-200">
-                     <p className="text-[9px] font-black uppercase mb-2 text-yellow-800 tracking-widest flex items-center gap-1">💎 Fidelidade Ativa</p>
-                     <input 
-                      type="tel" 
-                      value={customerPhone} 
-                      onChange={(e) => setCustomerPhone(e.target.value)} 
-                      placeholder="SEU WHATSAPP" 
-                      className="w-full bg-white border-2 border-transparent focus:border-yellow-400 rounded-xl px-4 py-3 text-[10px] font-black outline-none"
-                     />
-                  </div>
-                )}
+                <input 
+                  type="tel" 
+                  value={customerPhone} 
+                  onChange={(e) => setCustomerPhone(e.target.value)} 
+                  placeholder="SEU WHATSAPP / TELEFONE" 
+                  className="w-full bg-white border-2 border-transparent focus:border-yellow-400 rounded-2xl px-5 py-4 text-xs font-black outline-none transition-all"
+                />
 
                 <div className="space-y-3">
                   <p className="text-[9px] font-black uppercase text-gray-400 ml-1 tracking-widest">Onde Você Está?</p>
@@ -185,87 +178,100 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                   {orderType === 'table' && (
                     <div className="pt-2 animate-in fade-in slide-in-from-top-2">
                       <p className="text-[9px] font-black uppercase text-gray-400 mb-3 ml-1">Selecione sua Mesa</p>
-                      <div className="grid grid-cols-6 gap-2">
-                        {Array.from({ length: 12 }, (_, i) => (i + 1).toString()).map(num => (
-                          <button key={num} onClick={() => setTableNumber(num)} className={`h-10 rounded-lg text-[10px] font-black transition-all ${tableNumber === num ? 'bg-yellow-400 text-black shadow-md scale-110' : 'bg-white text-gray-400 border border-gray-100'}`}>{num}</button>
+                      <div className="grid grid-cols-4 gap-2">
+                         {Array.from({ length: 12 }, (_, i) => i + 1).map(num => (
+                          <button key={num} onClick={() => setTableNumber(num.toString())} className={`py-3 rounded-xl text-xs font-black transition-all ${tableNumber === num.toString() ? 'bg-yellow-400 text-black shadow-md border-black' : 'bg-white text-gray-400 border border-gray-100'}`}>
+                            {num}
+                          </button>
                         ))}
                       </div>
                     </div>
                   )}
 
                   {orderType === 'delivery' && (
-                    <textarea value={address} onChange={(e) => setAddress(e.target.value)} placeholder="ENDEREÇO COMPLETO PARA ENTREGA..." className="w-full bg-white border-2 border-transparent focus:border-yellow-400 rounded-2xl p-4 text-[10px] font-black uppercase h-24 resize-none outline-none animate-in fade-in" />
+                    <div className="pt-2 animate-in fade-in slide-in-from-top-2">
+                      <p className="text-[9px] font-black uppercase text-gray-400 mb-3 ml-1">Endereço de Entrega</p>
+                      <textarea 
+                        value={address} 
+                        onChange={(e) => setAddress(e.target.value)} 
+                        placeholder="Rua, número, bairro..." 
+                        className="w-full bg-white border-2 border-transparent focus:border-yellow-400 rounded-2xl px-5 py-4 text-xs font-black outline-none transition-all h-24 resize-none"
+                      />
+                    </div>
                   )}
                 </div>
-              </div>
 
-              {/* Cupom de Desconto */}
-              <div className="bg-white p-5 rounded-[2rem] border-2 border-dashed border-gray-200">
-                 <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={couponCode} 
-                      onChange={(e) => setCouponCode(e.target.value)} 
-                      placeholder="TEM CUPOM?" 
-                      className="flex-1 bg-gray-50 border-2 border-transparent focus:border-black rounded-xl px-4 py-3 text-[10px] font-black uppercase outline-none"
-                    />
-                    <button onClick={handleApplyCoupon} className="bg-black text-yellow-400 px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-md">OK</button>
-                 </div>
-                 {appliedCoupon && (
-                   <div className="mt-3 flex justify-between items-center bg-green-50 px-4 py-2.5 rounded-xl border border-green-200 animate-in zoom-in">
-                      <span className="text-[9px] font-black text-green-700 uppercase tracking-widest">Promo {appliedCoupon.code} ATIVA!</span>
-                      <button onClick={() => setAppliedCoupon(null)} className="text-red-500 font-black text-xs">✕</button>
+                <div className="space-y-3 pt-2">
+                   <p className="text-[9px] font-black uppercase text-gray-400 ml-1 tracking-widest">Pagamento</p>
+                   <div className="grid grid-cols-3 gap-2">
+                      {(['Pix', 'Dinheiro', 'Cartão'] as const).map(method => (
+                        <button key={method} onClick={() => setPaymentMethod(method)} className={`py-3 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${paymentMethod === method ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>
+                          {method}
+                        </button>
+                      ))}
                    </div>
-                 )}
+                </div>
+
+                <div className="pt-4 flex gap-2">
+                   <input type="text" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} placeholder="CUPOM" className="flex-1 bg-white border-2 border-transparent focus:border-yellow-400 rounded-xl px-5 py-3 text-[10px] font-black uppercase outline-none transition-all"/>
+                   <button onClick={handleApplyCoupon} className="bg-black text-yellow-400 px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg">Aplicar</button>
+                </div>
+                {appliedCoupon && (
+                  <p className="text-[10px] font-black text-green-600 uppercase mt-1 ml-1 animate-pulse">Cupom Ativo: {appliedCoupon.percentage}% OFF!</p>
+                )}
               </div>
 
-              <div className="space-y-4">
-                <p className="text-[9px] font-black uppercase text-gray-400 ml-1 tracking-widest">Itens no Pedido</p>
+              <div className="space-y-4 pt-4 pb-10">
+                <p className="text-[9px] font-black uppercase text-gray-400 ml-1 tracking-widest">Meus Itens</p>
                 {items.map(item => (
-                  <div key={item.id} className="bg-white p-4 rounded-3xl border border-gray-100 flex gap-4 shadow-sm">
-                    <img src={item.image} className="w-16 h-16 object-cover rounded-2xl shadow-inner" />
-                    <div className="flex-1">
-                      <h4 className="font-black text-gray-900 text-xs uppercase truncate w-40">{item.name}</h4>
-                      <div className="flex items-center justify-between mt-3">
-                        <p className="font-black text-[11px] text-yellow-700 italic">R$ {item.price.toFixed(2)}</p>
-                        <div className="flex items-center bg-gray-100 rounded-xl p-1">
-                          <button onClick={() => onUpdateQuantity(item.id, -1)} className="w-8 h-8 bg-white rounded-lg shadow-sm font-black text-xs hover:bg-gray-50 transition-colors">-</button>
-                          <span className="w-8 text-center text-xs font-black">{item.quantity}</span>
-                          <button onClick={() => onUpdateQuantity(item.id, 1)} className="w-8 h-8 bg-white rounded-lg shadow-sm font-black text-xs hover:bg-gray-50 transition-colors">+</button>
-                        </div>
-                      </div>
+                  <div key={item.id} className="flex gap-4 bg-white p-4 rounded-3xl border border-gray-100 shadow-sm items-center">
+                    <img src={item.image} alt={item.name} className="w-16 h-16 rounded-2xl object-cover shrink-0 shadow-sm" />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-black text-[11px] text-gray-900 uppercase truncate">{item.name}</h4>
+                      <p className="text-yellow-700 font-black text-[10px] italic">R$ {item.price.toFixed(2).replace('.', ',')}</p>
                     </div>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => onUpdateQuantity(item.id, -1)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-black hover:bg-gray-200">-</button>
+                      <span className="font-black text-xs">{item.quantity}</span>
+                      <button onClick={() => onUpdateQuantity(item.id, 1)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-black hover:bg-gray-200">+</button>
+                    </div>
+                    <button onClick={() => onRemove(item.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors">
+                      <TrashIcon size={18} />
+                    </button>
                   </div>
                 ))}
               </div>
             </>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center text-center p-10">
+            <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="bg-gray-100 w-24 h-24 rounded-full flex items-center justify-center mb-6">
-                <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
+                <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
               </div>
-              <p className="text-gray-400 font-black uppercase text-[10px] tracking-widest">Sua sacola está vazia</p>
+              <p className="text-gray-400 font-black text-xs uppercase tracking-widest">Sua sacola está vazia</p>
             </div>
           )}
         </div>
 
         {items.length > 0 && (
-          <div className="p-8 bg-white border-t-4 border-yellow-400 sticky bottom-0 shadow-[0_-20px_40px_-15px_rgba(0,0,0,0.1)]">
-            <div className="space-y-2 mb-6">
-              <div className="flex justify-between text-gray-400 font-black text-[10px] uppercase tracking-widest">
-                <span>Subtotal</span><span>R$ {subtotal.toFixed(2)}</span>
+          <div className="p-8 border-t bg-white sticky bottom-0 left-0 right-0 shadow-[0_-10px_40px_rgba(0,0,0,0.08)] rounded-t-[3rem] z-20">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Geral</span>
+                <span className="text-3xl font-black text-gray-900 italic tracking-tighter">R$ {finalTotal.toFixed(2).replace('.', ',')}</span>
               </div>
               {discount > 0 && (
-                <div className="flex justify-between text-green-600 font-black text-[10px] uppercase tracking-widest">
-                  <span>Desconto Aplicado</span><span>- R$ {discount.toFixed(2)}</span>
+                <div className="text-right">
+                  <span className="text-[9px] font-black text-green-600 uppercase">Desconto</span>
+                  <p className="text-sm font-black text-green-600">- R$ {discount.toFixed(2).replace('.', ',')}</p>
                 </div>
               )}
-              <div className="flex justify-between items-end pt-2">
-                <span className="text-gray-400 font-black uppercase text-[9px] tracking-[0.2em]">Total Final</span>
-                <span className="font-black text-3xl italic text-black leading-none">R$ {finalTotal.toFixed(2).replace('.', ',')}</span>
-              </div>
             </div>
-            <button onClick={handleCheckout} className="w-full bg-black text-yellow-400 font-black py-5 rounded-[2.5rem] shadow-2xl uppercase text-[11px] tracking-[0.2em] border-b-4 border-yellow-400 active:scale-95 transition-all">Finalizar Pedido</button>
+            <button 
+              onClick={handleCheckout} 
+              className="w-full bg-yellow-400 text-black py-5 rounded-2xl font-black uppercase text-[12px] tracking-[0.2em] shadow-xl hover:brightness-110 active:scale-95 transition-all"
+            >
+              Confirmar Pedido 🏁
+            </button>
           </div>
         )}
       </div>

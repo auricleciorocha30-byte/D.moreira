@@ -71,6 +71,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (lUsers) setLoyaltyUsers(lUsers);
   };
 
+  const handleTestSound = () => {
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    audio.play().then(() => alert('Som configurado com sucesso! Clique em OK para ativar as notificações.')).catch(e => alert('Erro ao tocar: ' + e.message));
+  };
+
   const physicalTables = useMemo(() => 
     (tables || []).filter(t => t.id >= 1 && t.id <= 12).sort((a,b) => a.id - b.id), 
     [tables]
@@ -271,6 +276,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             ))}
           </nav>
           <div className="flex items-center gap-4">
+            <button onClick={handleTestSound} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all">Testar Som</button>
             <button onClick={onToggleAudio} className={`p-4 rounded-full transition-all ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-gray-600'}`}>
               <VolumeIcon muted={!audioEnabled} size={24}/>
             </button>
