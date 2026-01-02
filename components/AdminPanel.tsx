@@ -203,7 +203,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     e.preventDefault();
     const formData = new FormData(e.target);
     const newCoupon = {
-      id: 'cpn_' + Date.now(), // Adicionado ID explícito para garantir salvamento
+      id: 'cpn_' + Date.now(),
       code: formData.get('code')?.toString().toUpperCase(),
       percentage: Number(formData.get('percentage')),
       isActive: true,
@@ -262,6 +262,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     ),
     [menuItems, searchTerm]
   );
+
+  // Memoize active promotions for easy access in the UI
+  const productsWithActiveCoupons = useMemo(() => {
+    const activeC = coupons.filter(c => c.isActive);
+    return menuItems.filter(p => 
+      activeC.some(c => 
+        c.scopeType === 'all' || 
+        (c.scopeType === 'category' && c.scopeValue === p.category) ||
+        (c.scopeType === 'product' && c.scopeValue === p.id)
+      )
+    ).map(p => {
+      const affectingCoupons = activeC.filter(c => 
+        c.scopeType === 'all' || 
+        (c.scopeType === 'category' && c.scopeValue === p.category) ||
+        (c.scopeType === 'product' && c.scopeValue === p.id)
+      );
+      return { ...p, affectingCoupons };
+    });
+  }, [menuItems, coupons]);
 
   return (
     <div className="w-full">
@@ -450,7 +469,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'marketing' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in duration-500">
             {/* Gestão de Cupons */}
-            <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
+            <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
               <h3 className="text-xl font-black italic uppercase mb-6 flex items-center gap-2">🎫 Cupons de Desconto</h3>
               <form onSubmit={handleAddCoupon} className="grid grid-cols-2 gap-3 mb-8 bg-gray-50 p-6 rounded-[2rem]">
                 <input name="code" placeholder="CÓDIGO" className="bg-white border p-3 rounded-xl font-bold text-xs uppercase" required />
@@ -477,21 +496,58 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 
                 <button type="submit" className="col-span-2 bg-black text-yellow-400 py-4 rounded-xl font-black text-[10px] uppercase">Criar Cupom</button>
               </form>
-              <div className="space-y-3">
-                {coupons.map(c => (
-                  <div key={c.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border">
-                    <div>
-                      <span className="font-black text-sm">{c.code}</span>
-                      <span className="ml-2 bg-yellow-400 text-black px-2 py-0.5 rounded text-[10px] font-black">{c.percentage}%</span>
-                      <p className="text-[8px] text-gray-400 font-bold uppercase mt-1">
-                        Escopo: {c.scopeType} {c.scopeValue && `(${c.scopeValue})`}
-                      </p>
-                    </div>
-                    <button onClick={() => handleToggleCoupon(c.id, c.isActive)} className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase ${c.isActive ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-600'}`}>
-                      {c.isActive ? 'Ativo' : 'Inativo'}
-                    </button>
-                  </div>
-                ))}
+
+              <div className="space-y-4 mb-8">
+                <p className="text-[10px] font-black uppercase text-gray-400 ml-1">Lista de Cupons</p>
+                <div className="space-y-3 max-h-[300px] overflow-y-auto no-scrollbar">
+                  {coupons.map(c => {
+                    let scopeDisplay = "Geral";
+                    if (c.scopeType === 'category') scopeDisplay = `Cat: ${c.scopeValue}`;
+                    if (c.scopeType === 'product') {
+                      const p = menuItems.find(item => item.id === c.scopeValue);
+                      scopeDisplay = p ? `Prod: ${p.name}` : "Produto não encontrado";
+                    }
+
+                    return (
+                      <div key={c.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border hover:border-yellow-400 transition-all">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-sm">{c.code}</span>
+                            <span className="bg-yellow-400 text-black px-2 py-0.5 rounded text-[10px] font-black">{c.percentage}%</span>
+                          </div>
+                          <p className="text-[8px] text-gray-400 font-bold uppercase mt-1">Alvo: {scopeDisplay}</p>
+                        </div>
+                        <button 
+                          onClick={() => handleToggleCoupon(c.id, c.isActive)} 
+                          className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase transition-all shadow-sm ${c.isActive ? 'bg-green-500 text-white shadow-green-200' : 'bg-gray-300 text-gray-600'}`}
+                        >
+                          {c.isActive ? 'Ativado' : 'Desativado'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Nova Seção: Resumo de Itens com Promoção Ativa */}
+              <div className="mt-auto border-t pt-6">
+                <h4 className="text-[10px] font-black uppercase text-gray-400 mb-4 ml-1">Produtos Atualmente em Oferta</h4>
+                <div className="flex flex-wrap gap-2">
+                  {productsWithActiveCoupons.length > 0 ? (
+                    productsWithActiveCoupons.map(p => (
+                      <div key={p.id} className="bg-green-50 text-green-700 px-3 py-2 rounded-xl border border-green-100 flex items-center gap-2">
+                        <span className="text-[9px] font-black uppercase italic">{p.name}</span>
+                        <div className="flex gap-1">
+                          {p.affectingCoupons.map(c => (
+                             <span key={c.id} className="bg-green-600 text-white text-[7px] px-1.5 py-0.5 rounded font-black">{c.code}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-[9px] text-gray-300 font-black uppercase italic p-4">Nenhum item com desconto ativo no momento.</p>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -557,7 +613,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </div>
 
-      {/* Modal de Pedido */}
+      {/* Modal de Pedido - Corrigido Layout Mobile */}
       {selectedTable && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-0 md:p-4 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setSelectedTableId(null)} />
@@ -587,7 +643,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       <textarea value={editAddress} onChange={e => setEditAddress(e.target.value)} placeholder="Endereço de Entrega..." className="w-full bg-white border-2 border-yellow-200 rounded-2xl p-4 text-xs font-black uppercase h-24 resize-none outline-none" />
                    </div>
                 )}
-                <div className="bg-gray-100 p-1.5 rounded-2xl mb-8 flex gap-1">
+                <div className="bg-gray-100 p-1.5 rounded-2xl mb-8 flex gap-1 sticky top-0 z-10">
                   {(['preparing', 'ready', 'delivered'] as OrderStatus[]).map(s => (
                     <button key={s} disabled={isSaving} onClick={() => handleUpdateOrderStatus(s)} className={`flex-1 py-3.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${selectedTable.currentOrder?.status === s ? 'bg-black text-yellow-400 shadow-xl' : 'text-gray-400'}`}>{STATUS_CONFIG[s].label}</button>
                   ))}
@@ -600,18 +656,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   ))}
                 </div>
-                <div className="border-t-2 pt-6">
+                <div className="border-t-2 pt-6 bg-white sticky bottom-0">
                   <div className="flex justify-between items-end mb-6"><span className="text-gray-400 font-black text-[10px] uppercase">Total</span><span className="text-4xl font-black italic text-black leading-none">R$ {Number(selectedTable.currentOrder?.finalTotal || selectedTable.currentOrder?.total || 0).toFixed(2)}</span></div>
-                  <button onClick={() => { if(confirm('Concluir e liberar vaga?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="w-full bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-green-800">Finalizar & Liberar</button>
+                  <button onClick={() => { if(confirm('Concluir e liberar vaga?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="w-full bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-green-800 mb-4 md:mb-0">Finalizar & Liberar</button>
                 </div>
               </div>
-              <div className="w-full md:w-[24rem] bg-gray-50 p-6 md:p-10 flex flex-col border-t md:border-t-0 md:border-l">
-                 <h4 className="text-[10px] font-black uppercase mb-6 bg-yellow-400 px-6 py-2.5 rounded-full w-fit">Adicionar Itens</h4>
+              {/* Seção Adicionar Itens - Com limite de altura no mobile para evitar sobreposição */}
+              <div className="w-full md:w-[24rem] bg-gray-50 p-6 md:p-10 flex flex-col border-t md:border-t-0 md:border-l max-h-[45vh] md:max-h-full">
+                 <h4 className="text-[10px] font-black uppercase mb-6 bg-yellow-400 px-6 py-2.5 rounded-full w-fit sticky top-0 z-10">Adicionar Itens</h4>
                  <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar">
                     {(menuItems || []).filter(p => p.isAvailable).map(p => (
                       <button key={p.id} onClick={() => onAddToOrder(selectedTable.id, p)} className="w-full bg-white p-4 rounded-2xl border-2 border-transparent hover:border-black flex justify-between items-center transition-all shadow-sm">
                         <div className="text-left"><p className="font-black text-[10px] uppercase truncate w-32 text-gray-900">{p.name}</p><p className="text-yellow-700 font-black text-[9px] italic mt-1">R$ {Number(p.price || 0).toFixed(2)}</p></div>
-                        <span className="bg-yellow-400 text-black font-black text-[8px] px-3.5 py-2 rounded-xl">+ ADD</span>
+                        <span className="bg-yellow-400 text-black font-black text-[8px] px-3.5 py-2 rounded-xl text-center">+ ADD</span>
                       </button>
                     ))}
                  </div>

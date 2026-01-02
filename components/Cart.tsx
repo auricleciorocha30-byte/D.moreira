@@ -68,7 +68,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const handleCheckout = async () => {
     if (items.length === 0) return;
     if (!customerName.trim()) return alert('Informe seu nome.');
-    if (!customerPhone.trim()) return alert('Informe seu WhatsApp/Telefone para contato.');
+    // Telefone agora é opcional, removemos o alerta obrigatório
     
     let targetTableId = 0;
     let finalOrderType = orderType;
@@ -87,7 +87,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
     const newOrder: Order = {
       id: Math.random().toString(36).substr(2, 6).toUpperCase(),
       customerName,
-      customerPhone,
+      customerPhone: customerPhone.trim() || undefined,
       items: [...items],
       total: subtotal,
       discount,
@@ -101,8 +101,8 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
       couponCode: appliedCoupon?.code
     };
 
-    // Registrar acúmulo de fidelidade
-    if (loyaltyConfig?.isActive && customerPhone) {
+    // Registrar acúmulo de fidelidade apenas se houver telefone
+    if (loyaltyConfig?.isActive && customerPhone.trim()) {
       const eligibleLoyaltyValue = items.reduce((acc, item) => {
         const isEligible = loyaltyConfig.scopeType === 'all' || 
           (loyaltyConfig.scopeType === 'category' && item.category === loyaltyConfig.scopeValue) ||
@@ -161,7 +161,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                   type="tel" 
                   value={customerPhone} 
                   onChange={(e) => setCustomerPhone(e.target.value)} 
-                  placeholder="SEU WHATSAPP / TELEFONE" 
+                  placeholder="WHATSAPP (OPCIONAL)" 
                   className="w-full bg-white border-2 border-transparent focus:border-yellow-400 rounded-2xl px-5 py-4 text-xs font-black outline-none transition-all"
                 />
 
