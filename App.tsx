@@ -7,7 +7,6 @@ import AdminPanel from './components/AdminPanel';
 import { MENU_ITEMS as STATIC_MENU, INITIAL_TABLES } from './constants';
 import { Product, CartItem, Table, Order, Category } from './types';
 import { supabase } from './lib/supabase';
-// Added CloseIcon import to fix "Cannot find name 'CloseIcon'" error
 import { CloseIcon } from './components/Icons';
 
 const DEFAULT_CATEGORIES: Category[] = [
@@ -78,14 +77,12 @@ const App: React.FC = () => {
       const { data: tData, error: tError } = await supabase.from('tables').select('*').order('id');
       if (!tError && tData) {
         setTables(prev => {
-          // Mapeamos os dados do banco para os slots que temos em memória
           const updated = prev.map(p => {
             const dbT = tData.find(dt => dt.id === p.id);
             if (dbT) return { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order };
             return p;
           });
 
-          // Notificação para qualquer mesa/delivery que ficou ocupada
           tData.forEach(dbT => {
             const prevT = prev.find(p => p.id === dbT.id);
             if (dbT.status === 'occupied' && (!prevT || prevT.status === 'free')) {
@@ -133,12 +130,11 @@ const App: React.FC = () => {
     };
   }, [fetchData]);
 
-  const handlePlaceOrder = async (order: any) => {
-    let targetTableId = order.tableId;
+  const handlePlaceOrder = async (input: any) => {
+    let targetTableId = input.tableId;
     
-    // Se for um novo pedido de entrega/balcão vindo do cliente sem mesa fixa
+    // Se for um novo pedido de entrega/balcão vindo do cliente (ID temporário 900/901)
     if (targetTableId === 900 || targetTableId === 901) {
-      // Procurar o primeiro slot livre no range correspondente
       const rangeStart = targetTableId === 900 ? 900 : 950;
       const rangeEnd = targetTableId === 900 ? 949 : 999;
       
@@ -146,38 +142,63 @@ const App: React.FC = () => {
       if (freeSlot) {
         targetTableId = freeSlot.id;
       } else {
-        // Se todos os slots padrão estiverem cheios, tentamos um novo ID (o banco aceita)
         const lastInType = [...tables].filter(t => t.id >= rangeStart && t.id <= rangeEnd).sort((a,b) => b.id - a.id)[0];
         targetTableId = (lastInType?.id || rangeStart) + 1;
       }
     }
 
+    // Buscamos o estado atual da mesa no banco para garantir consistência
     const { data: current } = await supabase.from('tables').select('current_order, status').eq('id', targetTableId).single();
+    
+    // Normalizamos os itens: se vier um array (pedido completo) ou um item único (admin)
+    const newItems: CartItem[] = input.items ? input.items : [{ ...input, quantity: 1 }];
     
     let finalOrder: Order;
     
     if (current?.status === 'occupied' && current.current_order) {
-      const items = [...current.current_order.items];
-      if (order.items) {
-        order.items.forEach((ni: CartItem) => {
-          const i = items.findIndex(ei => ei.id === ni.id);
-          if (i > -1) items[i].quantity += ni.quantity;
-          else items.push(ni);
-        });
-      }
+      // Se a mesa já está ocupada, mesclamos os itens
+      const existingItems = Array.isArray(current.current_order.items) ? [...current.current_order.items] : [];
+      
+      newItems.forEach((newItem) => {
+        const index = existingItems.findIndex(item => item.id === newItem.id);
+        if (index > -1) {
+          existingItems[index].quantity += newItem.quantity;
+        } else {
+          existingItems.push(newItem);
+        }
+      });
+
       finalOrder = { 
         ...current.current_order, 
-        items, 
-        total: items.reduce((a, b) => a + (b.price * b.quantity), 0), 
+        items: existingItems, 
+        total: existingItems.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0), 
         isUpdated: true 
       };
     } else {
-      finalOrder = { ...order, tableId: targetTableId, isUpdated: true };
+      // Se for um novo pedido em mesa livre
+      finalOrder = { 
+        id: input.id && input.items ? input.id : Math.random().toString(36).substr(2, 6).toUpperCase(),
+        customerName: input.customerName || 'Cliente',
+        items: newItems,
+        total: newItems.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0),
+        paymentMethod: input.paymentMethod || 'Pendente',
+        timestamp: new Date().toISOString(),
+        tableId: targetTableId,
+        orderType: input.orderType || (targetTableId >= 950 ? 'counter' : targetTableId >= 900 ? 'delivery' : 'table'),
+        status: 'pending',
+        isUpdated: true,
+        address: input.address
+      };
     }
 
     await supabase.from('tables').upsert({ id: targetTableId, status: 'occupied', current_order: finalOrder });
-    setCartItems([]);
-    setIsCartOpen(false);
+    
+    // Se veio do carrinho do cliente, limpamos o carrinho local
+    if (input.items) {
+      setCartItems([]);
+      setIsCartOpen(false);
+    }
+    
     fetchData();
   };
 
