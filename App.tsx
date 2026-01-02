@@ -15,7 +15,6 @@ const App: React.FC = () => {
   const [loginPass, setLoginPass] = useState('');
   const [isLoadingLogin, setIsLoadingLogin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-  // Definindo como true por padrão conforme solicitado
   const [audioEnabled, setAudioEnabled] = useState(true);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
@@ -37,7 +36,7 @@ const App: React.FC = () => {
   const playNotification = useCallback(() => {
     if (audioEnabled && notificationSound.current) {
       notificationSound.current.currentTime = 0;
-      notificationSound.current.play().catch(e => console.error("Erro ao tocar som (pode requerer interação do usuário):", e));
+      notificationSound.current.play().catch(e => console.error("Erro ao tocar som:", e));
     }
   }, [audioEnabled]);
 
@@ -50,6 +49,87 @@ const App: React.FC = () => {
       }).catch(() => {});
     }
   };
+
+  const fetchData = useCallback(async () => {
+    try {
+      // 1. Buscar Categorias
+      const { data: catData } = await supabase.from('categories').select('*').order('name');
+      
+      // 2. Buscar Produtos
+      const { data: productsData, error: pError } = await supabase.from('products').select('*').order('name');
+      
+      if (pError) {
+        if (pError.code === '42P01') setDbStatus('error_tables_missing');
+        setMenuItems(STATIC_MENU);
+        return;
+      }
+      
+      setDbStatus('ok');
+
+      let currentProducts: Product[] = [];
+      if (productsData && productsData.length > 0) {
+        currentProducts = productsData.map(p => ({
+          id: p.id,
+          name: p.name,
+          description: p.description || '',
+          price: Number(p.price),
+          category: p.category,
+          image: p.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=300&fit=crop',
+          savings: p.savings || '',
+          isAvailable: p.is_available ?? true 
+        }));
+        setMenuItems(currentProducts);
+      } else {
+        setMenuItems(STATIC_MENU);
+        currentProducts = STATIC_MENU;
+      }
+
+      // Lógica de Categorias: Se a tabela categorias estiver vazia, extrai dos produtos
+      if (catData && catData.length > 0) {
+        setCategories(catData);
+      } else {
+        const uniqueCats = Array.from(new Set(currentProducts.map(p => p.category)));
+        setCategories(uniqueCats.map((name, index) => ({ id: `temp-${index}`, name })));
+      }
+
+      // 3. Buscar Mesas
+      const { data: tablesData } = await supabase.from('tables').select('*').order('id', { ascending: true });
+      if (tablesData) {
+        setTables(prev => {
+          const updated = [...INITIAL_TABLES];
+          let foundNewAnywhere = false;
+
+          tablesData.forEach(dbT => {
+            const idx = updated.findIndex(t => t.id === dbT.id);
+            if (idx > -1) {
+              const oldTable = prev.find(pT => pT.id === dbT.id);
+              const oldItemsCount = oldTable?.currentOrder?.items.reduce((a, b) => a + b.quantity, 0) || 0;
+              const newItemsCount = dbT.current_order?.items.reduce((a: number, b: any) => a + b.quantity, 0) || 0;
+
+              const isNewOrder = dbT.status === 'occupied' && oldTable?.status !== 'occupied';
+              const isUpdatedOrder = dbT.status === 'occupied' && oldTable?.status === 'occupied' && newItemsCount > oldItemsCount;
+
+              if (isNewOrder || isUpdatedOrder) foundNewAnywhere = true;
+
+              updated[idx] = { 
+                id: dbT.id, 
+                status: dbT.status, 
+                currentOrder: dbT.status === 'occupied' && dbT.current_order ? {
+                  ...dbT.current_order,
+                  isUpdated: (isNewOrder || isUpdatedOrder) ? true : (oldTable?.currentOrder?.isUpdated ?? false)
+                } : null 
+              };
+            }
+          });
+
+          if (foundNewAnywhere && isAdmin && audioEnabled) playNotification();
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error("Erro ao sincronizar:", err);
+    }
+  }, [isAdmin, audioEnabled, playNotification]);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -71,94 +151,17 @@ const App: React.FC = () => {
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchData = useCallback(async () => {
-    try {
-      // Buscar Categorias
-      const { data: catData } = await supabase.from('categories').select('*').order('name');
-      if (catData) setCategories(catData);
-
-      // Buscar Produtos
-      const { data: productsData, error: pError } = await supabase.from('products').select('*').order('name');
-      
-      if (pError) {
-        if (pError.code === '42P01') setDbStatus('error_tables_missing');
-        setMenuItems(STATIC_MENU);
-        return;
-      }
-      
-      setDbStatus('ok');
-
-      if (productsData && productsData.length > 0) {
-        const mapped = productsData.map(p => ({
-          id: p.id,
-          name: p.name,
-          description: p.description || '',
-          price: Number(p.price),
-          category: p.category,
-          image: p.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=300&fit=crop',
-          savings: p.savings || '',
-          isAvailable: p.is_available ?? true 
-        }));
-        setMenuItems(mapped);
-      } else {
-        setMenuItems(STATIC_MENU);
-      }
-
-      // Buscar Mesas
-      const { data: tablesData } = await supabase.from('tables').select('*').order('id', { ascending: true });
-      if (tablesData) {
-        setTables(prev => {
-          const updated = [...INITIAL_TABLES];
-          let foundNewAnywhere = false;
-
-          tablesData.forEach(dbT => {
-            const idx = updated.findIndex(t => t.id === dbT.id);
-            if (idx > -1) {
-              const oldTable = prev.find(pT => pT.id === dbT.id);
-              const oldItemsCount = oldTable?.currentOrder?.items.reduce((a, b) => a + b.quantity, 0) || 0;
-              const newItemsCount = dbT.current_order?.items.reduce((a: number, b: any) => a + b.quantity, 0) || 0;
-
-              const isNewOrder = dbT.status === 'occupied' && oldTable?.status !== 'occupied';
-              const isUpdatedOrder = dbT.status === 'occupied' && oldTable?.status === 'occupied' && newItemsCount > oldItemsCount;
-
-              if (isNewOrder || isUpdatedOrder) {
-                foundNewAnywhere = true;
-              }
-
-              updated[idx] = { 
-                id: dbT.id, 
-                status: dbT.status, 
-                currentOrder: dbT.status === 'occupied' && dbT.current_order ? {
-                  ...dbT.current_order,
-                  isUpdated: (isNewOrder || isUpdatedOrder) ? true : (oldTable?.currentOrder?.isUpdated ?? false)
-                } : null 
-              };
-            }
-          });
-
-          if (foundNewAnywhere && isAdmin && audioEnabled) {
-            playNotification();
-          }
-
-          return updated;
-        });
-      }
-    } catch (err) {
-      console.error("Erro ao sincronizar:", err);
-    }
-  }, [isAdmin, audioEnabled, playNotification]);
-
-  useEffect(() => {
     fetchData();
     const channel = supabase.channel('dmoreira-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    return () => { 
+      subscription.unsubscribe();
+      supabase.removeChannel(channel); 
+    };
   }, [fetchData]);
 
   const addToCart = (product: Product) => {
@@ -172,42 +175,23 @@ const App: React.FC = () => {
 
   const handlePlaceOrder = async (order: Order) => {
     try {
-      const { data: current, error: fetchError } = await supabase
-        .from('tables')
-        .select('current_order, status')
-        .eq('id', order.tableId)
-        .maybeSingle();
-      
+      const { data: current, error: fetchError } = await supabase.from('tables').select('current_order, status').eq('id', order.tableId).maybeSingle();
       if (fetchError) throw fetchError;
 
       let finalOrder = order;
       if (current?.status === 'occupied' && current.current_order) {
         const existing = current.current_order;
         const mergedItems = [...existing.items];
-        
         order.items.forEach(newItem => {
           const foundIdx = mergedItems.findIndex(i => i.id === newItem.id);
           if (foundIdx > -1) mergedItems[foundIdx].quantity += newItem.quantity;
           else mergedItems.push(newItem);
         });
-
-        finalOrder = { 
-          ...existing, 
-          items: mergedItems, 
-          total: mergedItems.reduce((acc, i) => acc + (i.price * i.quantity), 0), 
-          timestamp: new Date().toISOString(),
-          status: 'pending' 
-        };
+        finalOrder = { ...existing, items: mergedItems, total: mergedItems.reduce((acc, i) => acc + (i.price * i.quantity), 0), timestamp: new Date().toISOString(), status: 'pending' };
       }
 
-      const { error: upsertError } = await supabase.from('tables').upsert({ 
-        id: order.tableId, 
-        status: 'occupied', 
-        current_order: finalOrder
-      });
-
+      const { error: upsertError } = await supabase.from('tables').upsert({ id: order.tableId, status: 'occupied', current_order: finalOrder });
       if (upsertError) throw upsertError;
-      
       setCartItems([]);
       fetchData();
     } catch (err: any) { 
@@ -224,7 +208,6 @@ const App: React.FC = () => {
       image: product.image,
       is_available: product.isAvailable ?? true
     };
-
     try {
       if (!product.id) {
         const newId = 'prod_' + Date.now();
@@ -233,9 +216,7 @@ const App: React.FC = () => {
         await supabase.from('products').update(payload).eq('id', product.id);
       }
       fetchData();
-    } catch (err: any) { 
-      alert('Erro ao salvar produto: ' + err.message); 
-    }
+    } catch (err: any) { alert('Erro ao salvar produto: ' + err.message); }
   };
 
   const handleDeleteProduct = async (id: string) => {
@@ -243,9 +224,7 @@ const App: React.FC = () => {
       const { error } = await supabase.from('products').delete().eq('id', id);
       if (error) throw error;
       fetchData();
-    } catch (err: any) {
-      alert('Erro ao excluir produto: ' + err.message);
-    }
+    } catch (err: any) { alert('Erro ao excluir produto: ' + err.message); }
   };
 
   const handleLogout = async () => {
