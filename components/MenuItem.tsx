@@ -1,21 +1,37 @@
 
 import React from 'react';
-import { Product } from '../types';
+import { Product, Coupon } from '../types';
 
 interface MenuItemProps {
   product: Product;
   onAdd: (product: Product) => void;
+  activeCoupons: Coupon[];
 }
 
-const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd }) => {
+const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd, activeCoupons }) => {
   const isCombo = product.category === 'Combos';
   const isAvailable = product.isAvailable !== false;
+
+  // Verifica se existe algum cupom ativo para este produto específico ou para a categoria dele
+  const hasCoupon = activeCoupons.some(c => 
+    c.isActive && (
+      (c.scopeType === 'product' && c.scopeValue === product.id) ||
+      (c.scopeType === 'category' && c.scopeValue === product.category) ||
+      (c.scopeType === 'all')
+    )
+  );
 
   return (
     <div className={`group bg-white rounded-[2rem] shadow-md border overflow-hidden flex flex-col relative transition-all duration-300 ${!isAvailable ? 'opacity-70' : 'hover:shadow-2xl hover:-translate-y-1'} ${isCombo ? 'border-yellow-400 border-2' : 'border-gray-100'}`}>
       {isCombo && isAvailable && (
         <div className="absolute top-4 left-4 z-10 bg-black text-yellow-400 text-[10px] font-black uppercase px-3 py-1.5 rounded-full shadow-lg">
           Combo 🔥
+        </div>
+      )}
+
+      {hasCoupon && isAvailable && (
+        <div className="absolute top-4 right-4 z-10 bg-green-600 text-white text-[9px] font-black uppercase px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1 border-b-2 border-green-800">
+          <span>CUPOM</span> 🎫
         </div>
       )}
 
