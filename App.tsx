@@ -47,35 +47,10 @@ const App: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    const checkInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setIsLoggedIn(true);
-        setIsAdmin(true);
-        fetchData();
-      }
-    };
-    checkInitialSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        setIsLoggedIn(true);
-        setIsAdmin(true);
-      } else if (event === 'SIGNED_OUT') {
-        setIsLoggedIn(false);
-        setIsAdmin(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   const fetchData = useCallback(async (isSilent = false) => {
     try {
       if (!isSilent) setDbStatus('loading');
-      else setDbStatus('syncing');
-
+      
       const [catRes, coupRes, prodRes, tableRes] = await Promise.all([
         supabase.from('categories').select('*').order('name'),
         supabase.from('coupons').select('*').eq('is_active', true),
@@ -121,18 +96,41 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // MOTOR REALTIME MASTER V3.1 - FOCO EM UPDATE INSTANTÂNEO
   useEffect(() => {
-    fetchData();
-    
-    const channel = supabase.channel('realtime_master_dmoreira')
+    const checkInitialSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setIsLoggedIn(true);
+        setIsAdmin(true);
+      }
+      fetchData();
+    };
+    checkInitialSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        setIsLoggedIn(true);
+        setIsAdmin(true);
+      } else if (event === 'SIGNED_OUT') {
+        setIsLoggedIn(false);
+        setIsAdmin(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [fetchData]);
+
+  // MOTOR REALTIME MASTER V3.2 - SINCRONIZAÇÃO ABSOLUTA
+  useEffect(() => {
+    const channel = supabase.channel('dmoreira_master_stream')
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'tables' }, 
         (payload) => {
+          console.log("⚡ Realtime Payload:", payload);
           const newRec = payload.new as any;
           const oldRec = payload.old as any;
 
-          // ATUALIZAÇÃO FORÇADA DE ESTADO (ISSO ELIMINA O F5)
+          // 1. Atualização Instantânea da Interface
           setTables(current => {
             const index = current.findIndex(t => t.id === newRec.id);
             const updatedTable: Table = {
@@ -150,13 +148,13 @@ const App: React.FC = () => {
             }
           });
 
-          // ALERTA SONORO
+          // 2. Alerta Sonoro e Visual para novos pedidos
           if (newRec && newRec.status === 'occupied') {
             const wasFree = !oldRec || oldRec.status === 'free';
             if (wasFree) {
               if (audioEnabled && notificationSound.current) {
                 notificationSound.current.currentTime = 0;
-                notificationSound.current.play().catch(() => {});
+                notificationSound.current.play().catch(() => console.warn("Áudio bloqueado"));
               }
               setNewOrderAlert({ 
                 id: newRec.id, 
@@ -165,16 +163,16 @@ const App: React.FC = () => {
               setTimeout(() => setNewOrderAlert(null), 15000);
             }
           }
-          
-          setDbStatus('ok');
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("📡 Status Conexão:", status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchData, audioEnabled]);
+  }, [audioEnabled]);
 
   const handlePlaceOrder = async (order: Order) => {
     let targetId = order.tableId;
@@ -184,6 +182,7 @@ const App: React.FC = () => {
       targetId = free ? free.id : (Math.max(...tables.filter(t => t.id >= range[0] && t.id <= range[1]).map(t => t.id), range[0] - 1) + 1);
     }
     
+    // O Realtime acima vai captar este upsert e atualizar a tela de todos
     const { error } = await supabase.from('tables').upsert({ 
       id: targetId, 
       status: 'occupied', 
@@ -240,10 +239,10 @@ const App: React.FC = () => {
               
               const newOrd: Order = current ? { ...current, items, total, finalTotal: total - (current.discount || 0) } : {
                 id: Math.random().toString(36).substr(2, 6).toUpperCase(),
-                customerName: tableId >= 900 ? (tableId >= 950 ? 'Balcão' : 'Entrega') : `Mesa ${tableId}`,
+                customerName: tableId >= 950 ? 'Balcão' : tableId >= 900 ? 'Entrega' : `Mesa ${tableId}`,
                 items, total, finalTotal: total, paymentMethod: 'Pendente',
                 timestamp: new Date().toISOString(), tableId, status: 'pending',
-                orderType: tableId >= 900 ? (tableId >= 950 ? 'counter' : 'delivery') : 'table'
+                orderType: tableId >= 950 ? 'counter' : tableId >= 900 ? 'delivery' : 'table'
               };
               handlePlaceOrder(newOrd);
             }}
