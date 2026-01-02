@@ -48,14 +48,15 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
+      // Fetch Categories
       const { data: catData, error: cError } = await supabase.from('categories').select('*').order('name');
       if (!cError && catData && catData.length > 0) {
         setCategories(catData);
-        setDbStatus('ok');
       } else if (cError?.code === '42P01') {
         setDbStatus('error_tables_missing');
       }
 
+      // Fetch Products
       const { data: prodData } = await supabase.from('products').select('*').order('name');
       if (prodData && prodData.length > 0) {
         setMenuItems(prodData.map(p => ({
@@ -67,10 +68,12 @@ const App: React.FC = () => {
           image: p.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=300&fit=crop',
           isAvailable: p.is_available ?? true
         })));
+        setDbStatus('ok');
       } else {
         setMenuItems(STATIC_MENU);
       }
 
+      // Fetch Tables
       const { data: tData } = await supabase.from('tables').select('*').order('id');
       if (tData) {
         setTables(prev => {
@@ -89,7 +92,7 @@ const App: React.FC = () => {
         });
       }
     } catch (err) {
-      console.error("Fetch error:", err);
+      console.warn("Fetch data issues (ignoring for UX):", err);
     }
   }, [isAdmin, playNotification]);
 
@@ -106,18 +109,21 @@ const App: React.FC = () => {
 
     fetchData();
 
-    const channel = supabase.channel('master_sync')
+    const channel = supabase.channel('realtime_menu')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, fetchData)
       .subscribe();
 
-    return () => { subscription.unsubscribe(); supabase.removeChannel(channel); };
+    return () => { 
+      subscription.unsubscribe(); 
+      supabase.removeChannel(channel); 
+    };
   }, [fetchData]);
 
   const handlePlaceOrder = async (order: any) => {
     let targetTableId = order.tableId;
-    let productToAdd = order.id ? order : null;
+    let productToAdd = order.id && !order.items ? order : null;
     
     const { data: current } = await supabase.from('tables').select('current_order, status').eq('id', targetTableId).single();
     
@@ -126,12 +132,11 @@ const App: React.FC = () => {
     if (current?.status === 'occupied' && current.current_order) {
       const items = [...current.current_order.items];
       
-      if (productToAdd && !order.items) {
+      if (productToAdd) {
         const i = items.findIndex(ei => ei.id === productToAdd.id);
         if (i > -1) items[i].quantity += 1;
         else items.push({ ...productToAdd, quantity: 1 });
-      } 
-      else if (order.items) {
+      } else if (order.items) {
         order.items.forEach((ni: CartItem) => {
           const i = items.findIndex(ei => ei.id === ni.id);
           if (i > -1) items[i].quantity += ni.quantity;
@@ -146,7 +151,7 @@ const App: React.FC = () => {
         isUpdated: true 
       };
     } else {
-      if (productToAdd && !order.items) {
+      if (productToAdd) {
         finalOrder = {
           id: Math.random().toString(36).substr(2, 6).toUpperCase(),
           customerName: 'Balcão/Mesa',
@@ -155,7 +160,7 @@ const App: React.FC = () => {
           paymentMethod: 'Pendente',
           timestamp: new Date().toISOString(),
           tableId: targetTableId,
-          orderType: targetTableId >= 900 ? 'counter' : 'table',
+          orderType: targetTableId >= 900 ? (targetTableId === 900 ? 'delivery' : 'counter') : 'table',
           status: 'preparing',
           isUpdated: true
         };
@@ -177,7 +182,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans antialiased relative">
       <Header />
       {!isLoggedIn && (
-        <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[9px] font-black text-black/30 hover:text-black uppercase tracking-widest">Admin</button>
+        <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[9px] font-black text-black/30 hover:text-black uppercase tracking-widest transition-colors">Admin Access</button>
       )}
 
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
@@ -203,12 +208,12 @@ const App: React.FC = () => {
           />
         ) : (
           <>
-            <div className="flex overflow-x-auto gap-3 pb-8 no-scrollbar mask-fade">
+            <div className="flex overflow-x-auto gap-2.5 pb-8 no-scrollbar mask-fade scroll-smooth">
               {categoryNames.map(cat => (
-                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-7 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md ${selectedCategory === cat ? 'bg-black text-white' : 'bg-white text-gray-700 border hover:border-black'}`}>{cat}</button>
+                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-6 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-wider transition-all shadow-sm ${selectedCategory === cat ? 'bg-black text-white' : 'bg-white text-gray-600 border border-gray-100 hover:border-black'}`}>{cat}</button>
               ))}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in duration-700">
               {filteredItems.map(item => <MenuItem key={item.id} product={item} onAdd={(p) => setCartItems(prev => {
                 const ex = prev.find(i => i.id === p.id);
                 if (ex) return prev.map(i => i.id === p.id ? {...i, quantity: i.quantity + 1} : i);
@@ -220,11 +225,11 @@ const App: React.FC = () => {
       </main>
 
       {!isAdmin && cartItems.length > 0 && (
-        <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 z-40">
-          <button onClick={() => setIsCartOpen(true)} className="w-full max-w-md bg-black text-white rounded-[2rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30 active:scale-95 transition-all">
+        <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 z-40 animate-in slide-in-from-bottom duration-500">
+          <button onClick={() => setIsCartOpen(true)} className="w-full max-w-md bg-black text-white rounded-[2.5rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30 active:scale-95 transition-all">
             <div className="flex items-center gap-4">
-              <div className="bg-yellow-400 text-black w-8 h-8 flex items-center justify-center rounded-xl text-sm font-black">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
-              <span className="font-black text-sm uppercase tracking-widest">Sacola D.Moreira</span>
+              <div className="bg-yellow-400 text-black w-9 h-9 flex items-center justify-center rounded-2xl text-xs font-black">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
+              <span className="font-black text-xs uppercase tracking-widest">Minha Sacola</span>
             </div>
             <span className="font-black text-yellow-400 text-xl italic">R$ {cartItems.reduce((a,b)=>a+(b.price*b.quantity),0).toFixed(2).replace('.', ',')}</span>
           </button>
@@ -233,8 +238,8 @@ const App: React.FC = () => {
 
       {showLogin && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
-          <div className="bg-white p-10 rounded-[3rem] w-full max-w-sm text-center shadow-2xl">
-            <h2 className="text-3xl font-black mb-6 italic">Acesso Restrito</h2>
+          <div className="bg-white p-12 rounded-[3.5rem] w-full max-w-sm text-center shadow-2xl">
+            <h2 className="text-3xl font-black mb-8 italic">Restrito</h2>
             <form onSubmit={async (e) => {
               e.preventDefault();
               setIsLoadingLogin(true);
@@ -243,10 +248,10 @@ const App: React.FC = () => {
               else setShowLogin(false);
               setIsLoadingLogin(false);
             }} className="space-y-4">
-              <input type="email" placeholder="E-mail" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold text-black outline-none focus:border-yellow-400" required />
-              <input type="password" placeholder="Senha" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold text-black outline-none focus:border-yellow-400" required />
-              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase text-xs tracking-widest shadow-xl hover:brightness-110 active:scale-95 transition-all">{isLoadingLogin ? 'Verificando...' : 'Entrar'}</button>
-              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4">Voltar ao Cardápio</button>
+              <input type="email" placeholder="E-mail" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold text-black outline-none focus:border-yellow-400 transition-all" required />
+              <input type="password" placeholder="Senha" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold text-black outline-none focus:border-yellow-400 transition-all" required />
+              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase text-xs tracking-widest shadow-xl hover:brightness-110 active:scale-95 transition-all">{isLoadingLogin ? 'Autenticando...' : 'Entrar'}</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-6 hover:text-gray-600 transition-colors">Voltar ao Cardápio</button>
             </form>
           </div>
         </div>
