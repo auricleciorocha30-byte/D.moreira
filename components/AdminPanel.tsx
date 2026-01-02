@@ -52,6 +52,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loyalty, setLoyalty] = useState<LoyaltyConfig>({ isActive: false, spendingGoal: 100, scopeType: 'all', scopeValue: '' });
   const [loyaltyUsers, setLoyaltyUsers] = useState<LoyaltyUser[]>([]);
+  
+  // Temporary Form States for Selectors
+  const [couponScopeType, setCouponScopeType] = useState<'all' | 'category' | 'product'>('all');
 
   useEffect(() => {
     fetchMarketingData();
@@ -161,7 +164,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     } catch (err: any) { alert('Erro: ' + err.message); } finally { setIsSaving(false); }
   };
 
-  // CATEGORY ACTIONS
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategoryName.trim()) return;
@@ -200,10 +202,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       percentage: Number(formData.get('percentage')),
       isActive: true,
       scopeType: formData.get('scopeType'),
-      scopeValue: formData.get('scopeValue'),
+      scopeValue: formData.get('scopeValue') || '',
     };
     await supabase.from('coupons').insert([newCoupon]);
     e.target.reset();
+    setCouponScopeType('all');
     fetchMarketingData();
   };
 
@@ -439,12 +442,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <form onSubmit={handleAddCoupon} className="grid grid-cols-2 gap-3 mb-8 bg-gray-50 p-6 rounded-[2rem]">
                 <input name="code" placeholder="CÓDIGO" className="bg-white border p-3 rounded-xl font-bold text-xs uppercase" required />
                 <input name="percentage" type="number" placeholder="% OFF" className="bg-white border p-3 rounded-xl font-bold text-xs" required />
-                <select name="scopeType" className="bg-white border p-3 rounded-xl font-bold text-[10px] uppercase">
+                <select name="scopeType" value={couponScopeType} onChange={e => setCouponScopeType(e.target.value as any)} className="bg-white border p-3 rounded-xl font-bold text-[10px] uppercase">
                   <option value="all">Toda a Loja</option>
                   <option value="category">Por Categoria</option>
                   <option value="product">Por Produto</option>
                 </select>
-                <input name="scopeValue" placeholder="Valor do Escopo" className="bg-white border p-3 rounded-xl font-bold text-xs" />
+                
+                {couponScopeType === 'category' ? (
+                  <select name="scopeValue" className="bg-white border p-3 rounded-xl font-bold text-[10px] uppercase">
+                    <option value="">Selecione Categoria</option>
+                    {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  </select>
+                ) : couponScopeType === 'product' ? (
+                  <select name="scopeValue" className="bg-white border p-3 rounded-xl font-bold text-[10px] uppercase">
+                    <option value="">Selecione Produto</option>
+                    {menuItems.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                ) : (
+                  <input name="scopeValue" placeholder="Escopo Geral" className="bg-white border p-3 rounded-xl font-bold text-xs opacity-50" disabled />
+                )}
+                
                 <button type="submit" className="col-span-2 bg-black text-yellow-400 py-4 rounded-xl font-black text-[10px] uppercase">Criar Cupom</button>
               </form>
               <div className="space-y-3">
@@ -453,7 +470,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div>
                       <span className="font-black text-sm">{c.code}</span>
                       <span className="ml-2 bg-yellow-400 text-black px-2 py-0.5 rounded text-[10px] font-black">{c.percentage}%</span>
-                      <p className="text-[8px] text-gray-400 font-bold uppercase mt-1">Escopo: {c.scopeType}</p>
+                      <p className="text-[8px] text-gray-400 font-bold uppercase mt-1">
+                        Escopo: {c.scopeType} {c.scopeValue && `(${c.scopeValue})`}
+                      </p>
                     </div>
                     <button onClick={() => handleToggleCoupon(c.id, c.isActive)} className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase ${c.isActive ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-600'}`}>
                       {c.isActive ? 'Ativo' : 'Inativo'}
@@ -472,22 +491,51 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </button>
               </div>
               <div className="space-y-4 mb-8 bg-yellow-50 p-6 rounded-[2rem] border-2 border-yellow-100">
-                <input type="number" value={loyalty.spendingGoal} onChange={e => handleUpdateLoyalty({ spendingGoal: Number(e.target.value) })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-sm" placeholder="Meta de Gastos" />
-                <select value={loyalty.scopeType} onChange={e => handleUpdateLoyalty({ scopeType: e.target.value as any })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-[10px] uppercase">
-                  <option value="all">Loja Toda</option>
-                  <option value="category">Categoria</option>
-                  <option value="product">Produto</option>
-                </select>
-                <input value={loyalty.scopeValue} onChange={e => handleUpdateLoyalty({ scopeValue: e.target.value })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-xs" placeholder="Valor do Escopo" />
+                <div className="space-y-1">
+                  <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Meta de Gastos (R$)</p>
+                  <input type="number" value={loyalty.spendingGoal} onChange={e => handleUpdateLoyalty({ spendingGoal: Number(e.target.value) })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-sm" placeholder="Ex: 100.00" />
+                </div>
+                
+                <div className="space-y-1">
+                  <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Escopo da Pontuação</p>
+                  <select value={loyalty.scopeType} onChange={e => handleUpdateLoyalty({ scopeType: e.target.value as any, scopeValue: '' })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-[10px] uppercase">
+                    <option value="all">Loja Toda</option>
+                    <option value="category">Categoria</option>
+                    <option value="product">Produto</option>
+                  </select>
+                </div>
+
+                {loyalty.scopeType === 'category' ? (
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Selecione a Categoria</p>
+                    <select value={loyalty.scopeValue} onChange={e => handleUpdateLoyalty({ scopeValue: e.target.value })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-[10px] uppercase">
+                      <option value="">Selecione...</option>
+                      {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    </select>
+                  </div>
+                ) : loyalty.scopeType === 'product' ? (
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Selecione o Produto</p>
+                    <select value={loyalty.scopeValue} onChange={e => handleUpdateLoyalty({ scopeValue: e.target.value })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-[10px] uppercase">
+                      <option value="">Selecione...</option>
+                      {menuItems.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                ) : null}
               </div>
+              
               <div className="max-h-[300px] overflow-y-auto space-y-2 no-scrollbar">
+                <p className="text-[10px] font-black uppercase text-gray-400 mb-2 ml-1">Top Clientes Acumuladores</p>
                 {loyaltyUsers.map((user, i) => (
-                  <div key={user.phone} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl">
+                  <div key={user.phone} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-transparent hover:border-yellow-200 transition-all">
                     <div className="flex items-center gap-3">
                       <span className="w-6 h-6 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[10px] font-black">{i+1}</span>
-                      <div><p className="font-black text-xs uppercase">{user.name}</p><p className="text-[9px] text-gray-400 font-bold">{user.phone}</p></div>
+                      <div><p className="font-black text-xs uppercase text-gray-900">{user.name}</p><p className="text-[9px] text-gray-400 font-bold">{user.phone}</p></div>
                     </div>
-                    <p className="text-[10px] font-black text-yellow-700 italic">R$ {user.accumulated.toFixed(2)}</p>
+                    <div className="text-right">
+                      <p className="text-[10px] font-black text-yellow-700 italic">R$ {user.accumulated.toFixed(2)}</p>
+                      {user.accumulated >= loyalty.spendingGoal && <span className="text-[7px] bg-green-500 text-white px-1.5 py-0.5 rounded font-black uppercase">Meta Batida</span>}
+                    </div>
                   </div>
                 ))}
               </div>
