@@ -130,6 +130,7 @@ const App: React.FC = () => {
     };
   }, [fetchData]);
 
+  // Fix: Added finalTotal and discount logic to handlePlaceOrder to satisfy Order interface and correct calculations
   const handlePlaceOrder = async (input: any) => {
     let targetTableId = input.tableId;
     
@@ -168,27 +169,38 @@ const App: React.FC = () => {
         }
       });
 
+      const total = existingItems.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0);
+      const discount = current.current_order.discount || 0;
+
       finalOrder = { 
         ...current.current_order, 
         items: existingItems, 
-        total: existingItems.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0), 
+        total: total,
+        finalTotal: total - discount,
         isUpdated: true 
       };
     } else {
       // Se for um novo pedido
+      const total = newItems.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0);
+      const discount = input.discount || 0;
+      const finalTotal = input.finalTotal !== undefined ? input.finalTotal : (total - discount);
+
       finalOrder = { 
         id: input.id && input.items ? input.id : Math.random().toString(36).substr(2, 6).toUpperCase(),
         customerName: input.customerName || 'Cliente',
         customerPhone: input.customerPhone || '',
         items: newItems,
-        total: newItems.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0),
+        total: total,
+        discount: discount,
+        finalTotal: finalTotal,
         paymentMethod: input.paymentMethod || 'Pendente',
         timestamp: new Date().toISOString(),
         tableId: targetTableId,
         orderType: input.orderType || (targetTableId >= 950 ? 'counter' : targetTableId >= 900 ? 'delivery' : 'table'),
         status: 'pending',
         isUpdated: true,
-        address: input.address
+        address: input.address,
+        couponCode: input.couponCode
       };
     }
 
