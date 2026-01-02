@@ -1,8 +1,9 @@
 
 import React, { useState, useMemo } from 'react';
 import { Table, Order, Product, Category, CartItem } from '../types';
-import { CloseIcon, TrashIcon, VolumeIcon } from './Icons';
+import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon } from './Icons';
 import { supabase } from '../lib/supabase';
+import { STORE_INFO } from '../constants';
 
 interface AdminPanelProps {
   tables: Table[];
@@ -38,6 +39,71 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const selectedTable = useMemo(() => tables.find(t => t.id === selectedTableId) || null, [tables, selectedTableId]);
 
+  const handlePrint = (order: Order) => {
+    const printWindow = window.open('', '_blank', 'width=600,height=800');
+    if (!printWindow) return;
+
+    const itemsHtml = order.items.map(item => `
+      <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-family: monospace;">
+        <span>${item.quantity}x ${item.name.substring(0, 20)}</span>
+        <span>R$ ${(item.price * item.quantity).toFixed(2)}</span>
+      </div>
+    `).join('');
+
+    const date = new Date(order.timestamp).toLocaleString('pt-BR');
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>D.Moreira - Comanda #${order.id}</title>
+          <style>
+            @page { margin: 0; }
+            body { 
+              font-family: 'Courier New', Courier, monospace; 
+              width: 80mm; 
+              padding: 10px; 
+              margin: 0;
+              font-size: 12px;
+            }
+            .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+            .footer { text-align: center; border-top: 1px dashed #000; padding-top: 10px; margin-top: 10px; }
+            .bold { font-weight: bold; }
+            .total { font-size: 16px; margin-top: 10px; display: flex; justify-content: space-between; }
+            .item-list { margin-bottom: 10px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2 style="margin: 0;">${STORE_INFO.name}</h2>
+            <p style="margin: 5px 0;">${STORE_INFO.slogan}</p>
+            <p style="margin: 2px 0;">${date}</p>
+            <p style="margin: 5px 0; font-size: 14px;" class="bold">MESA / LOCAL: ${order.tableId >= 900 ? (order.tableId === 900 ? 'ENTREGA' : 'BALCÃO') : order.tableId}</p>
+            <p style="margin: 2px 0;">Comanda: #${order.id}</p>
+            <p style="margin: 2px 0;">Cliente: ${order.customerName}</p>
+          </div>
+          <div class="item-list">
+            ${itemsHtml}
+          </div>
+          <div class="total bold">
+            <span>TOTAL:</span>
+            <span>R$ ${order.total.toFixed(2)}</span>
+          </div>
+          <div style="margin-top: 10px;">
+            <p style="margin: 2px 0;">Pagamento: ${order.paymentMethod}</p>
+          </div>
+          <div class="footer">
+            <p style="margin: 0;">Obrigado pela preferência!</p>
+            <p style="margin: 5px 0; font-size: 10px;">D.Moreira - Parada Obrigatória</p>
+          </div>
+          <script>
+            window.onload = function() { window.print(); window.close(); }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = newCategoryName.trim();
@@ -47,11 +113,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     try {
       const { error } = await supabase.from('categories').insert([{ name }]);
       if (error) {
-        if (error.code === '42P01') {
-          alert('TABELA NÃO SINCRONIZADA: Rode o comando "NOTIFY pgrst, reload schema" no Supabase e espere 1 minuto.');
-        } else {
-          alert('Erro: ' + error.message);
-        }
+        // Se houver erro de cache ou tabela, tentamos avisar com clareza
+        console.error("Supabase Error:", error);
+        alert('ERRO AO SALVAR: O banco de dados está sincronizando. Tente recarregar a página (F5) ou use as categorias padrão por enquanto.');
       } else {
         setNewCategoryName('');
         onRefreshData();
@@ -97,10 +161,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       </div>
 
-      {dbStatus === 'error_tables_missing' && (
+      {(dbStatus === 'error_tables_missing' || categories.length === 0) && (
         <div className="bg-red-600/10 border-2 border-red-600 p-6 rounded-3xl mb-10 text-center animate-pulse">
           <p className="text-red-600 font-black uppercase text-xs tracking-widest">
-            ⚠️ ERRO DE SINCRONIZAÇÃO: Execute o SQL e aperte F5.
+            ⚠️ ALERTA DE BANCO: Sincronizando tabelas. Se demorar, aperte F5.
           </p>
         </div>
       )}
@@ -140,18 +204,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="bg-white p-10 rounded-[4rem] shadow-xl max-w-2xl mx-auto border border-gray-100">
             <h3 className="text-3xl font-black italic mb-8">Categorias</h3>
             <form onSubmit={handleAddCategory} className="flex gap-3 mb-12">
-              <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="Nova Categoria..." className="flex-1 bg-gray-50 border-2 rounded-2xl px-6 py-5 text-sm font-bold outline-none focus:border-yellow-400 transition-all" />
+              <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="Ex: Combos, Lanches..." className="flex-1 bg-gray-50 border-2 rounded-2xl px-6 py-5 text-sm font-bold outline-none focus:border-yellow-400 transition-all" />
               <button type="submit" disabled={isSaving} className="bg-black text-yellow-400 px-10 py-5 rounded-2xl font-black text-xs uppercase shadow-xl hover:scale-105 active:scale-95 transition-all">
                 {isSaving ? '...' : 'Criar'}
               </button>
             </form>
             <div className="space-y-3">
-              {categories.map(cat => (
+              {categories.length > 0 ? categories.map(cat => (
                 <div key={cat.id} className="flex justify-between items-center bg-gray-50 p-6 rounded-3xl border-2 border-transparent hover:border-yellow-400 transition-all">
                   <span className="font-black text-gray-800 uppercase tracking-widest text-xs italic">{cat.name}</span>
                   <button onClick={() => { if(confirm('Excluir?')) supabase.from('categories').delete().eq('id', cat.id).then(() => onRefreshData()); }} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><TrashIcon/></button>
                 </div>
-              ))}
+              )) : (
+                <p className="text-gray-400 text-center font-bold uppercase text-[10px] py-10">Nenhuma categoria personalizada carregada.</p>
+              )}
             </div>
           </div>
         )}
@@ -197,7 +263,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       {selectedTable.status === 'free' ? 'Mesa Disponível' : 'Atendimento em Curso'}
                    </span>
                  </div>
-                 <button onClick={() => setSelectedTableId(null)} className="p-5 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={28} /></button>
+                 <div className="flex gap-2">
+                    {selectedTable.status === 'occupied' && selectedTable.currentOrder && (
+                      <button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-5 bg-black text-yellow-400 rounded-full hover:brightness-110 transition-all shadow-lg flex items-center gap-2">
+                        <PrinterIcon size={24} />
+                        <span className="hidden sm:inline font-black text-[10px] uppercase">Imprimir</span>
+                      </button>
+                    )}
+                    <button onClick={() => setSelectedTableId(null)} className="p-5 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={28} /></button>
+                 </div>
                </div>
                
                <div className="space-y-4 mb-14">
