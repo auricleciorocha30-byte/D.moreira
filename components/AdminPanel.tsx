@@ -66,21 +66,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   useEffect(() => { fetchMarketing(); }, []);
 
   const fetchMarketing = async () => {
-    const { data: cData } = await supabase.from('coupons').select('*').order('created_at', { ascending: false });
-    if (cData) setCoupons(cData.map(c => ({ 
-      id: c.id, code: c.code, percentage: c.percentage, isActive: c.is_active, scopeType: c.scope_type, scopeValue: c.scope_value 
-    })));
-    
-    const { data: lConfig } = await supabase.from('loyalty_config').select('*').maybeSingle();
-    if (lConfig) setLoyalty({ 
-      isActive: lConfig.is_active, 
-      spendingGoal: lConfig.spending_goal, 
-      scopeType: lConfig.scope_type, 
-      scopeValue: lConfig.scope_value || '' 
-    });
+    try {
+      const { data: cData } = await supabase.from('coupons').select('*').order('created_at', { ascending: false });
+      if (cData) setCoupons(cData.map(c => ({ 
+        id: c.id, code: c.code, percentage: c.percentage, isActive: c.is_active, scopeType: c.scope_type, scopeValue: c.scope_value 
+      })));
+      
+      const { data: lConfig } = await supabase.from('loyalty_config').select('*').maybeSingle();
+      if (lConfig) setLoyalty({ 
+        isActive: lConfig.is_active, 
+        spendingGoal: lConfig.spending_goal, 
+        scopeType: lConfig.scope_type, 
+        scopeValue: lConfig.scope_value || '' 
+      });
 
-    const { data: lUsers } = await supabase.from('loyalty_users').select('*').order('accumulated', { ascending: false });
-    if (lUsers) setLoyaltyUsers(lUsers);
+      const { data: lUsers } = await supabase.from('loyalty_users').select('*').order('accumulated', { ascending: false });
+      if (lUsers) setLoyaltyUsers(lUsers);
+    } catch (e) {
+      console.error("Marketing fetch error", e);
+    }
   };
 
   const handleUpdateLoyalty = async (updates: Partial<LoyaltyConfig>) => {
@@ -180,10 +184,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handlePrint = (order: Order) => {
+    if (!order) return;
     const w = window.open('', '_blank');
     if (!w) return;
     const items = (order.items || []).map(i => `<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span>${i.quantity}x ${i.name}</span><span>R$ ${(i.price*i.quantity).toFixed(2)}</span></div>`).join('');
-    w.document.write(`<html><body style="font-family:monospace;width:280px;padding:10px;"><h2 style="text-align:center;">${STORE_INFO.name}</h2><p style="text-align:center;">Pedido #${order.id}</p><hr/>${items}<hr/><div style="display:flex;justify-content:space-between;font-weight:bold;"><span>TOTAL:</span><span>R$ ${order.finalTotal.toFixed(2)}</span></div><script>window.onload=()=>{window.print();window.close();};</script></body></html>`);
+    w.document.write(`<html><body style="font-family:monospace;width:280px;padding:10px;"><h2 style="text-align:center;">${STORE_INFO.name}</h2><p style="text-align:center;">Pedido #${order.id}</p><hr/>${items}<hr/><div style="display:flex;justify-content:space-between;font-weight:bold;"><span>TOTAL:</span><span>R$ ${(order.finalTotal || 0).toFixed(2)}</span></div><script>window.onload=()=>{window.print();window.close();};</script></body></html>`);
     w.document.close();
   };
 
@@ -225,7 +230,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 {t.currentOrder?.status === 'pending' && <span className="absolute top-0 right-0 bg-red-600 text-white text-[8px] font-black px-4 py-2 rounded-bl-2xl animate-pulse">NOVO</span>}
                 <span className="text-5xl font-black italic text-black">{t.id}</span>
                 <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>{t.status === 'free' ? 'Livre' : 'Ocupada'}</span>
-                {t.currentOrder && <span className="text-[11px] font-black mt-2 italic bg-white/40 px-2 py-0.5 rounded">R$ {Number(t.currentOrder.finalTotal).toFixed(2)}</span>}
+                {t.currentOrder && <span className="text-[11px] font-black mt-2 italic bg-white/40 px-2 py-0.5 rounded">R$ {(Number(t.currentOrder.finalTotal) || 0).toFixed(2)}</span>}
               </button>
             ))}
           </div>
@@ -247,7 +252,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <span className="text-2xl">{t.id >= 950 ? '🏪' : '🚚'}</span>
                     <span className="bg-gray-100 text-[9px] font-black px-2 py-1 rounded-full uppercase">#{t.id}</span>
                   </div>
-                  <h4 className="font-black text-sm uppercase truncate leading-tight">{t.currentOrder?.customerName}</h4>
+                  <h4 className="font-black text-sm uppercase truncate leading-tight">{t.currentOrder?.customerName || 'Cliente sem nome'}</h4>
                   <p className="text-[9px] text-gray-400 font-bold truncate mb-1">{t.currentOrder?.customerPhone || 'Sem telefone'}</p>
                   <div className="bg-gray-50 p-3 rounded-2xl mb-4 h-12 overflow-hidden">
                     <p className="text-[9px] text-gray-600 font-bold leading-tight line-clamp-2 italic">
@@ -296,7 +301,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <img src={item.image} className="w-full aspect-square object-cover rounded-3xl mb-4" />
                     <h4 className="font-black text-[10px] uppercase truncate">{item.name}</h4>
                     <div className="flex justify-between items-center mt-2">
-                      <span className="text-yellow-700 font-black italic text-xs">R$ {item.price.toFixed(2)}</span>
+                      <span className="text-yellow-700 font-black italic text-xs">R$ {(item.price || 0).toFixed(2)}</span>
                       <div className="flex gap-1">
                         <button onClick={() => { setEditingProduct(item); setIsProductModalOpen(true); }} className="p-2 bg-white text-blue-500 rounded-xl shadow-sm"><PrinterIcon size={14}/></button>
                         <button onClick={() => onDeleteProduct(item.id)} className="p-2 bg-white text-red-500 rounded-xl shadow-sm"><TrashIcon size={14}/></button>
@@ -332,7 +337,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <div className="flex-1 space-y-3 overflow-y-auto max-h-80">
                 <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Clientes no Programa</h4>
                 {loyaltyUsers?.map((u, i) => (
-                  <div key={u.phone} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border-l-8 border-yellow-400 shadow-sm"><div className="flex items-center gap-4"><span className="w-6 h-6 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[10px] font-black">{i+1}</span><div><p className="font-black text-xs uppercase">{u.name}</p><p className="text-[9px] text-gray-400 font-bold">{u.phone}</p></div></div><span className="text-yellow-700 font-black italic text-xs">R$ {u.accumulated.toFixed(2)}</span></div>
+                  <div key={u.phone} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border-l-8 border-yellow-400 shadow-sm"><div className="flex items-center gap-4"><span className="w-6 h-6 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[10px] font-black">{i+1}</span><div><p className="font-black text-xs uppercase">{u.name}</p><p className="text-[9px] text-gray-400 font-bold">{u.phone}</p></div></div><span className="text-yellow-700 font-black italic text-xs">R$ {(u.accumulated || 0).toFixed(2)}</span></div>
                 ))}
               </div>
             </div>
@@ -386,7 +391,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       </div>
 
       {/* Modal de Detalhes do Pedido Selecionado */}
-      {selectedTable && (
+      {selectedTable && selectedTable.currentOrder && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
           <div className="relative bg-white w-full max-w-4xl h-[85vh] rounded-[3.5rem] flex flex-col overflow-hidden shadow-2xl border-t-8 border-yellow-400">
@@ -405,18 +410,36 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 )}
               </div>
-              <div className="flex gap-3"><button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-4 bg-gray-100 rounded-full hover:bg-yellow-400 transition-all shadow-sm"><PrinterIcon size={24}/></button><button onClick={() => setSelectedTableId(null)} className="p-4 bg-gray-100 rounded-full hover:bg-red-50 transition-all shadow-sm"><CloseIcon size={24}/></button></div>
+              <div className="flex gap-3">
+                <button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-4 bg-gray-100 rounded-full hover:bg-yellow-400 transition-all shadow-sm"><PrinterIcon size={24}/></button>
+                <button onClick={() => setSelectedTableId(null)} className="p-4 bg-gray-100 rounded-full hover:bg-red-50 transition-all shadow-sm"><CloseIcon size={24}/></button>
+              </div>
             </div>
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                <div className="flex-1 p-8 overflow-y-auto space-y-4">
                   {selectedTable.currentOrder?.items?.map((item, i) => (
-                    <div key={i} className="flex gap-6 bg-gray-50 p-6 rounded-3xl border border-gray-100 items-center"><img src={item.image} className="w-16 h-16 rounded-2xl object-cover shadow-sm" /><div className="flex-1 font-black"><h4 className="text-sm uppercase leading-tight">{item.name}</h4><p className="text-[10px] text-gray-400 mt-1 uppercase">{item.category}</p></div><div className="text-right font-black"><p className="text-xs text-gray-400">{item.quantity}x R$ {item.price.toFixed(2)}</p><p className="text-lg italic">R$ {(item.price*item.quantity).toFixed(2)}</p></div></div>
+                    <div key={i} className="flex gap-6 bg-gray-50 p-6 rounded-3xl border border-gray-100 items-center">
+                      <img src={item.image} className="w-16 h-16 rounded-2xl object-cover shadow-sm" />
+                      <div className="flex-1 font-black"><h4 className="text-sm uppercase leading-tight">{item.name}</h4><p className="text-[10px] text-gray-400 mt-1 uppercase">{item.category}</p></div>
+                      <div className="text-right font-black"><p className="text-xs text-gray-400">{item.quantity}x R$ {(item.price || 0).toFixed(2)}</p><p className="text-lg italic">R$ {((item.price || 0) * (item.quantity || 1)).toFixed(2)}</p></div>
+                    </div>
                   ))}
                   {(!selectedTable.currentOrder?.items || selectedTable.currentOrder.items.length === 0) && (
                     <div className="text-center py-20 opacity-20 font-black uppercase text-xs">Vazio. Adicione itens ao lado.</div>
                   )}
                   <div className="pt-10 border-t-2 border-dashed mt-10">
-                    <div className="flex justify-between items-end mb-8"><div className="flex flex-col font-black"><span className="text-[10px] uppercase text-gray-400 tracking-[0.2em] mb-1">Total Final</span><span className="text-5xl italic tracking-tighter">R$ {selectedTable.currentOrder?.finalTotal.toFixed(2).replace('.', ',')}</span></div></div>
+                    <div className="flex justify-between items-end mb-8">
+                      <div className="flex flex-col font-black">
+                        <span className="text-[10px] uppercase text-gray-400 tracking-[0.2em] mb-1">Total Final</span>
+                        <span className="text-5xl italic tracking-tighter">R$ {(selectedTable.currentOrder?.finalTotal || 0).toFixed(2).replace('.', ',')}</span>
+                      </div>
+                      {selectedTable.currentOrder?.discount ? (
+                        <div className="text-right font-black">
+                           <span className="text-[10px] uppercase text-gray-400 block mb-1">Desconto</span>
+                           <span className="text-green-600 italic">- R$ {selectedTable.currentOrder.discount.toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <button onClick={() => { onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-6 rounded-[2rem] font-black uppercase text-xs shadow-2xl hover:brightness-110 transition-all">Concluir 🏁</button>
                       <button onClick={() => onUpdateTable(selectedTable.id, 'occupied', { ...selectedTable.currentOrder!, status: 'preparing' })} className={`py-6 rounded-[2rem] font-black uppercase text-xs transition-all border-4 border-black ${selectedTable.currentOrder?.status === 'preparing' ? 'bg-black text-white' : 'bg-white text-black'}`}>Preparar 🍳</button>
@@ -445,7 +468,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Modal Novo Pedido Manual (Operador) */}
       {isNewOrderModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
-          <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-10 relative shadow-2xl animate-in zoom-in duration-300">
+          <div className="bg-white w-full max-sm rounded-[3.5rem] p-10 relative shadow-2xl animate-in zoom-in duration-300">
              <button onClick={() => setIsNewOrderModalOpen(false)} className="absolute top-8 right-8 p-4 bg-gray-100 rounded-full"><CloseIcon size={20}/></button>
              <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">Novo Pedido Externo</h3>
              <form onSubmit={handleCreateNewOrder} className="space-y-6">
@@ -493,7 +516,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
              <h3 className="text-4xl font-black italic mb-12 uppercase tracking-tighter">Produto</h3>
              <form onSubmit={(e) => { 
                e.preventDefault(); 
-               onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price) }); 
+               onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price || 0) }); 
                setIsProductModalOpen(false); 
              }} className="space-y-8">
                 <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="NOME DO ITEM" className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-sm font-black outline-none transition-all uppercase" required />
