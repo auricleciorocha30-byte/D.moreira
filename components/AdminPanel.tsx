@@ -64,7 +64,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const { data: cData } = await supabase.from('coupons').select('*');
     if (cData) setCoupons(cData);
     
-    const { data: lConfig } = await supabase.from('loyalty_config').select('*').single();
+    const { data: lConfig } = await supabase.from('loyalty_config').select('*').maybeSingle();
     if (lConfig) setLoyalty(lConfig);
 
     const { data: lUsers } = await supabase.from('loyalty_users').select('*').order('accumulated', { ascending: false });
@@ -203,16 +203,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     e.preventDefault();
     const formData = new FormData(e.target);
     const newCoupon = {
+      id: 'cpn_' + Date.now(), // Adicionado ID explícito para garantir salvamento
       code: formData.get('code')?.toString().toUpperCase(),
       percentage: Number(formData.get('percentage')),
       isActive: true,
       scopeType: formData.get('scopeType'),
       scopeValue: formData.get('scopeValue') || '',
     };
-    await supabase.from('coupons').insert([newCoupon]);
-    e.target.reset();
-    setCouponScopeType('all');
-    fetchMarketingData();
+    
+    const { error } = await supabase.from('coupons').insert([newCoupon]);
+    if (error) {
+      alert('Erro ao salvar cupom: ' + error.message);
+    } else {
+      e.target.reset();
+      setCouponScopeType('all');
+      fetchMarketingData();
+      alert('Cupom salvo com sucesso!');
+    }
   };
 
   const handlePrint = (order: Order) => {

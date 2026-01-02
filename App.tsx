@@ -77,9 +77,9 @@ const App: React.FC = () => {
       }
 
       const { data: tData } = await supabase.from('tables').select('*').order('id');
-      if (tData) {
+      if (tData && tData.length > 0) {
+        // Combinamos as mesas do banco com a estrutura inicial para garantir que IDs como 1, 2, 3... sempre existam visualmente
         setTables(prev => {
-          // Apenas atualiza o estado. Os efeitos sonoros foram movidos para um useEffect observador
           return prev.map(p => {
             const dbT = tData.find(dt => dt.id === p.id);
             if (dbT) return { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order };
@@ -96,21 +96,22 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isAdmin || !isLoggedIn) return;
 
+    // Monitoramos qualquer mudança na tabela tables para disparar o som e atualizar a UI
     const channel = supabase.channel('order_monitor')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tables' }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
         const newTable = payload.new as any;
         const oldTable = payload.old as any;
         
-        // Se mudou de livre para ocupado, é um novo pedido
-        if (newTable.status === 'occupied' && oldTable.status === 'free') {
+        // Se mudou de livre para ocupado OU se é um novo registro já ocupado
+        if (newTable.status === 'occupied' && (!oldTable || oldTable.status === 'free')) {
           playNotification();
           setNewOrderAlert({ 
             id: newTable.id, 
             type: newTable.id >= 950 ? 'counter' : newTable.id >= 900 ? 'delivery' : 'table' 
           });
           setTimeout(() => setNewOrderAlert(null), 10000);
-          fetchData(); // Atualiza a lista
         }
+        fetchData(); // Atualiza a lista sempre que houver mudança
       })
       .subscribe();
 
@@ -130,10 +131,12 @@ const App: React.FC = () => {
 
     fetchData();
 
+    // Sincronização geral em tempo real
     const channel = supabase.channel('realtime_sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'coupons' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, fetchData) // ADICIONADO: Sincronia de mesas
       .subscribe();
 
     return () => { 
@@ -153,7 +156,7 @@ const App: React.FC = () => {
       else targetTableId = (Math.max(...tables.filter(t => t.id >= rangeStart && t.id <= rangeEnd).map(t => t.id), rangeStart - 1) + 1);
     }
 
-    const { data: current } = await supabase.from('tables').select('current_order, status').eq('id', targetTableId).single();
+    const { data: current } = await supabase.from('tables').select('current_order, status').eq('id', targetTableId).maybeSingle();
     const newItems: CartItem[] = input.items ? input.items : [{ ...input, quantity: 1 }];
     let finalOrder: Order;
     
