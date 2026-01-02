@@ -57,8 +57,17 @@ const App: React.FC = () => {
       if (catData && catData.length > 0) setCategories(catData);
       else setCategories(DEFAULT_CATEGORIES);
 
-      const { data: couponsData } = await supabase.from('coupons').select('*').eq('isActive', true);
-      if (couponsData) setActiveCoupons(couponsData);
+      const { data: couponsData } = await supabase.from('coupons').select('*').eq('is_active', true);
+      if (couponsData) {
+        setActiveCoupons(couponsData.map(c => ({
+          id: c.id,
+          code: c.code,
+          percentage: c.percentage,
+          isActive: c.is_active,
+          scopeType: c.scope_type,
+          scopeValue: c.scope_value
+        })));
+      }
 
       const { data: prodData } = await supabase.from('products').select('*').order('name');
       if (prodData && prodData.length > 0) {
@@ -78,7 +87,6 @@ const App: React.FC = () => {
 
       const { data: tData } = await supabase.from('tables').select('*').order('id');
       if (tData && tData.length > 0) {
-        // Combinamos as mesas do banco com a estrutura inicial para garantir que IDs como 1, 2, 3... sempre existam visualmente
         setTables(prev => {
           return prev.map(p => {
             const dbT = tData.find(dt => dt.id === p.id);
@@ -92,17 +100,12 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Monitor de Novos Pedidos (Som e Alerta)
   useEffect(() => {
     if (!isAdmin || !isLoggedIn) return;
-
-    // Monitoramos qualquer mudança na tabela tables para disparar o som e atualizar a UI
     const channel = supabase.channel('order_monitor')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
         const newTable = payload.new as any;
         const oldTable = payload.old as any;
-        
-        // Se mudou de livre para ocupado OU se é um novo registro já ocupado
         if (newTable.status === 'occupied' && (!oldTable || oldTable.status === 'free')) {
           playNotification();
           setNewOrderAlert({ 
@@ -111,10 +114,9 @@ const App: React.FC = () => {
           });
           setTimeout(() => setNewOrderAlert(null), 10000);
         }
-        fetchData(); // Atualiza a lista sempre que houver mudança
+        fetchData();
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [isAdmin, isLoggedIn, playNotification, fetchData]);
 
@@ -123,22 +125,17 @@ const App: React.FC = () => {
       setIsLoggedIn(!!session);
       setIsAdmin(!!session);
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setIsLoggedIn(!!session);
       setIsAdmin(!!session);
     });
-
     fetchData();
-
-    // Sincronização geral em tempo real
     const channel = supabase.channel('realtime_sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'coupons' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, fetchData) // ADICIONADO: Sincronia de mesas
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, fetchData)
       .subscribe();
-
     return () => { 
       subscription.unsubscribe(); 
       supabase.removeChannel(channel); 
@@ -147,7 +144,6 @@ const App: React.FC = () => {
 
   const handlePlaceOrder = async (input: any) => {
     let targetTableId = input.tableId;
-    
     if (targetTableId === -900 || targetTableId === -950) {
       const rangeStart = targetTableId === -900 ? 900 : 950;
       const rangeEnd = targetTableId === -900 ? 949 : 999;
@@ -155,11 +151,9 @@ const App: React.FC = () => {
       if (freeSlot) targetTableId = freeSlot.id;
       else targetTableId = (Math.max(...tables.filter(t => t.id >= rangeStart && t.id <= rangeEnd).map(t => t.id), rangeStart - 1) + 1);
     }
-
     const { data: current } = await supabase.from('tables').select('current_order, status').eq('id', targetTableId).maybeSingle();
     const newItems: CartItem[] = input.items ? input.items : [{ ...input, quantity: 1 }];
     let finalOrder: Order;
-    
     if (current?.status === 'occupied' && current.current_order) {
       const existingItems = Array.isArray(current.current_order.items) ? [...current.current_order.items] : [];
       newItems.forEach((newItem) => {
@@ -192,7 +186,6 @@ const App: React.FC = () => {
         couponCode: input.couponCode
       };
     }
-
     await supabase.from('tables').upsert({ id: targetTableId, status: 'occupied', current_order: finalOrder });
     if (input.items) { setCartItems([]); setIsCartOpen(false); }
     fetchData();
@@ -211,7 +204,6 @@ const App: React.FC = () => {
       {!isLoggedIn && (
         <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 hover:text-black bg-white/10 px-3 py-1.5 rounded-full uppercase tracking-widest transition-colors backdrop-blur-sm border border-black/5">Admin</button>
       )}
-
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
         {isAdmin && isLoggedIn ? (
           <div className="relative">
@@ -255,7 +247,6 @@ const App: React.FC = () => {
           </>
         )}
       </main>
-
       {!isAdmin && cartItems.length > 0 && (
         <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 z-40 animate-in slide-in-from-bottom duration-500">
           <button onClick={() => setIsCartOpen(true)} className="w-full max-w-md bg-black text-white rounded-[2.5rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30 active:scale-95 transition-all">
@@ -267,7 +258,6 @@ const App: React.FC = () => {
           </button>
         </div>
       )}
-
       {showLogin && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
           <div className="bg-white p-12 rounded-[3.5rem] w-full max-w-sm text-center shadow-2xl">
@@ -287,7 +277,6 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-
       {!isAdmin && <Cart isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} items={cartItems} onUpdateQuantity={(id, d) => setCartItems(p => p.map(i => i.id === id ? {...i, quantity: Math.max(1, i.quantity + d)} : i))} onRemove={id => setCartItems(p => p.filter(i => i.id !== id))} onAdd={() => {}} onPlaceOrder={handlePlaceOrder}/>}
     </div>
   );
