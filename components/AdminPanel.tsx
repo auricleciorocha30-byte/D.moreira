@@ -44,13 +44,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editCustomerName, setEditCustomerName] = useState('');
   const [editAddress, setEditAddress] = useState('');
 
-  const physicalTables = useMemo(() => tables.filter(t => t.id <= 12).sort((a,b) => a.id - b.id), [tables]);
-  const activeDeliveries = useMemo(() => tables.filter(t => t.id >= 900 && t.id <= 949 && t.status === 'occupied').sort((a,b) => a.id - b.id), [tables]);
-  const activeCounters = useMemo(() => tables.filter(t => t.id >= 950 && t.id <= 999 && t.status === 'occupied').sort((a,b) => a.id - b.id), [tables]);
+  // Robust filtering: Only include tables that are occupied AND have a valid currentOrder object
+  const physicalTables = useMemo(() => 
+    (tables || []).filter(t => t.id <= 12).sort((a,b) => a.id - b.id), 
+    [tables]
+  );
+  
+  const activeDeliveries = useMemo(() => 
+    (tables || []).filter(t => t.id >= 900 && t.id <= 949 && t.status === 'occupied' && t.currentOrder).sort((a,b) => a.id - b.id), 
+    [tables]
+  );
+  
+  const activeCounters = useMemo(() => 
+    (tables || []).filter(t => t.id >= 950 && t.id <= 999 && t.status === 'occupied' && t.currentOrder).sort((a,b) => a.id - b.id), 
+    [tables]
+  );
 
-  const selectedTable = useMemo(() => tables.find(t => t.id === selectedTableId) || null, [tables, selectedTableId]);
+  const selectedTable = useMemo(() => 
+    (tables || []).find(t => t.id === selectedTableId) || null, 
+    [tables, selectedTableId]
+  );
 
-  // Sincroniza campos de edição corretamente usando useEffect
   useEffect(() => {
     if (selectedTable?.currentOrder) {
       setEditCustomerName(selectedTable.currentOrder.customerName || '');
@@ -65,8 +79,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const rangeStart = type === 'delivery' ? 900 : 950;
     const rangeEnd = type === 'delivery' ? 949 : 999;
     
-    const freeSlot = tables.find(t => t.id >= rangeStart && t.id <= rangeEnd && t.status === 'free');
-    const newId = freeSlot ? freeSlot.id : (Math.max(...tables.filter(t => t.id >= rangeStart && t.id <= rangeEnd).map(t => t.id), rangeStart - 1) + 1);
+    const freeSlot = (tables || []).find(t => t.id >= rangeStart && t.id <= rangeEnd && t.status === 'free');
+    const newId = freeSlot ? freeSlot.id : (Math.max(...(tables || []).filter(t => t.id >= rangeStart && t.id <= rangeEnd).map(t => t.id), rangeStart - 1) + 1);
     
     const newOrder: Order = {
       id: Math.random().toString(36).substr(2, 6).toUpperCase(),
@@ -126,10 +140,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const handlePrint = (order: Order) => {
     const printWindow = window.open('', '_blank', 'width=300,height=600');
     if (!printWindow) return alert('Habilite pop-ups.');
-    const itemsHtml = order.items.map(item => `
+    const itemsHtml = (order.items || []).map(item => `
       <div style="display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; margin-bottom: 2px;">
         <span>${item.quantity}x ${item.name.substring(0, 16)}</span>
-        <span>R$ ${(item.price * item.quantity).toFixed(2)}</span>
+        <span>R$ ${Number(item.price * item.quantity).toFixed(2)}</span>
       </div>
     `).join('');
     printWindow.document.write(`
@@ -146,7 +160,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         ${itemsHtml}
         <hr/>
         <div style="font-weight: bold; display: flex; justify-content: space-between;">
-          <span>TOTAL:</span><span>R$ ${order.total.toFixed(2)}</span>
+          <span>TOTAL:</span><span>R$ ${Number(order.total || 0).toFixed(2)}</span>
         </div>
         <script>window.onload = function() { window.print(); window.close(); }</script>
       </body></html>
@@ -155,7 +169,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const filteredMenu = useMemo(() => 
-    menuItems.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.category.toLowerCase().includes(searchTerm.toLowerCase())),
+    (menuItems || []).filter(p => 
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      p.category.toLowerCase().includes(searchTerm.toLowerCase())
+    ),
     [menuItems, searchTerm]
   );
 
@@ -201,7 +218,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>{t.status === 'free' ? 'Livre' : 'Ocupada'}</span>
                   {t.status === 'occupied' && (
                     <div className="flex flex-col items-center gap-1 mt-1">
-                      <span className="text-[11px] font-black text-black bg-white/40 px-2 py-0.5 rounded-md italic">R$ {t.currentOrder?.total.toFixed(2)}</span>
+                      <span className="text-[11px] font-black text-black bg-white/40 px-2 py-0.5 rounded-md italic">R$ {Number(t.currentOrder?.total || 0).toFixed(2)}</span>
                       <span className={`text-[7px] font-black uppercase px-2 py-0.5 rounded-full border border-black/10 ${statusCfg.bg} ${statusCfg.color}`}>{statusCfg.label}</span>
                     </div>
                   )}
@@ -231,7 +248,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       <h4 className="font-black text-sm uppercase truncate mb-1 text-gray-900">{t.currentOrder?.customerName || 'Cliente'}</h4>
                       <p className="text-[10px] text-gray-400 font-bold mb-4 line-clamp-2 min-h-[30px] leading-tight">{t.currentOrder?.address || 'Sem endereço'}</p>
                       <div className="mt-auto pt-4 border-t border-gray-50 flex justify-between items-center">
-                        <span className="font-black italic text-black">R$ {t.currentOrder?.total.toFixed(2)}</span>
+                        <span className="font-black italic text-black">R$ {Number(t.currentOrder?.total || 0).toFixed(2)}</span>
                         <span className="text-[8px] font-black text-gray-300 uppercase">#{t.id}</span>
                       </div>
                     </button>
@@ -263,12 +280,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       <h4 className="font-black text-sm uppercase truncate mb-1 text-gray-900">{t.currentOrder?.customerName || 'Cliente'}</h4>
                       <p className="text-[10px] text-gray-400 font-bold mb-4">Aguardando Retirada</p>
                       <div className="mt-auto pt-4 border-t border-gray-50 flex justify-between items-center">
-                        <span className="font-black italic text-black">R$ {t.currentOrder?.total.toFixed(2)}</span>
+                        <span className="font-black italic text-black">R$ {Number(t.currentOrder?.total || 0).toFixed(2)}</span>
                         <span className="text-[8px] font-black text-gray-300 uppercase">#{t.id}</span>
                       </div>
                     </button>
                   );
                 })}
+                {activeCounters.length === 0 && (
+                  <div className="col-span-full py-16 text-center bg-gray-100 rounded-[2.5rem] border-2 border-dashed border-gray-200">
+                    <p className="text-gray-400 font-black uppercase text-xs tracking-widest">Nenhum pedido no balcão</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -283,7 +305,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <button type="submit" className="bg-black text-yellow-400 px-8 py-4 rounded-xl font-black text-xs uppercase shadow-lg">Adicionar</button>
             </form>
             <div className="space-y-2 overflow-y-auto max-h-[400px] no-scrollbar">
-              {categories.map(cat => (
+              {(categories || []).map(cat => (
                 <div key={cat.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-transparent hover:border-yellow-400 transition-all group">
                   <span className="font-black text-gray-800 uppercase text-xs italic">{cat.name}</span>
                   <button onClick={() => { if(confirm('Excluir categoria?')) supabase.from('categories').delete().eq('id', cat.id).then(() => onRefreshData()); }} className="p-2 text-red-400 hover:scale-110 transition-transform opacity-0 group-hover:opacity-100"><TrashIcon/></button>
@@ -301,13 +323,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <button onClick={() => { setEditingProduct({ name: '', price: '', category: categories[0]?.name || 'Diversos', image: '', isAvailable: true }); setIsProductModalOpen(true); }} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:scale-105 transition-all">+ Novo Produto</button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {menuItems.map(item => (
+              {(menuItems || []).map(item => (
                 <div key={item.id} className={`bg-gray-50 p-5 rounded-[2.5rem] border transition-all hover:shadow-xl relative ${!item.isAvailable ? 'grayscale opacity-60' : ''}`}>
                   <img src={item.image} className="w-full aspect-square object-cover rounded-[2rem] mb-4 shadow-md" />
                   <h4 className="font-black text-sm text-black mb-1 truncate uppercase">{item.name}</h4>
-                  <div className="flex justify-between items-center mb-4"><span className="text-yellow-700 font-black italic text-xs">R$ {item.price.toFixed(2)}</span><span className="text-gray-400 uppercase font-black text-[9px]">{item.category}</span></div>
+                  <div className="flex justify-between items-center mb-4"><span className="text-yellow-700 font-black italic text-xs">R$ {Number(item.price || 0).toFixed(2)}</span><span className="text-gray-400 uppercase font-black text-[9px]">{item.category}</span></div>
                   <div className="flex gap-2">
-                    <button onClick={() => { setEditingProduct({...item, price: item.price.toString()}); setIsProductModalOpen(true); }} className="flex-1 bg-white py-3 rounded-xl font-black text-[10px] uppercase border text-black hover:bg-black hover:text-white transition-all">Editar</button>
+                    <button onClick={() => { setEditingProduct({...item, price: (item.price || 0).toString()}); setIsProductModalOpen(true); }} className="flex-1 bg-white py-3 rounded-xl font-black text-[10px] uppercase border text-black hover:bg-black hover:text-white transition-all">Editar</button>
                     <button onClick={() => onDeleteProduct(item.id)} className="p-3 text-red-500 bg-red-50 rounded-xl hover:bg-red-500 hover:text-white transition-all"><TrashIcon/></button>
                   </div>
                 </div>
@@ -392,17 +414,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  )}
 
                  <div className="flex-1 space-y-3 mb-8">
-                   {selectedTable.currentOrder?.items?.map((item, idx) => (
+                   {(selectedTable.currentOrder?.items || []).map((item, idx) => (
                      <div key={idx} className="flex justify-between items-center bg-gray-50 p-5 rounded-3xl border border-gray-100 hover:border-yellow-200 transition-colors">
                        <span className="font-black text-xs text-gray-800 uppercase leading-none">{item.quantity}x {item.name}</span>
-                       <span className="font-black text-xs text-yellow-700 italic">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                       <span className="font-black text-xs text-yellow-700 italic">R$ {Number(item.price * item.quantity).toFixed(2)}</span>
                      </div>
                    )) || <div className="text-center py-20 text-gray-300 font-black uppercase text-[10px] italic">Sem itens lançados</div>}
                  </div>
 
                  {selectedTable.status === 'occupied' && (
                    <div className="border-t-2 pt-6">
-                      <div className="flex justify-between items-end mb-6"><span className="text-gray-400 font-black text-[10px] uppercase">Total do Pedido</span><span className="text-4xl md:text-5xl font-black italic text-black leading-none">R$ {selectedTable.currentOrder?.total.toFixed(2)}</span></div>
+                      <div className="flex justify-between items-end mb-6"><span className="text-gray-400 font-black text-[10px] uppercase">Total do Pedido</span><span className="text-4xl md:text-5xl font-black italic text-black leading-none">R$ {Number(selectedTable.currentOrder?.total || 0).toFixed(2)}</span></div>
                       <div className="grid grid-cols-2 gap-4 pb-4">
                         <button onClick={() => setSelectedTableId(null)} className="bg-gray-100 text-black py-5 rounded-2xl font-black uppercase text-[10px] hover:bg-gray-200">Voltar</button>
                         <button onClick={() => { if(confirm('Concluir e liberar vaga?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-green-800 active:scale-95 transition-all">Finalizar & Liberar</button>
@@ -420,7 +442,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar pb-10">
                     {filteredMenu.filter(p => p.isAvailable).map(p => (
                       <button key={p.id} onClick={() => onAddToOrder(selectedTable.id, p)} className="w-full bg-white p-4 rounded-2xl border-2 border-transparent hover:border-black flex justify-between items-center transition-all active:scale-95 shadow-sm group">
-                        <div className="text-left"><p className="font-black text-[10px] uppercase truncate w-32 text-gray-900 group-hover:text-black">{p.name}</p><p className="text-yellow-700 font-black text-[9px] italic mt-1">R$ {p.price.toFixed(2)}</p></div>
+                        <div className="text-left"><p className="font-black text-[10px] uppercase truncate w-32 text-gray-900 group-hover:text-black">{p.name}</p><p className="text-yellow-700 font-black text-[9px] italic mt-1">R$ {Number(p.price || 0).toFixed(2)}</p></div>
                         <span className="bg-yellow-400 text-black font-black text-[8px] px-3.5 py-2 rounded-xl shadow-sm">+ ADD</span>
                       </button>
                     ))}
