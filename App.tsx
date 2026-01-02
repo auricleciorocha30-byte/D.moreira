@@ -48,21 +48,16 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      // 1. Buscar Categorias com Fallback
       const { data: catData, error: cError } = await supabase.from('categories').select('*').order('name');
-      if (cError) {
-        console.warn("Categorias não encontradas no banco, usando padrão.");
-        if (cError.code === '42P01') setDbStatus('error_tables_missing');
-      } else if (catData && catData.length > 0) {
+      if (!cError && catData && catData.length > 0) {
         setCategories(catData);
         setDbStatus('ok');
+      } else if (cError?.code === '42P01') {
+        setDbStatus('error_tables_missing');
       }
 
-      // 2. Buscar Produtos
-      const { data: prodData, error: pError } = await supabase.from('products').select('*').order('name');
-      if (pError) {
-         setMenuItems(STATIC_MENU);
-      } else if (prodData && prodData.length > 0) {
+      const { data: prodData } = await supabase.from('products').select('*').order('name');
+      if (prodData && prodData.length > 0) {
         setMenuItems(prodData.map(p => ({
           id: p.id,
           name: p.name,
@@ -76,7 +71,6 @@ const App: React.FC = () => {
         setMenuItems(STATIC_MENU);
       }
 
-      // 3. Buscar Mesas
       const { data: tData } = await supabase.from('tables').select('*').order('id');
       if (tData) {
         setTables(prev => {
