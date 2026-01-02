@@ -71,11 +71,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     
     const { data: lConfig } = await supabase.from('loyalty_config').select('*').maybeSingle();
     if (lConfig) {
+      // Usando camelCase conforme erro relatado pelo usuário (is_active não encontrado em loyalty_config)
       setLoyalty({
-        isActive: lConfig.is_active,
-        spendingGoal: lConfig.spending_goal,
-        scopeType: lConfig.scope_type,
-        scopeValue: lConfig.scope_value || ''
+        isActive: lConfig.isActive,
+        spendingGoal: lConfig.spendingGoal,
+        scopeType: lConfig.scopeType,
+        scopeValue: lConfig.scopeValue || ''
       });
     }
 
@@ -181,13 +182,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleUpdateLoyalty = async (updates: Partial<LoyaltyConfig>) => {
     const nextLoyalty = { ...loyalty, ...updates };
-    setLoyalty(nextLoyalty); // Feedback imediato no UI
+    setLoyalty(nextLoyalty); 
     
+    // Mapeando para camelCase para a tabela loyalty_config conforme erro
     const dbUpdates: any = {};
-    if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
-    if (updates.spendingGoal !== undefined) dbUpdates.spending_goal = updates.spendingGoal;
-    if (updates.scopeType !== undefined) dbUpdates.scope_type = updates.scopeType;
-    if (updates.scopeValue !== undefined) dbUpdates.scope_value = updates.scopeValue;
+    if (updates.isActive !== undefined) dbUpdates.isActive = updates.isActive;
+    if (updates.spendingGoal !== undefined) dbUpdates.spendingGoal = updates.spendingGoal;
+    if (updates.scopeType !== undefined) dbUpdates.scopeType = updates.scopeType;
+    if (updates.scopeValue !== undefined) dbUpdates.scopeValue = updates.scopeValue;
     
     const { error } = await supabase.from('loyalty_config').upsert({ id: 1, ...dbUpdates });
     if (error) alert('Erro ao salvar fidelidade: ' + error.message);
