@@ -108,23 +108,60 @@ const App: React.FC = () => {
     return () => { subscription.unsubscribe(); supabase.removeChannel(channel); };
   }, [fetchData]);
 
-  const handlePlaceOrder = async (order: Order) => {
-    const { data: current } = await supabase.from('tables').select('current_order, status').eq('id', order.tableId).single();
-    let finalOrder = order;
+  const handlePlaceOrder = async (order: any) => {
+    // Se for apenas a adição de um produto (Lançamento Manual Admin)
+    let targetTableId = order.tableId;
+    let productToAdd = order.id ? order : null;
+    
+    const { data: current } = await supabase.from('tables').select('current_order, status').eq('id', targetTableId).single();
+    
+    let finalOrder: Order;
     
     if (current?.status === 'occupied' && current.current_order) {
       const items = [...current.current_order.items];
-      order.items.forEach(ni => {
-        const i = items.findIndex(ei => ei.id === ni.id);
-        if (i > -1) items[i].quantity += ni.quantity;
-        else items.push(ni);
-      });
-      finalOrder = { ...current.current_order, items, total: items.reduce((a, b) => a + (b.price * b.quantity), 0), isUpdated: true };
+      
+      // Se estamos adicionando um único produto
+      if (productToAdd && !order.items) {
+        const i = items.findIndex(ei => ei.id === productToAdd.id);
+        if (i > -1) items[i].quantity += 1;
+        else items.push({ ...productToAdd, quantity: 1 });
+      } 
+      // Se for um pedido completo vindo do carrinho
+      else if (order.items) {
+        order.items.forEach((ni: CartItem) => {
+          const i = items.findIndex(ei => ei.id === ni.id);
+          if (i > -1) items[i].quantity += ni.quantity;
+          else items.push(ni);
+        });
+      }
+
+      finalOrder = { 
+        ...current.current_order, 
+        items, 
+        total: items.reduce((a, b) => a + (b.price * b.quantity), 0), 
+        isUpdated: true 
+      };
     } else {
-      finalOrder = { ...order, isUpdated: true };
+      // Criando novo pedido na mesa vazia
+      if (productToAdd && !order.items) {
+        finalOrder = {
+          id: Math.random().toString(36).substr(2, 6).toUpperCase(),
+          customerName: 'Admin',
+          items: [{ ...productToAdd, quantity: 1 }],
+          total: productToAdd.price,
+          paymentMethod: 'Pendente',
+          timestamp: new Date().toISOString(),
+          tableId: targetTableId,
+          orderType: targetTableId >= 900 ? 'counter' : 'table',
+          status: 'preparing',
+          isUpdated: true
+        };
+      } else {
+        finalOrder = { ...order, isUpdated: true };
+      }
     }
 
-    await supabase.from('tables').update({ status: 'occupied', current_order: finalOrder }).eq('id', order.tableId);
+    await supabase.from('tables').update({ status: 'occupied', current_order: finalOrder }).eq('id', targetTableId);
     setCartItems([]);
     setIsCartOpen(false);
     fetchData();
@@ -149,7 +186,7 @@ const App: React.FC = () => {
             audioEnabled={audioEnabled} 
             onToggleAudio={() => setAudioEnabled(!audioEnabled)} 
             onUpdateTable={async (id, status, ord) => { await supabase.from('tables').update({ status, current_order: ord || null }).eq('id', id); fetchData(); }} 
-            onAddToOrder={handlePlaceOrder as any}
+            onAddToOrder={(tableId, product) => handlePlaceOrder({ ...product, tableId })}
             onRefreshData={fetchData} 
             onLogout={() => supabase.auth.signOut()} 
             onSaveProduct={async (p) => {
