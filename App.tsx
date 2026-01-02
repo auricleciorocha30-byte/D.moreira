@@ -44,7 +44,6 @@ const App: React.FC = () => {
         notificationSound.current?.pause();
         if (notificationSound.current) notificationSound.current.currentTime = 0;
         audioUnlocked.current = true;
-        console.log("Audio Unlocked");
       }).catch(() => {});
     }
   }, []);
@@ -124,37 +123,59 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Sincronização Realtime ATIVA
+  // Sincronização Realtime OTIMIZADA
   useEffect(() => {
     fetchData();
     
-    const channel = supabase.channel('dmoreira-realtime-master')
+    const channel = supabase.channel('dmoreira-realtime-v2')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (payload) => {
-        const newT = payload.new as any;
-        const oldT = payload.old as any;
+        const newRecord = payload.new as any;
+        const oldRecord = payload.old as any;
+
+        console.log("Realtime Update Received:", newRecord);
         
-        // Disparo de Alerta Sonoro e Visual
-        if (newT && newT.status === 'occupied') {
-          const wasFree = !oldT || oldT.status === 'free';
+        // 1. Atualização Instantânea do Estado (O segredo para não precisar de F5)
+        setTables(currentTables => {
+          const index = currentTables.findIndex(t => t.id === newRecord.id);
+          const updatedTable: Table = {
+            id: newRecord.id,
+            status: newRecord.status,
+            currentOrder: newRecord.current_order
+          };
+
+          if (index !== -1) {
+            const newList = [...currentTables];
+            newList[index] = updatedTable;
+            return newList;
+          } else {
+            return [...currentTables, updatedTable].sort((a, b) => a.id - b.id);
+          }
+        });
+
+        // 2. Alerta Sonoro e Visual se for novo pedido
+        if (newRecord && newRecord.status === 'occupied') {
+          const wasFree = !oldRecord || oldRecord.status === 'free';
           if (wasFree) {
             if (audioEnabled && notificationSound.current) {
               notificationSound.current.currentTime = 0;
-              notificationSound.current.play().catch(e => console.log("Audio block:", e));
+              notificationSound.current.play().catch(() => {});
             }
             setNewOrderAlert({ 
-              id: newT.id, 
-              type: newT.id >= 950 ? 'Balcão' : newT.id >= 900 ? 'Entrega' : 'Mesa' 
+              id: newRecord.id, 
+              type: newRecord.id >= 950 ? 'Balcão' : newRecord.id >= 900 ? 'Entrega' : 'Mesa' 
             });
             setTimeout(() => setNewOrderAlert(null), 15000);
           }
         }
         
-        // Atualização Silenciosa
+        // 3. Sync de backup para garantir integridade
         fetchData(true);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => fetchData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => fetchData(true))
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Realtime status:", status);
+      });
 
     return () => { supabase.removeChannel(channel); };
   }, [fetchData, audioEnabled]);
@@ -167,6 +188,7 @@ const App: React.FC = () => {
       targetId = free ? free.id : (Math.max(...tables.filter(t => t.id >= range[0] && t.id <= range[1]).map(t => t.id), range[0] - 1) + 1);
     }
     
+    // Otimismo: Atualizamos localmente antes de enviar (opcional, mas o realtime já fará isso)
     const { error } = await supabase.from('tables').upsert({ 
       id: targetId, 
       status: 'occupied', 

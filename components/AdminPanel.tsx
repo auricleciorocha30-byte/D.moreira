@@ -138,12 +138,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
           <div className="h-10 w-[1px] bg-gray-800 hidden md:block"></div>
           {/* AUTO SYNC INDICATOR */}
-          <div className="flex items-center gap-3 bg-gray-900 px-4 py-2.5 rounded-2xl border border-gray-800">
+          <div className="flex items-center gap-3 bg-gray-900 px-4 py-2.5 rounded-2xl border border-gray-800 relative group">
             <div className="relative flex h-3 w-3">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${dbStatus === 'ok' ? 'bg-green-400' : 'bg-yellow-400'}`}></span>
-              <span className={`relative inline-flex rounded-full h-3 w-3 ${dbStatus === 'ok' ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${dbStatus === 'ok' ? 'bg-green-400' : 'bg-blue-400'}`}></span>
+              <span className={`relative inline-flex rounded-full h-3 w-3 ${dbStatus === 'ok' ? 'bg-green-500' : 'bg-blue-500'}`}></span>
             </div>
-            <span className="text-[9px] font-black uppercase text-white tracking-widest">Auto Sync On</span>
+            <span className="text-[9px] font-black uppercase text-white tracking-widest">
+              {dbStatus === 'ok' ? 'Auto Sync On' : 'Sincronizando...'}
+            </span>
+            <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-black text-white text-[8px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Conectado ao Supabase Realtime</div>
           </div>
         </div>
 
