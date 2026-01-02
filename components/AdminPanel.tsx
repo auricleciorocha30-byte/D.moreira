@@ -38,7 +38,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   
-  // Estados para Categorias
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [isCategoryEditModalOpen, setIsCategoryEditModalOpen] = useState(false);
@@ -118,17 +117,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleRestoreDefaults = async () => {
-    if (!confirm('Deseja importar as categorias padrão (Lanches, Bebidas, Combos, Diversos) para o banco de dados?')) return;
-    
+    if (!confirm('Deseja importar as categorias padrão?')) return;
     setIsSaving(true);
     const defaults = ['Lanches', 'Bebidas', 'Combos', 'Diversos'];
     try {
       const { error } = await supabase.from('categories').insert(defaults.map(name => ({ name })));
-      if (error) {
-        alert('Erro ao restaurar: ' + error.message);
-      } else {
-        onRefreshData();
-      }
+      if (error) alert('Erro ao restaurar: ' + error.message);
+      else onRefreshData();
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -140,49 +135,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     e.preventDefault();
     const name = newCategoryName.trim();
     if (!name || isSaving) return;
-    
     setIsSaving(true);
     setSyncError(null);
     try {
       const { error } = await supabase.from('categories').insert([{ name }]);
-      if (error) {
-        if (error.message.includes('schema cache') || error.code === 'PGRST104' || error.message.includes('not found')) {
-          setSyncError('ERRO DE CACHE: A tabela "categories" não foi reconhecida pelo Supabase.');
-        } else {
-          alert('Erro ao salvar categoria: ' + error.message);
-        }
-      } else {
+      if (error) alert('Erro: ' + error.message);
+      else {
         setNewCategoryName('');
         onRefreshData();
       }
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setIsSaving(false);
-    }
+    } catch (err: any) { console.error(err); } finally { setIsSaving(false); }
   };
 
   const handleUpdateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCategory || isSaving) return;
-    
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from('categories')
-        .update({ name: editingCategory.name })
-        .eq('id', editingCategory.id);
-        
+      const { error } = await supabase.from('categories').update({ name: editingCategory.name }).eq('id', editingCategory.id);
       if (error) throw error;
-      
       setIsCategoryEditModalOpen(false);
-      setEditingCategory(null);
       onRefreshData();
-    } catch (err: any) {
-      alert('Erro ao renomear: ' + err.message);
-    } finally {
-      setIsSaving(false);
-    }
+    } catch (err: any) { alert(err.message); } finally { setIsSaving(false); }
   };
 
   const filteredMenu = useMemo(() => 
@@ -203,7 +177,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="flex items-center justify-center md:justify-start gap-2">
               <span className={`w-2 h-2 rounded-full ${dbStatus === 'ok' ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></span>
               <p className="text-gray-500 font-bold text-[8px] uppercase tracking-[0.3em]">
-                {dbStatus === 'ok' ? 'Conectado ao Banco' : 'Erro de Sincronização'}
+                {dbStatus === 'ok' ? 'Conectado' : 'Sincronizando...'}
               </p>
             </div>
           </div>
@@ -213,7 +187,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <button 
                 key={tab} 
                 onClick={() => setActiveTab(tab)} 
-                className={`flex-1 md:flex-none px-4 py-3 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
+                className={`flex-1 md:flex-none px-4 py-3.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
               >
                 {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Fila' : tab === 'menu' ? 'Menu' : 'Categorias'}
               </button>
@@ -223,15 +197,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="flex items-center gap-4 w-full md:w-auto justify-center">
             <button 
               onClick={onToggleAudio} 
-              className={`p-4 rounded-full transition-all active:scale-90 ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-gray-600'}`}
-              title="Notificação Sonora"
+              className={`p-4 rounded-full transition-all active:scale-90 ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/20' : 'bg-gray-800 text-gray-600'}`}
             >
-              <VolumeIcon muted={!audioEnabled} size={22}/>
+              <VolumeIcon muted={!audioEnabled} size={24}/>
             </button>
             <button 
               type="button"
               onClick={() => onLogout()} 
-              className="flex-1 md:flex-none bg-red-600 text-white font-black text-xs uppercase px-10 py-4 rounded-2xl hover:bg-red-700 active:scale-95 transition-all shadow-xl border-b-4 border-red-800 touch-manipulation"
+              className="flex-1 md:flex-none bg-red-600 text-white font-black text-xs uppercase px-12 py-4 rounded-2xl hover:bg-red-700 active:scale-95 transition-all shadow-xl border-b-4 border-red-900 touch-manipulation relative z-50"
             >
               Sair
             </button>
@@ -239,26 +212,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       </div>
 
-      {/* Content Areas */}
       <div className="transition-all duration-500">
         {(activeTab === 'tables' || activeTab === 'delivery') && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5">
             {(activeTab === 'tables' ? physicalTables : deliveryTables).map(t => {
-              const statusCfg = t.currentOrder ? STATUS_CONFIG[t.currentOrder.status || 'preparing'] : null;
+              const statusCfg = t.currentOrder ? STATUS_CONFIG[t.currentOrder.status || 'pending'] : null;
               const isNew = t.currentOrder?.status === 'pending';
+              const isDeliveryTab = activeTab === 'delivery';
+              
               return (
                 <button 
                   key={t.id} 
                   onClick={() => setSelectedTableId(t.id)}
-                  className={`h-48 p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative group overflow-hidden ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400 shadow-sm' : 'bg-yellow-400 border-black shadow-xl ring-4 ring-yellow-400/20'}`}
+                  className={`h-52 p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative group overflow-hidden ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400 shadow-sm' : 'bg-yellow-400 border-black shadow-xl ring-4 ring-yellow-400/20'} ${isNew && isDeliveryTab ? 'ring-8 ring-red-500/30' : ''}`}
                 >
                   {isNew && (
-                    <div className="absolute top-0 right-0 bg-red-600 text-white text-[8px] font-black uppercase px-3 py-1 rounded-bl-xl shadow-lg animate-pulse z-10">NOVO</div>
+                    <div className="absolute top-0 right-0 bg-red-600 text-white text-[9px] font-black uppercase px-4 py-2 rounded-bl-2xl shadow-lg animate-pulse z-10">NOVO PEDIDO</div>
                   )}
-                  {activeTab === 'delivery' && t.status === 'occupied' && (
-                    <div className="absolute inset-0 bg-white/5 animate-pulse pointer-events-none group-hover:opacity-0"></div>
+                  {isNew && isDeliveryTab && (
+                    <div className="absolute inset-0 bg-red-500/10 animate-pulse pointer-events-none"></div>
                   )}
-                  <span className="text-4xl font-black italic text-black">{t.id >= 900 ? (t.id === 900 ? '🚚' : '🛍️') : t.id}</span>
+                  
+                  <span className="text-5xl font-black italic text-black leading-none">{t.id >= 900 ? (t.id === 900 ? '🚚' : '🛍️') : t.id}</span>
                   <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>
                     {t.status === 'free' ? 'Livre' : 'Ocupada'}
                   </span>
@@ -266,7 +241,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="flex flex-col items-center gap-1 mt-1">
                       <span className="text-[11px] font-black text-black bg-white/40 px-2 py-0.5 rounded-md">R$ {t.currentOrder?.total.toFixed(2)}</span>
                       {statusCfg && (
-                        <span className={`text-[7px] font-black uppercase px-2 py-0.5 rounded-full border border-black/10 ${statusCfg.bg} ${statusCfg.color}`}>
+                        <span className={`text-[8px] font-black uppercase px-2.5 py-1 rounded-full border border-black/10 shadow-sm ${statusCfg.bg} ${statusCfg.color}`}>
                           {statusCfg.label}
                         </span>
                       )}
@@ -281,25 +256,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'categories' && (
           <div className="bg-white p-10 rounded-[3rem] shadow-xl max-w-xl mx-auto border border-gray-50">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-black italic">Categorias do Menu</h3>
-              <button onClick={handleRestoreDefaults} className="text-[9px] font-black uppercase text-gray-400 hover:text-black transition-colors">Restaurar Padrões</button>
+              <h3 className="text-2xl font-black italic uppercase">Categorias</h3>
+              <button onClick={handleRestoreDefaults} className="text-[9px] font-black uppercase text-gray-400 hover:text-black transition-colors">Padrões</button>
             </div>
-            {syncError && (
-              <div className="bg-red-50 border-2 border-red-100 p-6 rounded-3xl mb-8">
-                <p className="text-red-500 text-xs font-bold leading-relaxed">{syncError}</p>
-              </div>
-            )}
             <form onSubmit={handleAddCategory} className="flex gap-2 mb-8">
-              <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="Nova Categoria..." className="flex-1 bg-gray-50 border rounded-xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400" />
-              <button type="submit" disabled={isSaving} className="bg-black text-yellow-400 px-8 py-3.5 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all">Salvar</button>
+              <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="Nova Categoria..." className="flex-1 bg-gray-50 border rounded-xl px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400" />
+              <button type="submit" className="bg-black text-yellow-400 px-8 py-4 rounded-xl font-black text-xs uppercase shadow-lg">Adicionar</button>
             </form>
             <div className="space-y-2">
               {categories.map(cat => (
                 <div key={cat.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-transparent hover:border-yellow-400 transition-all">
-                  <span className="font-black text-gray-800 uppercase text-xs italic tracking-wide">{cat.name}</span>
+                  <span className="font-black text-gray-800 uppercase text-xs italic">{cat.name}</span>
                   <div className="flex gap-2">
-                    <button onClick={() => { setEditingCategory(cat); setIsCategoryEditModalOpen(true); }} className="p-2 text-gray-400 hover:text-black transition-colors"><svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
-                    <button onClick={() => { if(confirm('Excluir categoria?')) supabase.from('categories').delete().eq('id', cat.id).then(() => onRefreshData()); }} className="p-2 text-red-400 hover:text-red-600 transition-colors"><TrashIcon/></button>
+                    <button onClick={() => { setEditingCategory(cat); setIsCategoryEditModalOpen(true); }} className="p-2 text-gray-400"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
+                    <button onClick={() => { if(confirm('Excluir?')) supabase.from('categories').delete().eq('id', cat.id).then(() => onRefreshData()); }} className="p-2 text-red-400"><TrashIcon/></button>
                   </div>
                 </div>
               ))}
@@ -310,21 +280,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'menu' && (
           <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-50">
             <div className="flex justify-between items-center mb-8">
-              <h3 className="text-2xl font-black italic">Produtos</h3>
-              <button onClick={() => { setEditingProduct({ name: '', price: '', category: categories[0]?.name || 'Diversos', image: '', isAvailable: true }); setIsProductModalOpen(true); }} className="bg-black text-yellow-400 px-6 py-3 rounded-xl font-black text-xs uppercase shadow-xl">+ Adicionar</button>
+              <h3 className="text-2xl font-black italic uppercase">Produtos</h3>
+              <button onClick={() => { setEditingProduct({ name: '', price: '', category: categories[0]?.name || 'Diversos', image: '', isAvailable: true }); setIsProductModalOpen(true); }} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-xl">+ Adicionar</button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {menuItems.map(item => (
-                <div key={item.id} className={`bg-gray-50 p-4 rounded-3xl border transition-all hover:shadow-lg relative ${!item.isAvailable ? 'grayscale opacity-60' : ''}`}>
-                  <img src={item.image} className="w-full aspect-square object-cover rounded-2xl mb-4" />
-                  <h4 className="font-black text-sm text-black mb-1 truncate">{item.name}</h4>
-                  <div className="flex justify-between items-center mb-4 text-xs">
+                <div key={item.id} className={`bg-gray-50 p-5 rounded-[2.5rem] border transition-all hover:shadow-xl relative ${!item.isAvailable ? 'grayscale opacity-60' : ''}`}>
+                  <img src={item.image} className="w-full aspect-square object-cover rounded-[2rem] mb-4 shadow-md" />
+                  <h4 className="font-black text-sm text-black mb-1 truncate uppercase">{item.name}</h4>
+                  <div className="flex justify-between items-center mb-4">
                     <span className="text-yellow-700 font-black italic">R$ {item.price.toFixed(2)}</span>
-                    <span className="text-gray-400 uppercase font-black">{item.category}</span>
+                    <span className="text-gray-400 uppercase font-black text-[9px]">{item.category}</span>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => { setEditingProduct({...item, price: item.price.toString()}); setIsProductModalOpen(true); }} className="flex-1 bg-white py-2 rounded-xl font-black text-[9px] uppercase border text-black hover:bg-black hover:text-white transition-all">Editar</button>
-                    <button onClick={() => onDeleteProduct(item.id)} className="p-2 text-red-500 bg-red-50 rounded-xl hover:bg-red-500 hover:text-white transition-all"><TrashIcon/></button>
+                    <button onClick={() => { setEditingProduct({...item, price: item.price.toString()}); setIsProductModalOpen(true); }} className="flex-1 bg-white py-3 rounded-xl font-black text-[10px] uppercase border text-black hover:bg-black hover:text-white transition-all">Editar</button>
+                    <button onClick={() => onDeleteProduct(item.id)} className="p-3 text-red-500 bg-red-50 rounded-xl hover:bg-red-500 hover:text-white transition-all"><TrashIcon/></button>
                   </div>
                 </div>
               ))}
@@ -335,36 +305,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* Modal de Pedido/Mesa */}
       {selectedTable && (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setSelectedTableId(null)} />
-          <div className="relative bg-white w-full max-w-5xl h-[90vh] md:h-[85vh] rounded-[3rem] flex flex-col md:flex-row overflow-hidden shadow-2xl border-t-4 border-yellow-400 animate-in fade-in zoom-in duration-300">
+          <div className="relative bg-white w-full max-w-5xl h-[90vh] md:h-[85vh] rounded-[3.5rem] flex flex-col md:flex-row overflow-hidden shadow-2xl border-t-8 border-yellow-400 animate-in fade-in zoom-in duration-300">
             
-            <div className="flex-1 p-8 md:p-10 overflow-y-auto border-r border-gray-100 flex flex-col">
-               <div className="flex justify-between items-start mb-6">
+            <div className="flex-1 p-8 md:p-12 overflow-y-auto border-r border-gray-100 flex flex-col">
+               <div className="flex justify-between items-start mb-8">
                  <div>
-                   <h3 className="text-3xl md:text-4xl font-black italic tracking-tighter uppercase leading-none">
+                   <h3 className="text-4xl md:text-5xl font-black italic tracking-tighter uppercase leading-none mb-2">
                      {selectedTable.id >= 900 ? (selectedTable.id === 900 ? '🚚 Entrega' : '🛍️ Balcão') : `Mesa ${selectedTable.id}`}
                    </h3>
-                   <div className="flex items-center gap-2 mt-2">
-                     <span className="text-[9px] font-black uppercase text-gray-400">Cliente: {selectedTable.currentOrder?.customerName || 'Não informado'}</span>
-                     <span className="text-gray-300">|</span>
-                     <span className="text-[9px] font-black uppercase text-gray-400">{selectedTable.status === 'free' ? 'Livre' : 'Ocupada'}</span>
-                   </div>
+                   <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
+                     Cliente: {selectedTable.currentOrder?.customerName || 'Não identificado'}
+                   </p>
                  </div>
-                 <div className="flex gap-2">
+                 <div className="flex gap-3">
                    {selectedTable.status === 'occupied' && selectedTable.currentOrder && (
-                     <button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-4 bg-black text-yellow-400 rounded-full hover:scale-110 transition-all shadow-xl"><PrinterIcon size={24} /></button>
+                     <button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-5 bg-black text-yellow-400 rounded-full hover:scale-110 transition-all shadow-xl"><PrinterIcon size={28} /></button>
                    )}
-                   <button onClick={() => setSelectedTableId(null)} className="p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={24} /></button>
+                   <button onClick={() => setSelectedTableId(null)} className="p-5 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={28} /></button>
                  </div>
                </div>
 
                {selectedTable.status === 'occupied' && selectedTable.currentOrder && (
-                 <div className="bg-gray-50 p-2 rounded-2xl mb-6 flex gap-1">
+                 <div className="bg-gray-50 p-2.5 rounded-3xl mb-8 flex gap-2">
                    {(['preparing', 'ready', 'delivered'] as OrderStatus[]).map(s => {
                      const isActive = selectedTable.currentOrder?.status === s;
                      return (
-                       <button key={s} disabled={isSaving} onClick={() => handleUpdateOrderStatus(s)} className={`flex-1 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${isActive ? 'bg-black text-yellow-400 shadow-lg' : 'text-gray-400 hover:bg-gray-200'}`}>
+                       <button key={s} disabled={isSaving} onClick={() => handleUpdateOrderStatus(s)} className={`flex-1 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${isActive ? 'bg-black text-yellow-400 shadow-xl' : 'text-gray-400 hover:bg-gray-200'}`}>
                          {STATUS_CONFIG[s].label}
                        </button>
                      );
@@ -372,39 +340,42 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  </div>
                )}
 
-               <div className="flex-1 space-y-3 mb-8">
+               <div className="flex-1 space-y-4 mb-8">
                  {selectedTable.currentOrder?.items.map((item, idx) => (
-                   <div key={idx} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                     <span className="font-black text-xs text-gray-800 uppercase">{item.quantity}x {item.name}</span>
-                     <span className="font-black text-xs text-yellow-700 italic">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                   <div key={idx} className="flex justify-between items-center bg-gray-50 p-6 rounded-3xl border border-gray-100 shadow-sm">
+                     <span className="font-black text-sm text-gray-800 uppercase">{item.quantity}x {item.name}</span>
+                     <span className="font-black text-sm text-yellow-700 italic">R$ {(item.price * item.quantity).toFixed(2)}</span>
                    </div>
-                 )) || <div className="text-center py-20 text-gray-300 font-black uppercase text-[10px] tracking-widest">Sem itens lançados</div>}
+                 )) || <div className="text-center py-24 text-gray-300 font-black uppercase text-[12px] tracking-[0.3em] opacity-50">Sem itens registrados</div>}
                </div>
 
                {selectedTable.status === 'occupied' && (
-                 <div className="border-t pt-6">
-                    <div className="flex justify-between items-end mb-6">
-                      <span className="text-gray-400 font-black text-[10px] uppercase tracking-widest">Subtotal</span>
-                      <span className="text-4xl md:text-5xl font-black italic text-black leading-none">R$ {selectedTable.currentOrder?.total.toFixed(2)}</span>
+                 <div className="border-t-2 pt-8">
+                    <div className="flex justify-between items-end mb-8">
+                      <span className="text-gray-400 font-black text-[12px] uppercase tracking-[0.2em]">Total do Pedido</span>
+                      <span className="text-5xl md:text-6xl font-black italic text-black leading-none">R$ {selectedTable.currentOrder?.total.toFixed(2)}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
-                      <button onClick={() => setSelectedTableId(null)} className="bg-gray-100 text-black py-5 rounded-2xl font-black uppercase text-[10px]">Fechar</button>
-                      <button onClick={() => { if(confirm('Fechar conta e limpar?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-green-800">Finalizar</button>
+                      <button onClick={() => setSelectedTableId(null)} className="bg-gray-100 text-black py-6 rounded-[2rem] font-black uppercase text-xs tracking-widest">Fechar Janela</button>
+                      <button onClick={() => { if(confirm('Fechar pedido?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-6 rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-2xl border-b-8 border-green-800 active:translate-y-1 active:border-b-0 transition-all">Finalizar Conta</button>
                     </div>
                  </div>
                )}
             </div>
 
-            <div className="w-full md:w-[22rem] bg-gray-50 p-8 flex flex-col border-t md:border-t-0 md:border-l">
-               <h4 className="text-[10px] font-black uppercase mb-6 bg-yellow-400 px-4 py-2 rounded-full w-fit">Lançamento Rápido</h4>
-               <div className="relative mb-6">
-                 <input type="text" placeholder="Buscar produto..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-white border rounded-xl px-5 py-3 text-xs font-bold outline-none shadow-sm focus:ring-2 focus:ring-black" />
+            <div className="w-full md:w-[24rem] bg-gray-50 p-10 flex flex-col border-t md:border-t-0 md:border-l">
+               <h4 className="text-[11px] font-black uppercase mb-8 bg-yellow-400 px-6 py-2.5 rounded-full w-fit shadow-sm">Lançar Itens Rapidamente</h4>
+               <div className="relative mb-8">
+                 <input type="text" placeholder="Buscar produto..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-white border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none shadow-sm focus:border-black transition-all" />
                </div>
-               <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar pb-6">
+               <div className="flex-1 overflow-y-auto space-y-3 no-scrollbar pb-10">
                   {filteredMenu.filter(p => p.isAvailable).map(p => (
-                    <button key={p.id} onClick={() => onAddToOrder(selectedTable.id, p)} className="w-full bg-white p-4 rounded-xl border border-transparent hover:border-black flex justify-between items-center transition-all active:scale-95 shadow-sm">
-                      <div className="text-left"><p className="font-black text-[10px] uppercase truncate w-32 leading-none">{p.name}</p><p className="text-yellow-700 font-black text-[9px] italic mt-1">R$ {p.price.toFixed(2)}</p></div>
-                      <span className="bg-yellow-400 text-black font-black text-[8px] px-2.5 py-1.5 rounded-lg">+ ADD</span>
+                    <button key={p.id} onClick={() => onAddToOrder(selectedTable.id, p)} className="w-full bg-white p-5 rounded-2xl border-2 border-transparent hover:border-black flex justify-between items-center transition-all active:scale-95 shadow-md">
+                      <div className="text-left">
+                        <p className="font-black text-[11px] uppercase truncate w-36 leading-tight">{p.name}</p>
+                        <p className="text-yellow-700 font-black text-[10px] italic mt-1">R$ {p.price.toFixed(2)}</p>
+                      </div>
+                      <span className="bg-yellow-400 text-black font-black text-[9px] px-3 py-2 rounded-xl shadow-sm">+ ADD</span>
                     </button>
                   ))}
                </div>
@@ -413,21 +384,73 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Modal de Produto / Categoria (omitido para brevidade, mantendo funcionalidade existente) */}
+      {/* Modal de Cadastro de Produto - Restaurado */}
       {isProductModalOpen && (
-        <div className="fixed inset-0 z-[350] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
-          <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 relative shadow-2xl animate-in zoom-in duration-300">
-             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-8 right-8 p-2 bg-gray-100 rounded-full"><CloseIcon size={20}/></button>
-             <h3 className="text-3xl font-black italic mb-8">Salvar Produto</h3>
-             <form onSubmit={(e) => { e.preventDefault(); onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price) }); setIsProductModalOpen(false); }} className="space-y-4">
-                <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="Nome" className="w-full bg-gray-50 border rounded-xl px-5 py-4 text-sm font-bold outline-none" required />
-                <div className="grid grid-cols-2 gap-3">
-                  <input type="number" step="0.01" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} placeholder="Preço" className="w-full bg-gray-50 border rounded-xl px-5 py-4 text-sm font-bold outline-none" required />
-                  <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border rounded-xl px-5 py-4 text-sm font-bold outline-none">
-                    {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
-                  </select>
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-6 bg-black/95 backdrop-blur-xl">
+          <div className="bg-white w-full max-w-xl rounded-[3.5rem] p-10 md:p-12 relative shadow-2xl animate-in zoom-in duration-300">
+             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-10 right-10 p-3 bg-gray-100 rounded-full hover:bg-gray-200"><CloseIcon size={24}/></button>
+             <h3 className="text-3xl font-black italic mb-10 uppercase tracking-tighter">Dados do Produto</h3>
+             
+             <form onSubmit={(e) => { 
+               e.preventDefault(); 
+               onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price) }); 
+               setIsProductModalOpen(false); 
+             }} className="space-y-6">
+                
+                <div>
+                  <label className="text-[10px] font-black uppercase text-gray-400 mb-2 block px-2">Nome do Produto</label>
+                  <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="Ex: X-Salada Especial" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 transition-all" required />
                 </div>
-                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-xs uppercase shadow-xl mt-4">Confirmar e Salvar</button>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-gray-400 mb-2 block px-2">Preço (R$)</label>
+                    <input type="number" step="0.01" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} placeholder="0,00" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 transition-all" required />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-gray-400 mb-2 block px-2">Categoria</label>
+                    <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 transition-all">
+                      {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-gray-400 mb-2 block px-2">Link da Imagem (URL)</label>
+                  <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} placeholder="https://exemplo.com/foto.jpg" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 transition-all" />
+                </div>
+
+                <div className="flex items-center justify-between bg-gray-50 p-6 rounded-2xl border-2">
+                   <div>
+                     <p className="text-xs font-black uppercase text-gray-700">Disponibilidade</p>
+                     <p className="text-[10px] text-gray-400 font-bold">Produto visível no cardápio?</p>
+                   </div>
+                   <button 
+                    type="button"
+                    onClick={() => setEditingProduct({...editingProduct!, isAvailable: !editingProduct.isAvailable})}
+                    className={`w-16 h-9 rounded-full transition-all relative ${editingProduct?.isAvailable ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)]' : 'bg-gray-300'}`}
+                   >
+                     <div className={`absolute top-1 w-7 h-7 bg-white rounded-full shadow-lg transition-all ${editingProduct?.isAvailable ? 'left-8' : 'left-1'}`} />
+                   </button>
+                </div>
+
+                <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl border-b-8 border-yellow-400 active:translate-y-1 active:border-b-0 transition-all">
+                  Salvar Alterações
+                </button>
+             </form>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal Editar Categoria */}
+      {isCategoryEditModalOpen && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-6 bg-black/95 backdrop-blur-xl">
+          <div className="bg-white w-full max-w-sm rounded-[3rem] p-12 relative shadow-2xl">
+             <button onClick={() => setIsCategoryEditModalOpen(false)} className="absolute top-10 right-10 p-2 bg-gray-100 rounded-full"><CloseIcon size={20}/></button>
+             <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">Renomear</h3>
+             <form onSubmit={handleUpdateCategory} className="space-y-6">
+                <input type="text" value={editingCategory?.name || ''} onChange={e => setEditingCategory(prev => prev ? {...prev, name: e.target.value} : null)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400" required />
+                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl">Confirmar</button>
              </form>
           </div>
         </div>
