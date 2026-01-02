@@ -44,19 +44,31 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editCustomerName, setEditCustomerName] = useState('');
   const [editAddress, setEditAddress] = useState('');
 
-  // Robust filtering: Only include tables that are occupied AND have a valid currentOrder object
+  // Tabelas Físicas (1-12)
   const physicalTables = useMemo(() => 
-    (tables || []).filter(t => t.id <= 12).sort((a,b) => a.id - b.id), 
+    (tables || []).filter(t => t.id >= 1 && t.id <= 12).sort((a,b) => a.id - b.id), 
     [tables]
   );
   
+  // Entregas (900-949) - Filtro estrito para não repetir no balcão
   const activeDeliveries = useMemo(() => 
-    (tables || []).filter(t => t.id >= 900 && t.id <= 949 && t.status === 'occupied' && t.currentOrder).sort((a,b) => a.id - b.id), 
+    (tables || []).filter(t => 
+      t.id >= 900 && t.id <= 949 && 
+      t.status === 'occupied' && 
+      t.currentOrder && 
+      t.currentOrder.orderType === 'delivery'
+    ).sort((a,b) => a.id - b.id), 
     [tables]
   );
   
+  // Balcão (950-999) - Filtro estrito para não repetir nas entregas
   const activeCounters = useMemo(() => 
-    (tables || []).filter(t => t.id >= 950 && t.id <= 999 && t.status === 'occupied' && t.currentOrder).sort((a,b) => a.id - b.id), 
+    (tables || []).filter(t => 
+      t.id >= 950 && t.id <= 999 && 
+      t.status === 'occupied' && 
+      t.currentOrder && 
+      (t.currentOrder.orderType === 'counter' || t.currentOrder.orderType === 'takeaway')
+    ).sort((a,b) => a.id - b.id), 
     [tables]
   );
 
@@ -140,7 +152,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const handlePrint = (order: Order) => {
     const printWindow = window.open('', '_blank', 'width=300,height=600');
     if (!printWindow) return alert('Habilite pop-ups.');
-    const itemsHtml = (order.items || []).map(item => `
+    const itemsList = Array.isArray(order?.items) ? order.items : [];
+    const itemsHtml = itemsList.map(item => `
       <div style="display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; margin-bottom: 2px;">
         <span>${item.quantity}x ${item.name.substring(0, 16)}</span>
         <span>R$ ${Number(item.price * item.quantity).toFixed(2)}</span>
@@ -151,16 +164,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <div style="text-align: center; font-weight: bold; font-size: 14px;">${STORE_INFO.name}</div>
         <hr/>
         <div style="font-size: 10px;">
-          PEDIDO: #${order.id}<br/>
-          CLIENTE: ${order.customerName}<br/>
-          ${order.address ? `END: ${order.address}<br/>` : ''}
-          TIPO: ${(order.orderType || 'N/A').toUpperCase()}
+          PEDIDO: #${order?.id || '---'}<br/>
+          CLIENTE: ${order?.customerName || 'Consumidor'}<br/>
+          ${order?.address ? `END: ${order.address}<br/>` : ''}
+          TIPO: ${(order?.orderType || 'N/A').toUpperCase()}
         </div>
         <hr/>
         ${itemsHtml}
         <hr/>
         <div style="font-weight: bold; display: flex; justify-content: space-between;">
-          <span>TOTAL:</span><span>R$ ${Number(order.total || 0).toFixed(2)}</span>
+          <span>TOTAL:</span><span>R$ ${Number(order?.total || 0).toFixed(2)}</span>
         </div>
         <script>window.onload = function() { window.print(); window.close(); }</script>
       </body></html>
@@ -204,7 +217,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       </div>
 
-      {/* Conteúdo das Abas */}
       <div className="transition-all duration-300">
         {activeTab === 'tables' && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5">
@@ -230,6 +242,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {activeTab === 'delivery' && (
           <div className="space-y-10">
+            {/* SEÇÃO ENTREGAS - Estritamente apenas orderType delivery */}
             <div>
               <div className="flex justify-between items-center mb-6 px-2">
                 <h3 className="text-xl font-black italic uppercase tracking-widest text-gray-800">🚚 Entregas (Delivery)</h3>
@@ -262,6 +275,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
+            {/* SEÇÃO BALCÃO - Estritamente apenas orderType counter ou takeaway */}
             <div>
               <div className="flex justify-between items-center mb-6 px-2">
                 <h3 className="text-xl font-black italic uppercase tracking-widest text-gray-800">🛍️ Pedidos Balcão</h3>
@@ -278,7 +292,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full ${statusCfg.bg} ${statusCfg.color}`}>{statusCfg.label}</span>
                       </div>
                       <h4 className="font-black text-sm uppercase truncate mb-1 text-gray-900">{t.currentOrder?.customerName || 'Cliente'}</h4>
-                      <p className="text-[10px] text-gray-400 font-bold mb-4">Aguardando Retirada</p>
+                      <p className="text-[10px] text-gray-400 font-bold mb-4">Retirada no Local</p>
                       <div className="mt-auto pt-4 border-t border-gray-50 flex justify-between items-center">
                         <span className="font-black italic text-black">R$ {Number(t.currentOrder?.total || 0).toFixed(2)}</span>
                         <span className="text-[8px] font-black text-gray-300 uppercase">#{t.id}</span>
@@ -345,7 +359,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setSelectedTableId(null)} />
           <div className="relative bg-white w-full max-w-5xl h-full md:h-[85vh] md:rounded-[3.5rem] flex flex-col overflow-hidden shadow-2xl border-t-8 border-yellow-400 animate-in zoom-in duration-300">
             
-            {/* Header Modal */}
             <div className="p-6 md:p-10 border-b flex justify-between items-center bg-white sticky top-0 z-20">
               <div className="flex-1 mr-4">
                 <h3 className="text-2xl md:text-4xl font-black italic tracking-tighter uppercase leading-none mb-2 text-gray-900">
@@ -376,17 +389,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* Abas Mobile */}
             <div className="flex md:hidden bg-gray-50 p-2 gap-2">
                <button onClick={() => setModalTab('items')} className={`flex-1 py-4 rounded-xl font-black text-[10px] uppercase transition-all ${modalTab === 'items' ? 'bg-black text-white shadow-xl' : 'text-gray-400'}`}>Pedido</button>
                <button onClick={() => setModalTab('add')} className={`flex-1 py-4 rounded-xl font-black text-[10px] uppercase transition-all ${modalTab === 'add' ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400'}`}>+ Itens</button>
             </div>
 
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-              {/* Pedido Ativo */}
               <div className={`flex-1 p-6 md:p-10 overflow-y-auto flex flex-col ${modalTab !== 'items' ? 'hidden md:flex' : 'flex'}`}>
                  
-                 {/* Seção Endereço (Apenas Entregas) */}
                  {selectedTable.id >= 900 && selectedTable.id <= 949 && (
                    <div className="bg-yellow-50 border-2 border-yellow-300 p-6 rounded-[2rem] mb-8 shadow-sm">
                       <p className="text-[10px] font-black uppercase text-yellow-800 mb-3 tracking-widest flex items-center gap-2">
@@ -433,14 +443,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  )}
               </div>
 
-              {/* Lançamento de Itens */}
               <div className={`w-full md:w-[24rem] bg-gray-50 p-6 md:p-10 flex flex-col border-t md:border-t-0 md:border-l ${modalTab !== 'add' ? 'hidden md:flex' : 'flex'}`}>
                  <h4 className="text-[10px] font-black uppercase mb-6 bg-yellow-400 px-6 py-2.5 rounded-full w-fit shadow-sm">Adicionar Itens</h4>
                  <div className="relative mb-6">
                    <input type="text" placeholder="Buscar produto..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-white border-2 border-gray-100 rounded-2xl px-6 py-4 text-xs font-bold outline-none focus:border-black shadow-sm" />
                  </div>
                  <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar pb-10">
-                    {filteredMenu.filter(p => p.isAvailable).map(p => (
+                    {(filteredMenu || []).filter(p => p.isAvailable).map(p => (
                       <button key={p.id} onClick={() => onAddToOrder(selectedTable.id, p)} className="w-full bg-white p-4 rounded-2xl border-2 border-transparent hover:border-black flex justify-between items-center transition-all active:scale-95 shadow-sm group">
                         <div className="text-left"><p className="font-black text-[10px] uppercase truncate w-32 text-gray-900 group-hover:text-black">{p.name}</p><p className="text-yellow-700 font-black text-[9px] italic mt-1">R$ {Number(p.price || 0).toFixed(2)}</p></div>
                         <span className="bg-yellow-400 text-black font-black text-[8px] px-3.5 py-2 rounded-xl shadow-sm">+ ADD</span>
