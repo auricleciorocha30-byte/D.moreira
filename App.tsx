@@ -24,7 +24,7 @@ const App: React.FC = () => {
   const [showLogin, setShowLogin] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   
-  // Alerta Visual
+  // Alerta Visual e Sonoro
   const [newOrderAlert, setNewOrderAlert] = useState<{ id: number; type: 'table' | 'delivery' | 'counter' } | null>(null);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
@@ -39,13 +39,15 @@ const App: React.FC = () => {
   const notificationSound = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    // Som de notificação padrão do sistema de pedidos
     notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    notificationSound.current.load();
   }, []);
 
   const playNotification = useCallback(() => {
     if (audioEnabled && notificationSound.current) {
       notificationSound.current.currentTime = 0;
-      notificationSound.current.play().catch(() => {});
+      notificationSound.current.play().catch(e => console.error("Erro ao tocar áudio:", e));
     }
   }, [audioEnabled]);
 
@@ -85,7 +87,7 @@ const App: React.FC = () => {
             const idx = updated.findIndex(u => u.id === dbT.id);
             if (idx > -1) {
               const prevT = prev.find(p => p.id === dbT.id);
-              // Se a mesa era free e agora está occupied, gera o alerta
+              // Notificação se a mesa passar de free para occupied
               if (dbT.status === 'occupied' && (!prevT || prevT.status === 'free')) {
                 alertedTable = { 
                   id: dbT.id, 
@@ -99,8 +101,8 @@ const App: React.FC = () => {
           if (alertedTable && isAdmin) {
             playNotification();
             setNewOrderAlert(alertedTable);
-            // Remove o alerta visual após 10 segundos
-            setTimeout(() => setNewOrderAlert(null), 10000);
+            // Alerta visual dura 15 segundos para dar tempo de ver
+            setTimeout(() => setNewOrderAlert(null), 15000);
           }
           return updated;
         });
@@ -195,7 +197,6 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    // Feedback imediato limpando o estado antes de esperar o servidor
     setIsLoggedIn(false);
     setIsAdmin(false);
     await supabase.auth.signOut();
@@ -214,19 +215,19 @@ const App: React.FC = () => {
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
         {isAdmin && isLoggedIn ? (
           <div className="relative">
-            {/* Notificação Toast flutuante de novo pedido */}
+            {/* Notificação Toast flutuante - Novo Pedido */}
             {newOrderAlert && (
-              <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] w-full max-w-sm px-6 animate-in slide-in-from-top duration-500">
-                <div className="bg-black text-white p-5 rounded-3xl shadow-2xl border-2 border-yellow-400 flex items-center gap-4">
-                  <div className="bg-yellow-400 text-black w-10 h-10 rounded-2xl flex items-center justify-center font-black animate-pulse">!</div>
+              <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[300] w-full max-w-md px-6 animate-in slide-in-from-top duration-700">
+                <div className="bg-black text-white p-6 rounded-[2.5rem] shadow-[0_35px_60px_-15px_rgba(0,0,0,0.5)] border-4 border-yellow-400 flex items-center gap-5 ring-8 ring-black/10">
+                  <div className="bg-yellow-400 text-black w-14 h-14 rounded-2xl flex items-center justify-center font-black text-2xl shadow-inner animate-bounce">!</div>
                   <div className="flex-1">
-                    <h4 className="font-black text-xs uppercase tracking-widest text-yellow-400">Novo Pedido!</h4>
-                    <p className="text-[10px] font-bold">
-                      {newOrderAlert.type === 'table' ? `Mesa ${newOrderAlert.id}` : newOrderAlert.type === 'delivery' ? 'Nova Entrega' : 'Novo Balcão'}
+                    <h4 className="font-black text-sm uppercase tracking-widest text-yellow-400 leading-none mb-1">Novo Pedido Recebido</h4>
+                    <p className="text-lg font-black italic">
+                      {newOrderAlert.type === 'table' ? `MESA ${newOrderAlert.id}` : newOrderAlert.type === 'delivery' ? 'ENTREGA' : 'BALCÃO'}
                     </p>
                   </div>
-                  <button onClick={() => setNewOrderAlert(null)} className="text-gray-500 hover:text-white">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                  <button onClick={() => setNewOrderAlert(null)} className="p-3 bg-white/10 rounded-full hover:bg-white/20 transition-colors">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
                 </div>
               </div>
