@@ -209,11 +209,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   <button onClick={() => { if(confirm('Excluir?')) supabase.from('categories').delete().eq('id', cat.id).then(() => onRefreshData()); }} className="p-2 text-red-400 hover:text-red-600 transition-colors"><TrashIcon/></button>
                 </div>
               ))}
-              {categories.length === 0 && (
-                <div className="text-center py-10">
-                   <p className="text-gray-300 font-black text-[10px] uppercase tracking-widest italic">Nenhuma categoria ativa</p>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -226,7 +221,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {menuItems.map(item => (
-                <div key={item.id} className="bg-gray-50 p-4 rounded-3xl border transition-all hover:shadow-lg">
+                <div key={item.id} className={`bg-gray-50 p-4 rounded-3xl border transition-all hover:shadow-lg relative ${!item.isAvailable ? 'grayscale opacity-60' : ''}`}>
+                  {!item.isAvailable && (
+                    <div className="absolute top-6 left-6 z-10 bg-red-600 text-white text-[8px] font-black uppercase px-2 py-1 rounded-md shadow-lg">Esgotado</div>
+                  )}
                   <img src={item.image} className="w-full aspect-square object-cover rounded-2xl mb-4" />
                   <h4 className="font-black text-sm text-black mb-1 truncate">{item.name}</h4>
                   <div className="flex justify-between items-center mb-4">
@@ -303,7 +301,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  />
                </div>
                <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar pb-6">
-                  {filteredMenu.map(p => (
+                  {filteredMenu.filter(p => p.isAvailable).map(p => (
                     <button key={p.id} onClick={() => onAddToOrder(selectedTable.id, p)} className="w-full bg-white p-4 rounded-xl border border-transparent hover:border-black flex justify-between items-center transition-all active:scale-95 shadow-sm">
                       <div className="text-left">
                         <p className="font-black text-[10px] uppercase truncate w-32">{p.name}</p>
@@ -321,8 +319,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Modal de Produto */}
       {isProductModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
-          <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 relative shadow-2xl">
-             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-8 right-8 p-2 bg-gray-100 rounded-full"><CloseIcon size={20}/></button>
+          <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 relative shadow-2xl animate-in zoom-in duration-300">
+             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-8 right-8 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
              <h3 className="text-3xl font-black italic mb-8">Salvar Produto</h3>
              <form onSubmit={(e) => {
                e.preventDefault();
@@ -338,6 +336,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </select>
                 </div>
                 <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} placeholder="Link da Imagem" className="w-full bg-gray-50 border rounded-xl px-5 py-4 text-sm font-bold outline-none" />
+                
+                {/* Toggle Estoque */}
+                <div className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl border">
+                   <span className="text-[10px] font-black uppercase text-gray-500">Disponível em Estoque?</span>
+                   <button 
+                    type="button"
+                    onClick={() => setEditingProduct({...editingProduct!, isAvailable: !editingProduct.isAvailable})}
+                    className={`w-14 h-8 rounded-full transition-all relative ${editingProduct?.isAvailable ? 'bg-green-500' : 'bg-gray-300'}`}
+                   >
+                     <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all ${editingProduct?.isAvailable ? 'left-7' : 'left-1'}`} />
+                   </button>
+                </div>
+
                 <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-xs uppercase shadow-xl mt-4 active:scale-95 transition-all">Confirmar e Salvar</button>
              </form>
           </div>
