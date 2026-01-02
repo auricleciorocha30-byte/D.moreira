@@ -34,7 +34,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'tables' | 'delivery' | 'menu' | 'categories' | 'marketing'>('tables');
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
-  const [modalTab, setModalTab] = useState<'items' | 'add'>('items');
   const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
@@ -76,7 +75,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         isActive: lConfig.is_active,
         spendingGoal: lConfig.spending_goal,
         scopeType: lConfig.scope_type,
-        scopeValue: lConfig.scope_value
+        scopeValue: lConfig.scope_value || ''
       });
     }
 
@@ -86,7 +85,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleTestSound = () => {
     const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-    audio.play().then(() => alert('Som configurado!')).catch(e => alert('Erro: ' + e.message));
+    audio.play().then(() => alert('Som OK!')).catch(e => alert('Erro: ' + e.message));
   };
 
   const physicalTables = useMemo(() => (tables || []).filter(t => t.id >= 1 && t.id <= 12).sort((a,b) => a.id - b.id), [tables]);
@@ -102,7 +101,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   }, [selectedTableId, selectedTable]);
 
-  // Fix: Added filteredMenu to support search in the products tab
   const filteredMenu = useMemo(() => {
     return menuItems.filter(item => 
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -110,66 +108,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     );
   }, [menuItems, searchTerm]);
 
-  // Fix: Implemented handlePrint to generate a printable version of the order
   const handlePrint = (order: Order) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-
-    const itemsHtml = order.items.map(item => `
-      <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-family: monospace;">
-        <span>${item.quantity}x ${item.name}</span>
-        <span>R$ ${(item.price * item.quantity).toFixed(2)}</span>
-      </div>
-    `).join('');
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Impressão de Pedido - ${order.id}</title>
-          <style>
-            body { font-family: monospace; padding: 20px; width: 300px; }
-            .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
-            .total { border-top: 1px dashed #000; margin-top: 10px; padding-top: 10px; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h2>${STORE_INFO.name}</h2>
-            <p>${STORE_INFO.slogan}</p>
-            <p>Pedido: #${order.id}</p>
-            <p>Mesa/Ref: ${order.tableId}</p>
-            <p>${new Date(order.timestamp).toLocaleString()}</p>
-          </div>
-          <div class="items">
-            ${itemsHtml}
-          </div>
-          <div class="total">
-            <div style="display: flex; justify-content: space-between;">
-              <span>Subtotal:</span>
-              <span>R$ ${order.total.toFixed(2)}</span>
-            </div>
-            ${order.discount ? `
-            <div style="display: flex; justify-content: space-between; color: red;">
-              <span>Desconto:</span>
-              <span>- R$ ${order.discount.toFixed(2)}</span>
-            </div>` : ''}
-            <div style="display: flex; justify-content: space-between; font-size: 1.2em; margin-top: 5px;">
-              <span>TOTAL:</span>
-              <span>R$ ${order.finalTotal.toFixed(2)}</span>
-            </div>
-          </div>
-          <div style="margin-top: 20px; text-align: center; font-size: 0.8em;">
-            <p>Obrigado pela preferência!</p>
-          </div>
-          <script>
-            window.onload = () => {
-              window.print();
-              window.onafterprint = () => window.close();
-            };
-          </script>
-        </body>
-      </html>
-    `);
+    const itemsHtml = order.items.map(item => `<div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-family: monospace;"><span>${item.quantity}x ${item.name}</span><span>R$ ${(item.price * item.quantity).toFixed(2)}</span></div>`).join('');
+    printWindow.document.write(`<html><head><title>Pedido #${order.id}</title><style>body { font-family: monospace; padding: 20px; width: 300px; }.header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }.total { border-top: 1px dashed #000; margin-top: 10px; padding-top: 10px; font-weight: bold; }</style></head><body><div class="header"><h2>${STORE_INFO.name}</h2><p>Pedido: #${order.id}</p><p>Ref: ${order.tableId}</p><p>${new Date(order.timestamp).toLocaleString()}</p></div><div class="items">${itemsHtml}</div><div class="total"><div style="display: flex; justify-content: space-between;"><span>Total:</span><span>R$ ${order.finalTotal.toFixed(2)}</span></div></div><script>window.onload=()=>{window.print();window.close();};</script></body></html>`);
     printWindow.document.close();
   };
 
@@ -237,13 +180,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleUpdateLoyalty = async (updates: Partial<LoyaltyConfig>) => {
+    const nextLoyalty = { ...loyalty, ...updates };
+    setLoyalty(nextLoyalty); // Feedback imediato no UI
+    
     const dbUpdates: any = {};
     if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
     if (updates.spendingGoal !== undefined) dbUpdates.spending_goal = updates.spendingGoal;
     if (updates.scopeType !== undefined) dbUpdates.scope_type = updates.scopeType;
     if (updates.scopeValue !== undefined) dbUpdates.scope_value = updates.scopeValue;
-    await supabase.from('loyalty_config').upsert({ id: 1, ...dbUpdates });
-    fetchMarketingData();
+    
+    const { error } = await supabase.from('loyalty_config').upsert({ id: 1, ...dbUpdates });
+    if (error) alert('Erro ao salvar fidelidade: ' + error.message);
+    else fetchMarketingData();
   };
 
   const productsInPromotion = useMemo(() => {
@@ -263,7 +211,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       <div className="bg-black p-5 md:p-8 rounded-[2.5rem] shadow-2xl mb-8 border-b-4 border-yellow-400">
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="text-center md:text-left">
-            <h2 className="text-2xl md:text-3xl font-black italic text-yellow-400 leading-none mb-1 uppercase tracking-tighter">D.MOREIRA ADMIN</h2>
+            <h2 className="text-2xl md:text-3xl font-black italic text-yellow-400 mb-1 uppercase tracking-tighter leading-none">D.MOREIRA ADMIN</h2>
             <div className="flex items-center justify-center md:justify-start gap-2">
               <span className={`w-2 h-2 rounded-full ${dbStatus === 'ok' ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></span>
               <p className="text-gray-500 font-bold text-[8px] uppercase tracking-[0.3em]">{dbStatus === 'ok' ? 'Online' : 'Conectando...'}</p>
@@ -289,6 +237,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       <div className="transition-all duration-300">
         {activeTab === 'marketing' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in duration-500">
+            {/* Cupons */}
             <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
               <h3 className="text-xl font-black italic uppercase mb-6 flex items-center gap-2">🎫 Cupons de Desconto</h3>
               <form onSubmit={handleAddCoupon} className="grid grid-cols-2 gap-3 mb-8 bg-gray-50 p-6 rounded-[2rem]">
@@ -323,26 +272,54 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   ))}
                 </div>
               </div>
-              <div className="mt-8 border-t pt-6">
-                 <h4 className="text-[10px] font-black uppercase text-gray-400 mb-4 ml-1">Itens em Promoção</h4>
-                 <div className="flex flex-wrap gap-2">
-                    {productsInPromotion.map(p => (
-                      <div key={p.id} className="bg-green-50 text-green-700 px-3 py-2 rounded-xl border border-green-100 flex items-center gap-2">
-                        <span className="text-[9px] font-black uppercase italic">{p.name}</span>
-                        <span className="bg-green-600 text-white text-[7px] px-1.5 py-0.5 rounded font-black">{p.promoCode}</span>
-                      </div>
-                    ))}
-                 </div>
-              </div>
             </div>
 
+            {/* Fidelidade */}
             <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
-              <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black italic uppercase flex items-center gap-2">💎 Fidelidade</h3><button onClick={() => handleUpdateLoyalty({ isActive: !loyalty.isActive })} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase transition-all ${loyalty.isActive ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>{loyalty.isActive ? 'Ativo' : 'Inativo'}</button></div>
-              <div className="space-y-4 mb-8 bg-yellow-50 p-6 rounded-[2rem] border-2 border-yellow-100">
-                <input type="number" value={loyalty.spendingGoal} onChange={e => handleUpdateLoyalty({ spendingGoal: Number(e.target.value) })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-sm" placeholder="Meta R$" />
-                <select value={loyalty.scopeType} onChange={e => handleUpdateLoyalty({ scopeType: e.target.value as any })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-[10px] uppercase"><option value="all">Toda a Loja</option><option value="category">Categoria</option><option value="product">Produto</option></select>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black italic uppercase flex items-center gap-2">💎 Fidelidade</h3>
+                <button 
+                  onClick={() => handleUpdateLoyalty({ isActive: !loyalty.isActive })} 
+                  className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase transition-all ${loyalty.isActive ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}
+                >
+                  {loyalty.isActive ? 'Ativo' : 'Inativo'}
+                </button>
               </div>
+              <div className="space-y-4 mb-8 bg-yellow-50 p-6 rounded-[2rem] border-2 border-yellow-100">
+                <div className="space-y-1">
+                  <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Meta de Gastos (R$)</p>
+                  <input type="number" value={loyalty.spendingGoal} onChange={e => handleUpdateLoyalty({ spendingGoal: Number(e.target.value) })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-sm" placeholder="Meta R$" />
+                </div>
+                
+                <div className="space-y-1">
+                  <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">O que pontua?</p>
+                  <select value={loyalty.scopeType} onChange={e => handleUpdateLoyalty({ scopeType: e.target.value as any, scopeValue: '' })} className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-[10px] uppercase">
+                    <option value="all">Loja Toda</option>
+                    <option value="category">Categoria Específica</option>
+                    <option value="product">Produto Específico</option>
+                  </select>
+                </div>
+
+                {loyalty.scopeType !== 'all' && (
+                  <div className="space-y-1 animate-in slide-in-from-top-2 duration-300">
+                    <p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Selecione o Alvo</p>
+                    <select 
+                      value={loyalty.scopeValue} 
+                      onChange={e => handleUpdateLoyalty({ scopeValue: e.target.value })} 
+                      className="w-full bg-white border-2 border-yellow-200 p-4 rounded-xl font-black text-[10px] uppercase"
+                    >
+                      <option value="">Selecione...</option>
+                      {loyalty.scopeType === 'category' 
+                        ? categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>) 
+                        : menuItems.map(p => <option key={p.id} value={p.id}>{p.name}</option>)
+                      }
+                    </select>
+                  </div>
+                )}
+              </div>
+              
               <div className="max-h-[300px] overflow-y-auto space-y-2 no-scrollbar">
+                <p className="text-[10px] font-black uppercase text-gray-400 mb-2 ml-1">Ranking de Clientes</p>
                 {loyaltyUsers.map((user, i) => (
                   <div key={user.phone} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-transparent hover:border-yellow-200 transition-all">
                     <div className="flex items-center gap-3"><span className="w-6 h-6 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[10px] font-black">{i+1}</span><div><p className="font-black text-xs uppercase">{user.name}</p><p className="text-[9px] text-gray-400">{user.phone}</p></div></div>
@@ -427,14 +404,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setSelectedTableId(null)} />
           <div className="relative bg-white w-full max-w-5xl h-full md:h-[85vh] md:rounded-[3.5rem] flex flex-col overflow-hidden shadow-2xl border-t-8 border-yellow-400">
             <div className="p-6 md:p-10 border-b flex justify-between items-center bg-white">
-              <div>
-                <h3 className="text-2xl font-black uppercase italic">{selectedTable.id >= 900 ? 'Entrega/Balcão' : `Mesa ${selectedTable.id}`}</h3>
-                <p className="text-[10px] font-bold text-gray-400">{selectedTable.currentOrder?.customerName}</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-3 bg-gray-100 rounded-full"><PrinterIcon/></button>
-                <button onClick={() => setSelectedTableId(null)} className="p-3 bg-gray-100 rounded-full"><CloseIcon/></button>
-              </div>
+              <div><h3 className="text-2xl font-black uppercase italic">{selectedTable.id >= 900 ? 'Entrega/Balcão' : `Mesa ${selectedTable.id}`}</h3><p className="text-[10px] font-bold text-gray-400">{selectedTable.currentOrder?.customerName}</p></div>
+              <div className="flex gap-2"><button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-3 bg-gray-100 rounded-full"><PrinterIcon/></button><button onClick={() => setSelectedTableId(null)} className="p-3 bg-gray-100 rounded-full"><CloseIcon/></button></div>
             </div>
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                <div className="flex-1 p-6 overflow-y-auto">
