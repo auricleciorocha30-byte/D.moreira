@@ -39,7 +39,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const selectedTable = useMemo(() => tables.find(t => t.id === selectedTableId) || null, [tables, selectedTableId]);
 
-  // Gestão de Categorias
+  // Gestão de Categorias com Tratamento de Erro de Cache
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = newCategoryName.trim();
@@ -47,19 +47,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     
     setIsSaving(true);
     try {
-      const { error } = await supabase.from('categories').insert([{ name }]);
+      // Forçamos a inserção na tabela pública
+      const { error } = await supabase
+        .from('categories')
+        .insert([{ name: name }]);
+
       if (error) {
+        console.error("Erro Supabase:", error);
+        // Se o erro for 42P01 (Tabela não existe) ou erro de cache
         if (error.code === '42P01' || error.message.includes('schema cache')) {
-          alert('ERRO: O Banco de Dados ainda não reconheceu a tabela. \n\nPOR FAVOR: Recarregue a página (F5) agora.');
+          alert('⚠️ ERRO DE SINCRONIZAÇÃO:\nA tabela foi criada mas o sistema ainda não a detectou.\n\nPOR FAVOR: Aperte F5 ou recarregue esta página agora.');
         } else {
-          alert('Erro ao salvar: ' + error.message);
+          alert('Erro ao salvar categoria: ' + error.message);
         }
       } else {
         setNewCategoryName('');
         onRefreshData();
       }
     } catch (err) {
-      alert('Falha na conexão com o banco.');
+      alert('Falha crítica de conexão. Recarregue a página.');
     } finally {
       setIsSaving(false);
     }
@@ -106,7 +112,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       <div className="bg-white p-6 rounded-[3rem] shadow-sm border border-gray-100 mb-10">
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-4">
-            <h2 className="text-3xl font-black italic tracking-tighter text-black">D.Moreira Admin</h2>
+            <h2 className="text-3xl font-black italic tracking-tighter text-black">Painel D.Moreira</h2>
             <button onClick={onToggleAudio} className={`p-3 rounded-full transition-all ${audioEnabled ? 'bg-yellow-400 text-black shadow-md' : 'bg-gray-100 text-gray-400'}`}>
               <VolumeIcon muted={!audioEnabled} />
             </button>
@@ -125,23 +131,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Alerta de Tabelas Faltando */}
       {dbStatus === 'error_tables_missing' && (
         <div className="bg-red-600 text-white p-6 rounded-[2.5rem] mb-10 text-center font-black uppercase text-xs tracking-widest italic animate-pulse">
-          ⚠️ Tabelas não encontradas! Execute o SQL Master no Supabase e recarregue a página.
+          ⚠️ Tabelas não encontradas no Supabase! Execute o SQL Master e RECARREGUE A PÁGINA (F5).
         </div>
       )}
 
-      {/* Conteúdo das Abas */}
+      {/* Categorias */}
       {activeTab === 'categories' && (
         <div className="bg-white p-8 rounded-[3.5rem] shadow-sm border border-gray-100 max-w-2xl mx-auto animate-fade-in">
           <div className="flex justify-between items-center mb-8">
             <h3 className="text-3xl font-black italic text-black">Categorias</h3>
-            <button onClick={() => window.location.reload()} className="bg-gray-100 p-3 rounded-full hover:bg-yellow-400 transition-colors">
+            <button onClick={() => window.location.reload()} className="bg-gray-100 p-3 rounded-full hover:bg-yellow-400 transition-colors" title="Recarregar Dados">
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             </button>
           </div>
           
           <form onSubmit={handleAddCategory} className="flex gap-3 mb-10">
-            <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 text-black" />
-            <button type="submit" disabled={isSaving} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:scale-105 active:scale-95 transition-all">
+            <input 
+              type="text" 
+              value={newCategoryName} 
+              onChange={e => setNewCategoryName(e.target.value)} 
+              placeholder="Ex: Bebidas, Lanches..." 
+              className="flex-1 bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 text-black" 
+            />
+            <button 
+              type="submit" 
+              disabled={isSaving} 
+              className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:scale-105 active:scale-95 transition-all"
+            >
               {isSaving ? '...' : 'Adicionar'}
             </button>
           </form>
@@ -168,15 +184,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 )}
               </div>
             ))}
-            {categories.length === 0 && <p className="text-center py-10 text-gray-400 font-black italic">Sem categorias cadastradas.</p>}
+            {categories.length === 0 && <p className="text-center py-10 text-gray-400 font-black italic">Nenhuma categoria cadastrada ainda.</p>}
           </div>
         </div>
       )}
 
+      {/* Cardápio */}
       {activeTab === 'menu' && (
         <div className="bg-white p-8 rounded-[3.5rem] shadow-sm border border-gray-100 animate-fade-in">
           <div className="flex justify-between items-center mb-10">
-            <h3 className="text-3xl font-black italic text-black">Cardápio</h3>
+            <h3 className="text-3xl font-black italic text-black">Produtos</h3>
             <button onClick={openAddProduct} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110">+ Novo Produto</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -195,6 +212,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* Mesas e Entregas */}
       {(activeTab === 'tables' || activeTab === 'delivery') && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 animate-fade-in">
           {(activeTab === 'tables' ? physicalTables : deliveryTables).map(t => (
@@ -233,12 +251,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
             {selectedTable.currentOrder && (
               <div className="border-t pt-6">
-                <div className="flex justify-between items-end mb-6">
+                <div className="flex justify-between items-end mb-6 text-black">
                   <div className="flex flex-col">
                     <span className="text-gray-400 font-black text-[9px] uppercase">Cliente: {selectedTable.currentOrder.customerName}</span>
                     <span className="text-gray-400 font-black text-[9px] uppercase">Pagamento: {selectedTable.currentOrder.paymentMethod}</span>
                   </div>
-                  <span className="text-4xl font-black italic text-black">R$ {selectedTable.currentOrder.total.toFixed(2).replace('.', ',')}</span>
+                  <span className="text-4xl font-black italic">R$ {selectedTable.currentOrder.total.toFixed(2).replace('.', ',')}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <button onClick={() => setSelectedTableId(null)} className="bg-gray-100 text-black py-5 rounded-2xl font-black uppercase text-xs">Apenas Fechar</button>
@@ -254,7 +272,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {isProductModalOpen && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
           <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-10 relative shadow-2xl">
-             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full"><CloseIcon size={20}/></button>
+             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full hover:bg-200 transition-colors"><CloseIcon size={20}/></button>
              <h3 className="text-3xl font-black italic mb-8 text-black">{editingProduct?.id ? 'Editar Item' : 'Novo Item'}</h3>
              <form onSubmit={handleProductSubmit} className="space-y-4">
                 <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="Nome do Produto" className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none text-black" required />
@@ -266,7 +284,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                    </select>
                 </div>
                 <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} placeholder="URL da Imagem" className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none text-black" />
-                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-xs uppercase shadow-xl hover:scale-105 transition-all">Salvar Produto</button>
+                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-xs uppercase shadow-xl hover:scale-105 active:scale-95 transition-all">Salvar Produto</button>
              </form>
           </div>
         </div>
