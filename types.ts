@@ -15,8 +15,6 @@ export interface Category {
   name: string;
 }
 
-export type CategoryType = string;
-
 export interface CartItem extends Product {
   quantity: number;
 }
@@ -38,17 +36,44 @@ export interface Order {
   customerPhone?: string;
   items: CartItem[];
   total: number;
+  discount?: number;
+  finalTotal: number;
   paymentMethod: string;
   timestamp: Date | string;
   tableId: number;
-  isUpdated?: boolean;
   status: OrderStatus;
   orderType: OrderType;
   address?: string;
+  couponCode?: string;
+  // Fix: Added isUpdated to allow flagging modified orders as used in handlePlaceOrder in App.tsx
+  isUpdated?: boolean;
 }
 
 export interface Table {
   id: number;
   status: TableStatus;
   currentOrder: Order | null;
+}
+
+// Novos Tipos para Marketing
+export interface Coupon {
+  id: string;
+  code: string;
+  percentage: number;
+  isActive: boolean;
+  scopeType: 'all' | 'category' | 'product';
+  scopeValue: string; // ID do produto ou nome da categoria
+}
+
+export interface LoyaltyConfig {
+  isActive: boolean;
+  spendingGoal: number;
+  scopeType: 'all' | 'category' | 'product';
+  scopeValue: string;
+}
+
+export interface LoyaltyUser {
+  phone: string;
+  name: string;
+  accumulated: number;
 }
