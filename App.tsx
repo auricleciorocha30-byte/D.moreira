@@ -52,22 +52,16 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      // 1. Buscar Categorias
-      const { data: catData } = await supabase.from('categories').select('*').order('name');
-      
-      // 2. Buscar Produtos
+      // 1. Buscar Produtos primeiro para ter o fallback de categorias
       const { data: productsData, error: pError } = await supabase.from('products').select('*').order('name');
       
-      if (pError) {
-        if (pError.code === '42P01') setDbStatus('error_tables_missing');
-        setMenuItems(STATIC_MENU);
-        return;
-      }
-      
-      setDbStatus('ok');
-
       let currentProducts: Product[] = [];
-      if (productsData && productsData.length > 0) {
+      if (pError || !productsData || productsData.length === 0) {
+        if (pError?.code === '42P01') setDbStatus('error_tables_missing');
+        currentProducts = STATIC_MENU;
+        setMenuItems(STATIC_MENU);
+      } else {
+        setDbStatus('ok');
         currentProducts = productsData.map(p => ({
           id: p.id,
           name: p.name,
@@ -79,17 +73,21 @@ const App: React.FC = () => {
           isAvailable: p.is_available ?? true 
         }));
         setMenuItems(currentProducts);
-      } else {
-        setMenuItems(STATIC_MENU);
-        currentProducts = STATIC_MENU;
       }
 
-      // Lógica de Categorias: Se a tabela categorias estiver vazia, extrai dos produtos
-      if (catData && catData.length > 0) {
+      // 2. Buscar Categorias da tabela oficial
+      const { data: catData, error: cError } = await supabase.from('categories').select('*').order('name');
+      
+      if (!cError && catData && catData.length > 0) {
         setCategories(catData);
       } else {
+        // Fallback: Extrair categorias únicas dos produtos atuais (seja DB ou Static)
         const uniqueCats = Array.from(new Set(currentProducts.map(p => p.category)));
-        setCategories(uniqueCats.map((name, index) => ({ id: `temp-${index}`, name })));
+        const fallbackCategories = uniqueCats.map((name, index) => ({ 
+          id: `fallback-${index}-${name.toLowerCase()}`, 
+          name 
+        }));
+        setCategories(fallbackCategories);
       }
 
       // 3. Buscar Mesas
@@ -104,7 +102,7 @@ const App: React.FC = () => {
             if (idx > -1) {
               const oldTable = prev.find(pT => pT.id === dbT.id);
               const oldItemsCount = oldTable?.currentOrder?.items.reduce((a, b) => a + b.quantity, 0) || 0;
-              const newItemsCount = dbT.current_order?.items.reduce((a: number, b: any) => a + b.quantity, 0) || 0;
+              const newItemsCount = dbT.current_order?.items?.reduce((a: number, b: any) => a + b.quantity, 0) || 0;
 
               const isNewOrder = dbT.status === 'occupied' && oldTable?.status !== 'occupied';
               const isUpdatedOrder = dbT.status === 'occupied' && oldTable?.status === 'occupied' && newItemsCount > oldItemsCount;
@@ -127,7 +125,11 @@ const App: React.FC = () => {
         });
       }
     } catch (err) {
-      console.error("Erro ao sincronizar:", err);
+      console.error("Erro ao sincronizar dados:", err);
+      // Em caso de erro total, garante que pelo menos o estático apareça
+      setMenuItems(STATIC_MENU);
+      const uniqueCats = Array.from(new Set(STATIC_MENU.map(p => p.category)));
+      setCategories(uniqueCats.map((name, index) => ({ id: `err-${index}`, name })));
     }
   }, [isAdmin, audioEnabled, playNotification]);
 
@@ -187,7 +189,13 @@ const App: React.FC = () => {
           if (foundIdx > -1) mergedItems[foundIdx].quantity += newItem.quantity;
           else mergedItems.push(newItem);
         });
-        finalOrder = { ...existing, items: mergedItems, total: mergedItems.reduce((acc, i) => acc + (i.price * i.quantity), 0), timestamp: new Date().toISOString(), status: 'pending' };
+        finalOrder = { 
+          ...existing, 
+          items: mergedItems, 
+          total: mergedItems.reduce((acc, i) => acc + (i.price * i.quantity), 0), 
+          timestamp: new Date().toISOString(), 
+          status: existing.status || 'pending' 
+        };
       }
 
       const { error: upsertError } = await supabase.from('tables').upsert({ id: order.tableId, status: 'occupied', current_order: finalOrder });
@@ -211,9 +219,11 @@ const App: React.FC = () => {
     try {
       if (!product.id) {
         const newId = 'prod_' + Date.now();
-        await supabase.from('products').insert([{ ...payload, id: newId }]);
+        const { error } = await supabase.from('products').insert([{ ...payload, id: newId }]);
+        if (error) throw error;
       } else {
-        await supabase.from('products').update(payload).eq('id', product.id);
+        const { error } = await supabase.from('products').update(payload).eq('id', product.id);
+        if (error) throw error;
       }
       fetchData();
     } catch (err: any) { alert('Erro ao salvar produto: ' + err.message); }
@@ -233,8 +243,10 @@ const App: React.FC = () => {
     setIsAdmin(false);
   };
 
-  const categoryNames = ['Todos', ...categories.map(c => c.name)];
-  const filteredItems = menuItems.filter(item => selectedCategory === 'Todos' || item.category === selectedCategory);
+  const categoryNames = useMemo(() => ['Todos', ...categories.map(c => c.name)], [categories]);
+  const filteredItems = useMemo(() => 
+    menuItems.filter(item => selectedCategory === 'Todos' || item.category === selectedCategory)
+  , [menuItems, selectedCategory]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans antialiased relative">
@@ -270,9 +282,15 @@ const App: React.FC = () => {
                 <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-7 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 ${selectedCategory === cat ? 'bg-black text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border'}`}>{cat}</button>
               ))}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredItems.map(item => <MenuItem key={item.id} product={item} onAdd={addToCart} />)}
-            </div>
+            {filteredItems.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-fade-in">
+                {filteredItems.map(item => <MenuItem key={item.id} product={item} onAdd={addToCart} />)}
+              </div>
+            ) : (
+              <div className="text-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-gray-100">
+                <p className="text-gray-400 font-black uppercase text-xs tracking-widest italic">Nenhum item nesta categoria.</p>
+              </div>
+            )}
           </>
         )}
       </main>

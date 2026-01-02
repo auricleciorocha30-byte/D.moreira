@@ -25,7 +25,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Estado do Produto Editando (preço como string para permitir campo vazio)
+  // Estado do Produto Editando (preço como string para permitir campo vazio e evitar o zero persistente)
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   
@@ -53,17 +53,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
   const openEditModal = (product: Product) => {
     setEditingProduct({ 
       ...product,
-      price: product.price.toString() // Converte para string para o input
+      price: product.price.toString() // Converte para string para o input não ter comportamento inesperado
     });
     setIsProductModalOpen(true);
   };
 
   const openAddModal = () => {
-    // Busca a categoria inicial
-    const initialCat = categories.length > 0 ? categories[0].name : (menuItems.length > 0 ? menuItems[0].category : '');
+    // Escolher categoria padrão inicial
+    let initialCat = '';
+    if (categories.length > 0) initialCat = categories[0].name;
+    else if (menuItems.length > 0) initialCat = menuItems[0].category;
+    else initialCat = 'Combos';
+
     setEditingProduct({
       name: '',
-      price: '', // Campo inicia TOTALMENTE VAZIO
+      price: '', // INICIA TOTALMENTE VAZIO (SEM O ZERO)
       category: initialCat,
       description: '',
       image: '',
@@ -76,15 +80,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
     e.preventDefault();
     if (!newCategoryName.trim()) return;
     const { error } = await supabase.from('categories').insert([{ name: newCategoryName.trim() }]);
-    if (error) alert('Erro ao criar: ' + error.message);
-    else { setNewCategoryName(''); onRefreshData(); }
+    if (error) {
+       if (error.code === '42P01') alert('A tabela de categorias não existe no banco de dados. Contate o suporte ou crie a tabela via SQL Editor.');
+       else alert('Erro ao criar categoria: ' + error.message);
+    } else { 
+       setNewCategoryName(''); 
+       onRefreshData(); 
+    }
   };
 
   const handleRenameCategory = async (id: string) => {
     if (!renamingName.trim()) return;
     const { error } = await supabase.from('categories').update({ name: renamingName.trim() }).eq('id', id);
     if (error) alert('Erro ao renomear: ' + error.message);
-    else { setRenamingCategoryId(null); onRefreshData(); }
+    else { 
+      setRenamingCategoryId(null); 
+      setRenamingName('');
+      onRefreshData(); 
+    }
   };
 
   const handleDeleteCategory = async (id: string, name: string) => {
@@ -98,20 +111,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
     e.preventDefault();
     const priceNum = parseFloat(editingProduct.price);
     if (!editingProduct?.name || isNaN(priceNum) || !editingProduct?.category) {
-      return alert('Preencha nome, preço e categoria corretamente.');
+      return alert('Preencha os campos obrigatórios (Nome, Preço e Categoria).');
     }
     onSaveProduct({ ...editingProduct, price: priceNum });
     setIsProductModalOpen(false);
-  };
-
-  const getStatusLabel = (status: OrderStatus) => {
-    switch (status) {
-      case 'pending': return { text: 'Pendente', color: 'bg-red-500' };
-      case 'preparing': return { text: 'Preparo', color: 'bg-orange-500' };
-      case 'ready': return { text: 'Pronto', color: 'bg-blue-500' };
-      case 'delivered': return { text: 'Entregue', color: 'bg-green-500' };
-      default: return { text: 'Pendente', color: 'bg-red-500' };
-    }
+    setEditingProduct(null);
   };
 
   const handleOpenTable = (id: number) => {
@@ -179,19 +183,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
 
       {activeTab === 'categories' && (
         <div className="bg-white p-8 rounded-[3.5rem] shadow-sm border border-gray-100 max-w-2xl mx-auto animate-fade-in">
-          <h3 className="text-3xl font-black italic tracking-tighter mb-8">Categorias</h3>
+          <h3 className="text-3xl font-black italic tracking-tighter mb-8">Gestão de Categorias</h3>
           <form onSubmit={handleAddCategory} className="flex gap-3 mb-8">
             <input type="text" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Nova Categoria..." className="flex-1 bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 shadow-inner" />
-            <button type="submit" className="bg-black text-yellow-400 px-6 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110 active:scale-95 transition-all">Add</button>
+            <button type="submit" className="bg-black text-yellow-400 px-6 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110 active:scale-95 transition-all">Adicionar</button>
           </form>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {categories.map(cat => (
-              <div key={cat.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border hover:border-yellow-400 transition-all">
+              <div key={cat.id} className="flex justify-between items-center bg-gray-50 p-5 rounded-2xl border hover:border-yellow-400 transition-all">
                 {renamingCategoryId === cat.id ? (
                   <div className="flex-1 flex gap-2">
-                    <input autoFocus type="text" value={renamingName} onChange={e => setRenamingName(e.target.value)} className="flex-1 border rounded-xl px-4 py-2 text-sm font-bold" />
-                    <button onClick={() => handleRenameCategory(cat.id)} className="bg-green-500 text-white px-4 rounded-xl font-black text-[10px] uppercase">OK</button>
-                    <button onClick={() => setRenamingCategoryId(null)} className="text-gray-400 uppercase text-[10px] font-black">X</button>
+                    <input autoFocus type="text" value={renamingName} onChange={e => setRenamingName(e.target.value)} className="flex-1 border rounded-xl px-4 py-2 text-sm font-bold outline-none" />
+                    <button onClick={() => handleRenameCategory(cat.id)} className="bg-green-500 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase">Salvar</button>
+                    <button onClick={() => setRenamingCategoryId(null)} className="text-gray-400 uppercase text-[10px] font-black px-2">Cancelar</button>
                   </div>
                 ) : (
                   <>
@@ -211,23 +215,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
       )}
 
       {activeTab === 'menu' && (
-        <div className="bg-white p-8 rounded-[3.5rem] shadow-sm border border-gray-100">
-          <div className="flex justify-between items-center mb-10">
-            <h3 className="text-3xl font-black italic tracking-tighter">Cardápio</h3>
-            <button onClick={openAddModal} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-xl active:scale-95 hover:brightness-110">+ Novo Produto</button>
+        <div className="bg-white p-8 rounded-[3.5rem] shadow-sm border border-gray-100 animate-fade-in">
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-10 gap-4">
+            <h3 className="text-3xl font-black italic tracking-tighter">Gestão do Cardápio</h3>
+            <button onClick={openAddModal} className="w-full sm:w-auto bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110 active:scale-95 transition-all">+ Novo Produto</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {menuItems.map(item => (
-              <div key={item.id} className="bg-gray-50 p-5 rounded-[2.5rem] border hover:border-yellow-400 transition-all">
+              <div key={item.id} className={`group bg-gray-50 p-5 rounded-[2.5rem] border transition-all ${!item.isAvailable ? 'opacity-60 grayscale' : 'hover:border-yellow-400'}`}>
                 <img src={item.image} className="w-full aspect-square object-cover rounded-2xl mb-4" />
                 <h4 className="font-black text-sm truncate">{item.name}</h4>
                 <div className="flex justify-between items-center mb-4">
                    <span className="text-[8px] font-black uppercase text-gray-400 bg-gray-100 px-2 py-1 rounded-md">{item.category}</span>
-                   <p className="text-yellow-700 font-black text-xs">R$ {item.price.toFixed(2)}</p>
+                   <p className="text-yellow-700 font-black text-xs">R$ {item.price.toFixed(2).replace('.', ',')}</p>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => openEditModal(item)} className="flex-1 bg-white py-3 rounded-xl font-black text-[10px] uppercase border hover:bg-gray-100">Editar</button>
-                  <button onClick={() => { if(confirm(`Excluir ${item.name}?`)) onDeleteProduct(item.id); }} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white"><TrashIcon size={16}/></button>
+                  <button onClick={() => { if(confirm(`Excluir ${item.name}?`)) onDeleteProduct(item.id); }} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><TrashIcon size={16}/></button>
                 </div>
               </div>
             ))}
@@ -265,22 +269,41 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
       )}
 
       {isProductModalOpen && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
-          <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-10 relative">
-             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-full"><CloseIcon size={20}/></button>
-             <h3 className="text-3xl font-black italic mb-8">{editingProduct?.id ? 'Editar' : 'Novo Produto'}</h3>
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md animate-fade-in">
+          <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-10 relative shadow-2xl overflow-hidden">
+             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
+             <h3 className="text-3xl font-black italic mb-8">{editingProduct?.id ? 'Editar Produto' : 'Novo Produto'}</h3>
              <form onSubmit={handleProductSubmit} className="space-y-4">
-                <input type="text" placeholder="Nome *" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none" required />
-                <div className="grid grid-cols-2 gap-4">
-                   <input type="number" step="0.01" placeholder="Preço (R$) *" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none" required />
-                   <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none">
-                      {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
-                      {!categories.some(c => c.name === editingProduct?.category) && editingProduct?.category && <option value={editingProduct.category}>{editingProduct.category}</option>}
-                   </select>
+                <div>
+                   <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-2 mb-1 block">Nome do Produto *</label>
+                   <input type="text" placeholder="Ex: Pão de Queijo" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 shadow-inner" required />
                 </div>
-                <input type="text" placeholder="URL Imagem" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none" />
-                <textarea placeholder="Descrição" value={editingProduct?.description || ''} onChange={e => setEditingProduct({...editingProduct!, description: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none h-24" />
-                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110">Salvar Produto</button>
+                <div className="grid grid-cols-2 gap-4">
+                   <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-2 mb-1 block">Preço (R$) *</label>
+                      <input type="number" step="0.01" placeholder="0,00" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 shadow-inner" required />
+                   </div>
+                   <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-2 mb-1 block">Categoria *</label>
+                      <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 shadow-inner">
+                         {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
+                         {!categories.some(c => c.name === editingProduct?.category) && editingProduct?.category && <option value={editingProduct.category}>{editingProduct.category}</option>}
+                      </select>
+                   </div>
+                </div>
+                <div>
+                   <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-2 mb-1 block">URL da Imagem</label>
+                   <input type="text" placeholder="https://..." value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 shadow-inner" />
+                </div>
+                <div>
+                   <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-2 mb-1 block">Descrição</label>
+                   <textarea placeholder="Opcional..." value={editingProduct?.description || ''} onChange={e => setEditingProduct({...editingProduct!, description: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 shadow-inner h-24" />
+                </div>
+                <div className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl border">
+                   <span className="font-black text-[10px] uppercase tracking-widest text-gray-500">Item Disponível</span>
+                   <button type="button" onClick={() => setEditingProduct({...editingProduct!, isAvailable: !editingProduct?.isAvailable})} className={`w-14 h-8 rounded-full transition-all flex items-center px-1 ${editingProduct?.isAvailable ? 'bg-green-500 justify-end' : 'bg-gray-300 justify-start'}`}><div className="w-6 h-6 bg-white rounded-full shadow-lg"></div></button>
+                </div>
+                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110 active:scale-95 transition-all">Salvar Produto</button>
              </form>
           </div>
         </div>
@@ -289,34 +312,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
       {selectedTable && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
-          <div className="relative bg-white w-full max-w-6xl rounded-[4rem] p-12 shadow-2xl flex flex-col md:flex-row gap-8 max-h-[92vh] border-[12px] border-yellow-400 overflow-hidden">
-            <button onClick={() => setSelectedTableId(null)} className="absolute top-6 right-6 p-3 bg-gray-100 rounded-full z-10"><CloseIcon size={24} /></button>
+          <div className="relative bg-white w-full max-w-6xl rounded-[4rem] p-12 shadow-2xl flex flex-col md:flex-row gap-8 max-h-[92vh] border-[12px] border-yellow-400 overflow-hidden animate-in slide-in-from-bottom duration-500">
+            <button onClick={() => setSelectedTableId(null)} className="absolute top-6 right-6 p-3 bg-gray-100 rounded-full z-10 hover:bg-gray-200 transition-colors"><CloseIcon size={24} /></button>
             <div className="flex-[1.2] flex flex-col min-w-0">
               <h3 className="text-5xl font-black italic tracking-tighter mb-6">{selectedTable.id > 800 ? (selectedTable.id === 900 ? '🚚 Entrega' : '🛍️ Balcão') : 'Mesa ' + selectedTable.id}</h3>
               <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 mb-6">
                 {selectedTable.currentOrder?.items.map((item, idx) => (
                   <div key={idx} className="flex justify-between items-center bg-gray-50 p-5 rounded-2xl border border-gray-100">
                     <div className="flex items-center gap-3"><span className="bg-black text-white w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black">{item.quantity}</span><span className="font-black text-sm">{item.name}</span></div>
-                    <span className="font-black text-sm text-yellow-700">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                    <span className="font-black text-sm text-yellow-700">R$ {(item.price * item.quantity).toFixed(2).replace('.', ',')}</span>
                   </div>
-                )) || <p className="text-gray-400 font-black uppercase text-center py-20">Vazia</p>}
+                )) || <div className="text-center py-20 bg-gray-50 rounded-[3rem] border-2 border-dashed border-gray-200"><p className="text-gray-400 font-black uppercase text-[10px] tracking-widest">Sem comanda ativa.</p></div>}
               </div>
               {selectedTable.currentOrder && (
                 <div className="pt-6 border-t space-y-4">
-                  <div className="flex justify-between items-end"><span className="text-gray-400 font-black uppercase text-[10px]">Total</span><span className="text-4xl font-black italic">R$ {selectedTable.currentOrder.total.toFixed(2)}</span></div>
+                  <div className="flex justify-between items-end"><span className="text-gray-400 font-black uppercase text-[10px]">Total Acumulado</span><span className="text-4xl font-black italic">R$ {selectedTable.currentOrder.total.toFixed(2).replace('.', ',')}</span></div>
                   <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => handlePrint(selectedTable.currentOrder!, 'customer')} className="bg-gray-100 py-5 rounded-2xl font-black uppercase text-[10px]">Cupom</button>
-                    <button onClick={() => { if(confirm('Fechar conta?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-xl">Fechar Conta</button>
+                    <button onClick={() => handlePrint(selectedTable.currentOrder!, 'customer')} className="bg-gray-100 py-5 rounded-2xl font-black uppercase text-[10px] hover:bg-gray-200 active:scale-95 transition-all">Cupom</button>
+                    <button onClick={() => { if(confirm('Fechar conta?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-green-700 active:scale-95 transition-all">Fechar Conta</button>
                   </div>
                 </div>
               )}
             </div>
             <div className="flex-1 bg-gray-50 rounded-[3rem] p-8 flex flex-col min-w-0 border">
               <h4 className="text-xl font-black italic mb-4">Lançar Item</h4>
-              <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-gray-200 rounded-2xl px-5 py-4 text-sm font-bold mb-6 outline-none shadow-inner" />
+              <input type="text" placeholder="Buscar no cardápio..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-gray-200 rounded-2xl px-5 py-4 text-sm font-bold mb-6 outline-none shadow-inner focus:ring-4 focus:ring-yellow-400/20 transition-all" />
               <div className="flex-1 overflow-y-auto no-scrollbar space-y-2">
                 {filteredItemsToAdd.map(item => (
-                  <button key={item.id} onClick={() => { if (!selectedTable.currentOrder) { onUpdateTable(selectedTable.id, 'occupied', { id: 'N-'+Date.now(), customerName: 'Local', items: [{...item, quantity: 1}], total: item.price, paymentMethod: 'Pix', timestamp: new Date().toISOString(), tableId: selectedTable.id, orderType: selectedTable.id > 800 ? (selectedTable.id === 900 ? 'delivery' : 'counter') : 'table', status: 'pending' }); } else { onAddToOrder(selectedTable.id, item); } }} className="w-full flex items-center gap-4 bg-white p-3 rounded-2xl border hover:border-yellow-400 transition-all text-left">
+                  <button key={item.id} disabled={!item.isAvailable} onClick={() => { if (!selectedTable.currentOrder) { onUpdateTable(selectedTable.id, 'occupied', { id: 'N-'+Date.now(), customerName: 'Local', items: [{...item, quantity: 1}], total: item.price, paymentMethod: 'Pix', timestamp: new Date().toISOString(), tableId: selectedTable.id, orderType: selectedTable.id > 800 ? (selectedTable.id === 900 ? 'delivery' : 'counter') : 'table', status: 'pending' }); } else { onAddToOrder(selectedTable.id, item); } }} className={`w-full flex items-center gap-4 bg-white p-3 rounded-2xl border hover:border-yellow-400 transition-all text-left ${!item.isAvailable ? 'opacity-40 grayscale pointer-events-none' : 'shadow-sm active:scale-95 hover:shadow-md'}`}>
                     <img src={item.image} className="w-10 h-10 rounded-xl object-cover" />
                     <div className="flex-1 min-w-0"><p className="font-black text-[10px] truncate">{item.name}</p><p className="text-yellow-600 font-black text-[10px]">R$ {item.price.toFixed(2)}</p></div>
                     <div className="bg-yellow-400 p-1.5 rounded-lg text-black font-black">+</div>
