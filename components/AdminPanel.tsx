@@ -20,7 +20,7 @@ interface AdminPanelProps {
   dbStatus: 'loading' | 'ok' | 'error_tables_missing';
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, audioEnabled, onToggleAudio, onUpdateTable, onAddToOrder, onRefreshData, onLogout, onSaveProduct, onDeleteProduct }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, audioEnabled, onToggleAudio, onUpdateTable, onAddToOrder, onRefreshData, onLogout, onSaveProduct, onDeleteProduct, dbStatus }) => {
   const [activeTab, setActiveTab] = useState<'tables' | 'delivery' | 'takeaway' | 'menu' | 'categories'>('tables');
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,7 +37,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
   const counterTable = tables.find(t => t.id === 901);
 
   const selectedTable = useMemo(() => tables.find(t => t.id === selectedTableId) || null, [tables, selectedTableId]);
-  const filteredItemsToAdd = useMemo(() => menuItems.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase())), [menuItems, searchTerm]);
 
   const openEditModal = (product: Product) => {
     setEditingProduct({ ...product, price: product.price.toString() });
@@ -45,7 +44,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
   };
 
   const openAddModal = () => {
-    const initialCat = categories.length > 0 ? categories[0].name : (menuItems.length > 0 ? menuItems[0].category : 'Lanches');
+    const initialCat = categories.length > 0 ? categories[0].name : (menuItems.length > 0 ? menuItems[0].category : 'Geral');
     setEditingProduct({ name: '', price: '', category: initialCat, description: '', image: '', isAvailable: true });
     setIsProductModalOpen(true);
   };
@@ -53,9 +52,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategoryName.trim()) return;
+    
     const { error } = await supabase.from('categories').insert([{ name: newCategoryName.trim() }]);
     if (error) {
-       if (error.code === '42P01') alert('Erro: A tabela de categorias não foi criada no Supabase. Use o script SQL no arquivo lib/supabase.ts.');
+       if (error.code === '42P01') alert('Erro: Tabela de categorias não existe. Execute o SQL no editor do Supabase.');
        else alert('Erro: ' + error.message);
     } else { 
        setNewCategoryName(''); 
@@ -81,7 +81,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
     e.preventDefault();
     const priceNum = parseFloat(editingProduct.price);
     if (!editingProduct?.name || isNaN(priceNum) || !editingProduct?.category) {
-      return alert('Nome, Preço válido e Categoria são obrigatórios.');
+      return alert('Preencha os campos obrigatórios (Nome, Preço e Categoria).');
     }
     onSaveProduct({ ...editingProduct, price: priceNum });
     setIsProductModalOpen(false);
@@ -98,28 +98,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
       <div className="bg-white p-6 rounded-[3rem] shadow-sm border border-gray-100 mb-10">
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-4">
-            <h2 className="text-3xl font-black italic tracking-tighter">Admin D.Moreira</h2>
+            <h2 className="text-3xl font-black italic tracking-tighter text-black">Painel D.Moreira</h2>
             <button onClick={onToggleAudio} className={`p-3 rounded-full transition-all flex items-center gap-2 ${audioEnabled ? 'bg-yellow-400 text-black shadow-md' : 'bg-gray-100 text-gray-400'}`}>
-              <VolumeIcon muted={!audioEnabled} /><span className="text-[8px] font-black uppercase tracking-widest">{audioEnabled ? 'Sons On' : 'Mudo'}</span>
+              <VolumeIcon muted={!audioEnabled} /><span className="text-[8px] font-black uppercase tracking-widest">{audioEnabled ? 'Som Ativo' : 'Mudo'}</span>
             </button>
           </div>
           <div className="flex gap-2 sm:gap-4 overflow-x-auto no-scrollbar w-full md:w-auto p-1 items-center">
             {(['tables', 'delivery', 'takeaway', 'menu', 'categories'] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)} className={`whitespace-nowrap px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-yellow-400 text-black shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}>
-                {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Entregas' : tab === 'takeaway' ? 'Retiradas' : tab === 'menu' ? 'Cardápio' : 'Categorias'}
+                {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Entregas' : tab === 'takeaway' ? 'Balcão' : tab === 'menu' ? 'Produtos' : 'Categorias'}
               </button>
             ))}
-            <button onClick={onLogout} className="whitespace-nowrap text-red-500 font-black text-[10px] uppercase ml-4 p-2 hover:bg-red-50 rounded-xl transition-colors">Sair</button>
+            <button onClick={onLogout} className="whitespace-nowrap text-red-500 font-black text-[10px] uppercase ml-4 p-2 hover:bg-red-50 rounded-xl">Sair</button>
           </div>
         </div>
       </div>
 
+      {dbStatus === 'error_tables_missing' && activeTab !== 'categories' && (
+        <div className="bg-red-50 border-2 border-red-200 p-6 rounded-[2rem] mb-10 text-center">
+          <p className="text-red-700 font-black uppercase text-[10px] tracking-widest italic">Atenção: Rodar o script SQL no Supabase para ativar o banco de dados.</p>
+        </div>
+      )}
+
       {activeTab === 'categories' && (
         <div className="bg-white p-8 rounded-[3.5rem] shadow-sm border border-gray-100 max-w-2xl mx-auto animate-fade-in">
-          <h3 className="text-3xl font-black italic tracking-tighter mb-8">Categorias</h3>
+          <h3 className="text-3xl font-black italic tracking-tighter mb-8 text-black">Categorias</h3>
           <form onSubmit={handleAddCategory} className="flex gap-3 mb-8">
-            <input type="text" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Nova categoria..." className="flex-1 bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 shadow-inner" />
-            <button type="submit" className="bg-black text-yellow-400 px-6 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110">Adicionar</button>
+            <input type="text" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Ex: Bebidas, Lanches..." className="flex-1 bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400" />
+            <button type="submit" className="bg-black text-yellow-400 px-6 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110 active:scale-95">Adicionar</button>
           </form>
           <div className="space-y-3">
             {categories.map(cat => (
@@ -127,7 +133,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
                 {renamingCategoryId === cat.id ? (
                   <div className="flex-1 flex gap-2">
                     <input autoFocus type="text" value={renamingName} onChange={e => setRenamingName(e.target.value)} className="flex-1 border rounded-xl px-4 py-2 text-sm font-bold outline-none" />
-                    <button onClick={() => handleRenameCategory(cat.id)} className="bg-green-500 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase">Ok</button>
+                    <button onClick={() => handleRenameCategory(cat.id)} className="bg-green-500 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase">Salvar</button>
                     <button onClick={() => setRenamingCategoryId(null)} className="text-gray-400 uppercase text-[10px] font-black px-2">X</button>
                   </div>
                 ) : (
@@ -150,17 +156,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
       {activeTab === 'menu' && (
         <div className="bg-white p-8 rounded-[3.5rem] shadow-sm border border-gray-100 animate-fade-in">
           <div className="flex justify-between items-center mb-10">
-            <h3 className="text-3xl font-black italic tracking-tighter">Cardápio</h3>
+            <h3 className="text-3xl font-black italic tracking-tighter text-black">Produtos</h3>
             <button onClick={openAddModal} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110">+ Novo Item</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {menuItems.map(item => (
               <div key={item.id} className={`bg-gray-50 p-5 rounded-[2.5rem] border ${!item.isAvailable ? 'opacity-50 grayscale' : 'hover:border-yellow-400'} transition-all`}>
                 <img src={item.image} className="w-full aspect-square object-cover rounded-2xl mb-4" />
-                <h4 className="font-black text-sm truncate mb-4">{item.name}</h4>
+                <h4 className="font-black text-sm truncate mb-1">{item.name}</h4>
+                <p className="text-yellow-700 font-black text-xs mb-4">R$ {item.price.toFixed(2).replace('.', ',')}</p>
                 <div className="flex gap-2">
-                  <button onClick={() => openEditModal(item)} className="flex-1 bg-white py-3 rounded-xl font-black text-[10px] uppercase border hover:bg-gray-100">Editar</button>
-                  <button onClick={() => { if(confirm(`Excluir ${item.name}?`)) onDeleteProduct(item.id); }} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white"><TrashIcon size={16}/></button>
+                  <button onClick={() => openEditModal(item)} className="flex-1 bg-white py-3 rounded-xl font-black text-[10px] uppercase border hover:bg-gray-100 shadow-sm transition-all text-black">Editar</button>
+                  <button onClick={() => { if(confirm(`Excluir ${item.name}?`)) onDeleteProduct(item.id); }} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><TrashIcon size={16}/></button>
                 </div>
               </div>
             ))}
@@ -173,9 +180,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
           {activeTab === 'tables' && physicalTables.map(t => (
             <button key={t.id} onClick={() => handleOpenTable(t.id)} className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-1 h-48 relative overflow-hidden ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl scale-105'}`}>
               {t.status === 'occupied' && t.currentOrder?.isUpdated && <div className="absolute top-3 right-3 bg-red-600 w-3 h-3 rounded-full animate-pulse ring-4 ring-white"></div>}
-              <span className="text-4xl font-black italic mb-1">{t.id}</span>
+              <span className="text-4xl font-black italic mb-1 text-black">{t.id}</span>
               <span className={`text-[8px] font-black uppercase px-2.5 py-1 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>{t.status === 'free' ? 'Livre' : 'Ocupada'}</span>
-              {t.status === 'occupied' && <span className="text-[11px] font-black mt-1 truncate w-full px-2">{t.currentOrder?.customerName}</span>}
+              {t.status === 'occupied' && <span className="text-[11px] font-black mt-1 truncate w-full px-2 text-center text-black">{t.currentOrder?.customerName}</span>}
             </button>
           ))}
           {activeTab === 'delivery' && deliveryTable && (
@@ -183,7 +190,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
                 {deliveryTable.status === 'occupied' && deliveryTable.currentOrder?.isUpdated && <div className="absolute top-3 right-3 bg-red-600 w-3 h-3 rounded-full animate-pulse ring-4 ring-white"></div>}
                 <span className="text-4xl font-black italic mb-1">🚚</span>
                 <span className={`text-[8px] font-black uppercase px-2.5 py-1 rounded-full ${deliveryTable.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>Entrega</span>
-                {deliveryTable.status === 'occupied' && <span className="text-[11px] font-black mt-1 truncate w-full px-2">{deliveryTable.currentOrder?.customerName}</span>}
+                {deliveryTable.status === 'occupied' && <span className="text-[11px] font-black mt-1 truncate w-full px-2 text-center text-black">{deliveryTable.currentOrder?.customerName}</span>}
              </button>
           )}
           {activeTab === 'takeaway' && counterTable && (
@@ -191,7 +198,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
                 {counterTable.status === 'occupied' && counterTable.currentOrder?.isUpdated && <div className="absolute top-3 right-3 bg-red-600 w-3 h-3 rounded-full animate-pulse ring-4 ring-white"></div>}
                 <span className="text-4xl font-black italic mb-1">🛍️</span>
                 <span className={`text-[8px] font-black uppercase px-2.5 py-1 rounded-full ${counterTable.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>Balcão</span>
-                {counterTable.status === 'occupied' && <span className="text-[11px] font-black mt-1 truncate w-full px-2">{counterTable.currentOrder?.customerName}</span>}
+                {counterTable.status === 'occupied' && <span className="text-[11px] font-black mt-1 truncate w-full px-2 text-center text-black">{counterTable.currentOrder?.customerName}</span>}
              </button>
           )}
         </div>
@@ -201,20 +208,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md animate-fade-in">
           <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-10 relative shadow-2xl">
              <button onClick={() => setIsProductModalOpen(false)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
-             <h3 className="text-3xl font-black italic mb-8">{editingProduct?.id ? 'Editar Produto' : 'Novo Produto'}</h3>
+             <h3 className="text-3xl font-black italic mb-8 text-black">{editingProduct?.id ? 'Editar Produto' : 'Novo Produto'}</h3>
              <form onSubmit={handleProductSubmit} className="space-y-4">
                 <div>
-                   <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-2 mb-1 block">Nome *</label>
-                   <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400" required />
+                   <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-2 mb-1 block">Nome do Item *</label>
+                   <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400 text-black" required />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                    <div>
                       <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-2 mb-1 block">Preço (R$) *</label>
-                      <input type="number" step="0.01" placeholder="Ex: 10,00" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400" required />
+                      <input type="number" step="0.01" placeholder="Ex: 15,00" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400 text-black" required />
                    </div>
                    <div>
                       <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-2 mb-1 block">Categoria *</label>
-                      <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400">
+                      <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400 text-black">
                          {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
                          {!categories.some(c => c.name === editingProduct?.category) && editingProduct?.category && <option value={editingProduct.category}>{editingProduct.category}</option>}
                       </select>
@@ -222,13 +229,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
                 </div>
                 <div>
                    <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-2 mb-1 block">Imagem (URL)</label>
-                   <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400" />
+                   <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} className="w-full bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-yellow-400 text-black" />
                 </div>
                 <div className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl border">
-                   <span className="font-black text-[10px] uppercase tracking-widest text-gray-500">Item Disponível</span>
-                   <button type="button" onClick={() => setEditingProduct({...editingProduct!, isAvailable: !editingProduct?.isAvailable})} className={`w-14 h-8 rounded-full transition-all flex items-center px-1 ${editingProduct?.isAvailable ? 'bg-green-500 justify-end' : 'bg-gray-300 justify-start'}`}><div className="w-6 h-6 bg-white rounded-full"></div></button>
+                   <span className="font-black text-[10px] uppercase tracking-widest text-gray-500">Disponível</span>
+                   <button type="button" onClick={() => setEditingProduct({...editingProduct!, isAvailable: !editingProduct?.isAvailable})} className={`w-14 h-8 rounded-full transition-all flex items-center px-1 ${editingProduct?.isAvailable ? 'bg-green-500 justify-end' : 'bg-gray-300 justify-start'}`}><div className="w-6 h-6 bg-white rounded-full shadow-md"></div></button>
                 </div>
-                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110 active:scale-95 transition-all">Salvar Produto</button>
+                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110 active:scale-95 transition-all">Salvar</button>
              </form>
           </div>
         </div>
@@ -239,22 +246,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
           <div className="relative bg-white w-full max-w-3xl rounded-[4rem] p-12 shadow-2xl border-[12px] border-yellow-400 animate-in slide-in-from-bottom">
             <button onClick={() => setSelectedTableId(null)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full"><CloseIcon size={20} /></button>
-            <h3 className="text-4xl font-black italic mb-6">{selectedTable.id > 800 ? 'Atendimento' : 'Mesa ' + selectedTable.id}</h3>
-            <div className="space-y-4 mb-8 max-h-[40vh] overflow-y-auto no-scrollbar pr-2">
+            <h3 className="text-4xl font-black italic mb-6 text-black">{selectedTable.id > 800 ? 'Atendimento' : 'Mesa ' + selectedTable.id}</h3>
+            <div className="space-y-4 mb-8 max-h-[40vh] overflow-y-auto no-scrollbar pr-2 text-black">
               {selectedTable.currentOrder?.items.map((item, idx) => (
-                <div key={idx} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border">
+                <div key={idx} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-gray-100">
                   <span className="font-black text-sm">{item.quantity}x {item.name}</span>
-                  <span className="font-black text-sm text-yellow-700">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                  <span className="font-black text-sm text-yellow-700">R$ {(item.price * item.quantity).toFixed(2).replace('.', ',')}</span>
                 </div>
-              )) || <p className="text-gray-400 font-black uppercase text-center py-10 italic">Comanda Vazia</p>}
+              )) || <p className="text-gray-400 font-black uppercase text-center py-10 italic">Sem itens lançados</p>}
             </div>
             {selectedTable.currentOrder && (
-              <div className="border-t pt-6">
+              <div className="border-t pt-6 text-black">
                 <div className="flex justify-between items-end mb-6">
-                  <span className="text-gray-400 font-black text-[10px] uppercase tracking-widest">Total</span>
-                  <span className="text-4xl font-black italic">R$ {selectedTable.currentOrder.total.toFixed(2)}</span>
+                  <span className="text-gray-400 font-black text-[10px] uppercase">Total da Comanda</span>
+                  <span className="text-4xl font-black italic text-black">R$ {selectedTable.currentOrder.total.toFixed(2).replace('.', ',')}</span>
                 </div>
-                <button onClick={() => { if(confirm('Fechar conta?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="w-full bg-green-600 text-white py-5 rounded-2xl font-black uppercase shadow-xl hover:bg-green-700 transition-colors">Finalizar e Liberar</button>
+                <button onClick={() => { if(confirm('Fechar conta e liberar mesa?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="w-full bg-green-600 text-white py-5 rounded-2xl font-black uppercase shadow-xl hover:bg-green-700 transition-colors">Fechar Conta e Liberar</button>
               </div>
             )}
           </div>
