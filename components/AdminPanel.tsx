@@ -54,9 +54,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
     if (!newCategoryName.trim()) return;
     
     const { error } = await supabase.from('categories').insert([{ name: newCategoryName.trim() }]);
+    
     if (error) {
-       if (error.code === '42P01') alert('Erro: Tabela de categorias não existe. Execute o SQL no editor do Supabase.');
-       else alert('Erro: ' + error.message);
+       console.error("Erro Supabase:", error);
+       if (error.message?.includes('schema cache') || error.code === '42P01') {
+         alert('Tabela "categories" não encontrada ou Cache desatualizado.\n\nSe você já rodou o SQL, por favor ATUALIZE A PÁGINA (F5) do seu navegador agora.');
+       } else {
+         alert('Erro ao salvar categoria: ' + error.message);
+       }
     } else { 
        setNewCategoryName(''); 
        onRefreshData(); 
@@ -116,7 +121,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
 
       {dbStatus === 'error_tables_missing' && activeTab !== 'categories' && (
         <div className="bg-red-50 border-2 border-red-200 p-6 rounded-[2rem] mb-10 text-center">
-          <p className="text-red-700 font-black uppercase text-[10px] tracking-widest italic">Atenção: Rodar o script SQL no Supabase para ativar o banco de dados.</p>
+          <p className="text-red-700 font-black uppercase text-[10px] tracking-widest italic">Atenção: Rode o SQL Editor e depois recarregue esta página.</p>
         </div>
       )}
 
@@ -124,7 +129,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
         <div className="bg-white p-8 rounded-[3.5rem] shadow-sm border border-gray-100 max-w-2xl mx-auto animate-fade-in">
           <h3 className="text-3xl font-black italic tracking-tighter mb-8 text-black">Categorias</h3>
           <form onSubmit={handleAddCategory} className="flex gap-3 mb-8">
-            <input type="text" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Ex: Bebidas, Lanches..." className="flex-1 bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400" />
+            <input type="text" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Ex: Bebidas, Lanches..." className="flex-1 bg-gray-50 border rounded-2xl px-6 py-4 text-sm font-bold outline-none focus:border-yellow-400 text-black" />
             <button type="submit" className="bg-black text-yellow-400 px-6 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-110 active:scale-95">Adicionar</button>
           </form>
           <div className="space-y-3">
@@ -132,7 +137,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
               <div key={cat.id} className="flex justify-between items-center bg-gray-50 p-5 rounded-2xl border hover:border-yellow-400 transition-all">
                 {renamingCategoryId === cat.id ? (
                   <div className="flex-1 flex gap-2">
-                    <input autoFocus type="text" value={renamingName} onChange={e => setRenamingName(e.target.value)} className="flex-1 border rounded-xl px-4 py-2 text-sm font-bold outline-none" />
+                    <input autoFocus type="text" value={renamingName} onChange={e => setRenamingName(e.target.value)} className="flex-1 border rounded-xl px-4 py-2 text-sm font-bold outline-none text-black" />
                     <button onClick={() => handleRenameCategory(cat.id)} className="bg-green-500 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase">Salvar</button>
                     <button onClick={() => setRenamingCategoryId(null)} className="text-gray-400 uppercase text-[10px] font-black px-2">X</button>
                   </div>
@@ -163,7 +168,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
             {menuItems.map(item => (
               <div key={item.id} className={`bg-gray-50 p-5 rounded-[2.5rem] border ${!item.isAvailable ? 'opacity-50 grayscale' : 'hover:border-yellow-400'} transition-all`}>
                 <img src={item.image} className="w-full aspect-square object-cover rounded-2xl mb-4" />
-                <h4 className="font-black text-sm truncate mb-1">{item.name}</h4>
+                <h4 className="font-black text-sm truncate mb-1 text-black">{item.name}</h4>
                 <p className="text-yellow-700 font-black text-xs mb-4">R$ {item.price.toFixed(2).replace('.', ',')}</p>
                 <div className="flex gap-2">
                   <button onClick={() => openEditModal(item)} className="flex-1 bg-white py-3 rounded-xl font-black text-[10px] uppercase border hover:bg-gray-100 shadow-sm transition-all text-black">Editar</button>
@@ -188,7 +193,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
           {activeTab === 'delivery' && deliveryTable && (
              <button onClick={() => handleOpenTable(900)} className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-1 h-48 relative overflow-hidden ${deliveryTable.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl scale-105'}`}>
                 {deliveryTable.status === 'occupied' && deliveryTable.currentOrder?.isUpdated && <div className="absolute top-3 right-3 bg-red-600 w-3 h-3 rounded-full animate-pulse ring-4 ring-white"></div>}
-                <span className="text-4xl font-black italic mb-1">🚚</span>
+                <span className="text-4xl font-black italic mb-1 text-black">🚚</span>
                 <span className={`text-[8px] font-black uppercase px-2.5 py-1 rounded-full ${deliveryTable.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>Entrega</span>
                 {deliveryTable.status === 'occupied' && <span className="text-[11px] font-black mt-1 truncate w-full px-2 text-center text-black">{deliveryTable.currentOrder?.customerName}</span>}
              </button>
@@ -196,7 +201,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ tables, menuItems, categories, 
           {activeTab === 'takeaway' && counterTable && (
              <button onClick={() => handleOpenTable(901)} className={`p-6 rounded-[2.5rem] border-4 transition-all flex flex-col items-center justify-center gap-1 h-48 relative overflow-hidden ${counterTable.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl scale-105'}`}>
                 {counterTable.status === 'occupied' && counterTable.currentOrder?.isUpdated && <div className="absolute top-3 right-3 bg-red-600 w-3 h-3 rounded-full animate-pulse ring-4 ring-white"></div>}
-                <span className="text-4xl font-black italic mb-1">🛍️</span>
+                <span className="text-4xl font-black italic mb-1 text-black">🛍️</span>
                 <span className={`text-[8px] font-black uppercase px-2.5 py-1 rounded-full ${counterTable.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>Balcão</span>
                 {counterTable.status === 'occupied' && <span className="text-[11px] font-black mt-1 truncate w-full px-2 text-center text-black">{counterTable.currentOrder?.customerName}</span>}
              </button>
