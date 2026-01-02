@@ -77,7 +77,6 @@ const App: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
         const newTable = payload.new as any;
         const oldTable = payload.old as any;
-        // Alerta sonoro apenas para novos pedidos
         if (isAdmin && isLoggedIn && newTable.status === 'occupied' && (!oldTable || oldTable.status === 'free')) {
           if (audioEnabled) notificationSound.current?.play().catch(() => {});
           setNewOrderAlert({ id: newTable.id, type: newTable.id >= 950 ? 'Balcão' : newTable.id >= 900 ? 'Entrega' : 'Mesa' });
@@ -141,13 +140,30 @@ const App: React.FC = () => {
               onUpdateTable={async (id, status, ord) => { await supabase.from('tables').upsert({ id, status, current_order: ord || null }); fetchData(); }}
               onAddToOrder={(tableId, product) => {
                 const table = (tables || []).find(t => t.id === tableId);
-                const current = table?.currentOrder;
-                if (current) {
-                  const items = [...(current.items || [])];
-                  const ex = items.findIndex(i => i.id === product.id);
-                  if (ex >= 0) items[ex].quantity += 1;
-                  else items.push({ ...product, quantity: 1 });
-                  const total = items.reduce((a, b) => a + (b.price * b.quantity), 0);
+                let current = table?.currentOrder;
+                
+                const items = current ? [...(current.items || [])] : [];
+                const ex = items.findIndex(i => i.id === product.id);
+                if (ex >= 0) items[ex].quantity += 1;
+                else items.push({ ...product, quantity: 1 });
+                
+                const total = items.reduce((a, b) => a + (b.price * b.quantity), 0);
+                
+                if (!current) {
+                  const newOrd: Order = {
+                    id: Math.random().toString(36).substr(2, 6).toUpperCase(),
+                    customerName: tableId >= 900 ? (tableId >= 950 ? 'Pedido Balcão' : 'Pedido Entrega') : `Mesa ${tableId}`,
+                    items: items,
+                    total: total,
+                    finalTotal: total,
+                    paymentMethod: 'Pendente',
+                    timestamp: new Date().toISOString(),
+                    tableId: tableId,
+                    status: 'pending',
+                    orderType: tableId >= 900 ? (tableId >= 950 ? 'counter' : 'delivery') : 'table'
+                  };
+                  handlePlaceOrder(newOrd);
+                } else {
                   handlePlaceOrder({ ...current, items, total, finalTotal: total - (current.discount || 0) });
                 }
               }}
