@@ -9,13 +9,6 @@ import { Product, CartItem, Table, Order, Category, Coupon } from './types';
 import { supabase } from './lib/supabase';
 import { CloseIcon } from './components/Icons';
 
-const DEFAULT_CATEGORIES: Category[] = [
-  { id: '1', name: 'Lanches' },
-  { id: '2', name: 'Bebidas' },
-  { id: '3', name: 'Combos' },
-  { id: '4', name: 'Diversos' }
-];
-
 const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -30,7 +23,7 @@ const App: React.FC = () => {
   
   const [tables, setTables] = useState<Table[]>(INITIAL_TABLES);
   const [menuItems, setMenuItems] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [activeCoupons, setActiveCoupons] = useState<Coupon[]>([]);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ok' | 'error'>('loading');
@@ -44,11 +37,9 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      // 1. Categorias
       const { data: catData } = await supabase.from('categories').select('*').order('name');
-      if (catData && catData.length > 0) setCategories(catData);
+      if (catData) setCategories(catData);
 
-      // 2. Cupons Ativos
       const { data: couponsData } = await supabase.from('coupons').select('*').eq('is_active', true);
       if (couponsData) {
         setActiveCoupons(couponsData.map(c => ({
@@ -57,7 +48,6 @@ const App: React.FC = () => {
         })));
       }
 
-      // 3. Produtos
       const { data: prodData } = await supabase.from('products').select('*').order('name');
       if (prodData && prodData.length > 0) {
         setMenuItems(prodData.map(p => ({
@@ -68,7 +58,6 @@ const App: React.FC = () => {
         setMenuItems(STATIC_MENU);
       }
 
-      // 4. Mesas e Pedidos Ativos
       const { data: tData } = await supabase.from('tables').select('*');
       if (tData) {
         setTables(prev => prev.map(p => {
@@ -78,18 +67,17 @@ const App: React.FC = () => {
       }
       setDbStatus('ok');
     } catch (err) {
-      console.error(err);
       setDbStatus('error');
     }
   }, []);
 
   useEffect(() => {
     fetchData();
-    const channel = supabase.channel('app_sync')
+    const channel = supabase.channel('realtime_dmoreira')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
         const newTable = payload.new as any;
         const oldTable = payload.old as any;
-        // Alerta sonoro apenas para novos pedidos entrando (mesa vazia que fica ocupada)
+        // Alerta sonoro apenas para novos pedidos
         if (isAdmin && isLoggedIn && newTable.status === 'occupied' && (!oldTable || oldTable.status === 'free')) {
           if (audioEnabled) notificationSound.current?.play().catch(() => {});
           setNewOrderAlert({ id: newTable.id, type: newTable.id >= 950 ? 'Balcão' : newTable.id >= 900 ? 'Entrega' : 'Mesa' });
@@ -106,26 +94,20 @@ const App: React.FC = () => {
 
   const handlePlaceOrder = async (order: Order) => {
     let targetId = order.tableId;
-    
-    // Lógica para atribuir ID automático para Entrega ou Balcão
     if (targetId === -900 || targetId === -950) {
       const range = targetId === -900 ? [900, 949] : [950, 999];
       const free = tables.find(t => t.id >= range[0] && t.id <= range[1] && t.status === 'free');
       targetId = free ? free.id : (Math.max(...tables.filter(t => t.id >= range[0] && t.id <= range[1]).map(t => t.id), range[0] - 1) + 1);
     }
-
-    const { error } = await supabase.from('tables').upsert({
-      id: targetId,
-      status: 'occupied',
-      current_order: { ...order, tableId: targetId }
+    const { error } = await supabase.from('tables').upsert({ 
+      id: targetId, 
+      status: 'occupied', 
+      current_order: { ...order, tableId: targetId } 
     });
-
     if (!error) {
       setCartItems([]);
       setIsCartOpen(false);
       fetchData();
-    } else {
-      alert('Erro ao enviar pedido: ' + error.message);
     }
   };
 
@@ -137,7 +119,7 @@ const App: React.FC = () => {
       <Header />
       
       {!isLoggedIn && (
-        <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 bg-white/10 px-3 py-1.5 rounded-full uppercase tracking-widest backdrop-blur-sm border border-black/5">Acesso Restrito</button>
+        <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 bg-white/10 px-3 py-1.5 rounded-full uppercase tracking-widest backdrop-blur-sm border border-black/5">Painel</button>
       )}
 
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 -mt-8 relative z-20 flex-1 pb-40">
@@ -147,7 +129,7 @@ const App: React.FC = () => {
               <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[300] w-full max-w-md px-6 animate-in slide-in-from-top duration-500">
                 <div className="bg-black text-white p-6 rounded-[2.5rem] shadow-2xl border-4 border-yellow-400 flex items-center gap-5">
                   <div className="bg-yellow-400 text-black w-10 h-10 rounded-2xl flex items-center justify-center font-black animate-bounce">!</div>
-                  <div className="flex-1"><h4 className="font-black text-[9px] uppercase text-yellow-400">Novo Pedido {newOrderAlert.type}</h4><p className="text-lg font-black">#{newOrderAlert.id}</p></div>
+                  <div className="flex-1 font-black"><h4 className="text-[9px] uppercase text-yellow-400">Novo Pedido {newOrderAlert.type}</h4><p className="text-lg">#{newOrderAlert.id}</p></div>
                   <button onClick={() => setNewOrderAlert(null)} className="p-2 bg-white/10 rounded-full"><CloseIcon size={18}/></button>
                 </div>
               </div>
@@ -157,19 +139,15 @@ const App: React.FC = () => {
               audioEnabled={audioEnabled} onToggleAudio={() => setAudioEnabled(!audioEnabled)}
               onUpdateTable={async (id, status, ord) => { await supabase.from('tables').upsert({ id, status, current_order: ord || null }); fetchData(); }}
               onAddToOrder={(tableId, product) => {
-                // Ao adicionar via admin, pegamos o pedido atual e anexamos o item
                 const table = tables.find(t => t.id === tableId);
-                const currentOrder = table?.currentOrder;
-                if (currentOrder) {
-                  const items = [...currentOrder.items];
-                  const existingIdx = items.findIndex(i => i.id === product.id);
-                  if (existingIdx >= 0) items[existingIdx].quantity += 1;
+                const current = table?.currentOrder;
+                if (current) {
+                  const items = [...current.items];
+                  const ex = items.findIndex(i => i.id === product.id);
+                  if (ex >= 0) items[ex].quantity += 1;
                   else items.push({ ...product, quantity: 1 });
-                  
                   const total = items.reduce((a, b) => a + (b.price * b.quantity), 0);
-                  const discount = currentOrder.discount || 0;
-                  
-                  handlePlaceOrder({ ...currentOrder, items, total, finalTotal: total - discount });
+                  handlePlaceOrder({ ...current, items, total, finalTotal: total - (current.discount || 0) });
                 }
               }}
               onRefreshData={fetchData} onLogout={async () => { await supabase.auth.signOut(); setIsLoggedIn(false); setIsAdmin(false); }}
@@ -192,49 +170,46 @@ const App: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in duration-700">
               {filteredItems.map(item => (
-                <MenuItem 
-                  key={item.id} product={item} activeCoupons={activeCoupons}
-                  onAdd={(p) => setCartItems(prev => {
-                    const ex = prev.find(i => i.id === p.id);
-                    if (ex) return prev.map(i => i.id === p.id ? {...i, quantity: i.quantity + 1} : i);
-                    return [...prev, { ...p, quantity: 1 }];
-                  })} 
-                />
+                <MenuItem key={item.id} product={item} activeCoupons={activeCoupons} onAdd={(p) => setCartItems(prev => {
+                  const ex = prev.find(i => i.id === p.id);
+                  if (ex) return prev.map(i => i.id === p.id ? {...i, quantity: i.quantity + 1} : i);
+                  return [...prev, { ...p, quantity: 1 }];
+                })} />
               ))}
             </div>
           </>
         )}
       </main>
 
-      {!isAdmin && cartItems.length > 0 && (
-        <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 z-40 animate-in slide-in-from-bottom duration-500">
-          <button onClick={() => setIsCartOpen(true)} className="w-full max-w-md bg-black text-white rounded-[2.5rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30 active:scale-95 transition-all">
-            <div className="flex items-center gap-4">
-              <div className="bg-yellow-400 text-black w-9 h-9 flex items-center justify-center rounded-2xl text-xs font-black">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
-              <span className="font-black text-xs uppercase tracking-widest">Ver Sacola</span>
-            </div>
-            <span className="font-black text-yellow-400 text-xl italic">R$ {cartItems.reduce((a,b)=>a+(b.price*b.quantity),0).toFixed(2).replace('.', ',')}</span>
-          </button>
-        </div>
-      )}
-
       {showLogin && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
           <div className="bg-white p-10 rounded-[3.5rem] w-full max-w-sm text-center shadow-2xl">
-            <h2 className="text-2xl font-black mb-8 italic uppercase tracking-tighter">Acesso Painel</h2>
+            <h2 className="text-2xl font-black mb-8 italic uppercase tracking-tighter">Acesso Restrito</h2>
             <form onSubmit={async (e) => {
               e.preventDefault(); setIsLoadingLogin(true);
               const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPass });
               if (!error && data.session) { setIsLoggedIn(true); setIsAdmin(true); setShowLogin(false); }
-              else alert('E-mail ou senha inválidos.');
+              else alert('Login inválido.');
               setIsLoadingLogin(false);
             }} className="space-y-4">
-              <input type="email" placeholder="E-MAIL" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border-2 border-transparent focus:border-yellow-400 rounded-2xl px-6 py-4 text-[10px] font-black outline-none transition-all" required />
-              <input type="password" placeholder="SENHA" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border-2 border-transparent focus:border-yellow-400 rounded-2xl px-6 py-4 text-[10px] font-black outline-none transition-all" required />
-              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">{isLoadingLogin ? 'Entrando...' : 'Entrar'}</button>
-              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4 hover:text-gray-600">Cancelar</button>
+              <input type="email" placeholder="E-MAIL" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none" required />
+              <input type="password" placeholder="SENHA" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none" required />
+              <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">Entrar</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4">Cancelar</button>
             </form>
           </div>
+        </div>
+      )}
+
+      {!isAdmin && cartItems.length > 0 && (
+        <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 z-40 animate-in slide-in-from-bottom duration-500">
+          <button onClick={() => setIsCartOpen(true)} className="w-full max-w-md bg-black text-white rounded-[2.5rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30">
+            <div className="flex items-center gap-4">
+              <div className="bg-yellow-400 text-black w-9 h-9 flex items-center justify-center rounded-2xl text-xs font-black">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
+              <span className="font-black text-xs uppercase tracking-widest">Ver Sacola</span>
+            </div>
+            <span className="font-black text-yellow-400 text-xl italic">R$ {cartItems.reduce((a,b)=>a+(b.price*b.quantity),0).toFixed(2)}</span>
+          </button>
         </div>
       )}
 
