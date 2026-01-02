@@ -32,25 +32,49 @@ const App: React.FC = () => {
   const notificationSound = useRef<HTMLAudioElement | null>(null);
   const audioUnlocked = useRef(false);
 
+  // Sistema de Persistência de Login
+  useEffect(() => {
+    // 1. Verifica sessão atual ao montar o componente
+    const checkInitialSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setIsLoggedIn(true);
+        setIsAdmin(true);
+        fetchData();
+      }
+    };
+    checkInitialSession();
+
+    // 2. Escuta mudanças no estado de autenticação (Login/Logout/Token Expired)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setIsLoggedIn(true);
+        setIsAdmin(true);
+      } else {
+        setIsLoggedIn(false);
+        setIsAdmin(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   // Inicializa o áudio e tenta "desbloquear" na primeira interação
   useEffect(() => {
-    // Usando um som de "ding" mais confiável e curto
     notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     notificationSound.current.load();
 
     const unlockAudio = () => {
       if (!audioUnlocked.current && notificationSound.current) {
-        // Tenta tocar e pausar imediatamente para ganhar permissão do navegador
         const playPromise = notificationSound.current.play();
         if (playPromise !== undefined) {
           playPromise.then(() => {
             notificationSound.current?.pause();
             if (notificationSound.current) notificationSound.current.currentTime = 0;
             audioUnlocked.current = true;
-            console.log("Audio Unlocked Success");
-          }).catch(e => {
-            console.log("Audio Unlock failed, waiting for user interaction:", e);
-          });
+          }).catch(() => {});
         }
       }
     };
@@ -99,7 +123,6 @@ const App: React.FC = () => {
             const dbT = tableRes.data.find(dt => dt.id === t.id);
             return dbT ? { id: dbT.id, status: dbT.status, currentOrder: dbT.current_order } : t;
           });
-          // Adiciona extras (IDs > 12 que não estão em INITIAL_TABLES)
           tableRes.data.forEach(dt => {
             if (!merged.find(m => m.id === dt.id)) {
               merged.push({ id: dt.id, status: dt.status, currentOrder: dt.current_order });
@@ -119,38 +142,26 @@ const App: React.FC = () => {
   useEffect(() => {
     fetchData();
     
-    // Canal único e persistente para todas as mudanças
     const channel = supabase.channel('dmoreira-live-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (payload) => {
         const newTable = payload.new as any;
         const oldTable = payload.old as any;
         
-        console.log("Realtime change detected in tables:", payload);
-
-        // Lógica de Alerta Sonoro
         if (newTable && newTable.status === 'occupied') {
-          // Só toca som se for um pedido novo (antes era livre ou não existia)
           const wasFree = !oldTable || oldTable.status === 'free';
-          
           if (wasFree) {
-            // Tenta tocar o som de alerta
             if (audioEnabled && notificationSound.current) {
               notificationSound.current.currentTime = 0;
-              notificationSound.current.play().catch(e => console.warn("Audio play blocked by browser:", e));
+              notificationSound.current.play().catch(() => {});
             }
-            
-            // Define o alerta visual
             setNewOrderAlert({ 
               id: newTable.id, 
               type: newTable.id >= 950 ? 'Balcão' : newTable.id >= 900 ? 'Entrega' : 'Mesa' 
             });
-            
-            // Remove o alerta após 15 segundos
             setTimeout(() => setNewOrderAlert(null), 15000);
           }
         }
         
-        // Atualização imediata do estado local das mesas para resposta "instantânea"
         setTables(currentTables => {
           const exists = currentTables.find(t => t.id === newTable.id);
           if (exists) {
@@ -160,14 +171,11 @@ const App: React.FC = () => {
           }
         });
 
-        // Opcional: Re-sincroniza tudo para garantir integridade
         fetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
-      .subscribe((status) => {
-        console.log("Realtime subscription status:", status);
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -176,11 +184,9 @@ const App: React.FC = () => {
 
   const handlePlaceOrder = async (order: Order) => {
     let targetId = order.tableId;
-    // Lógica para IDs de Entrega e Balcão
     if (targetId === -900 || targetId === -950) {
       const range = targetId === -900 ? [900, 949] : [950, 999];
       const free = tables.find(t => t.id >= range[0] && t.id <= range[1] && t.status === 'free');
-      // Se não achar livre, pega o próximo ID disponível no range
       targetId = free ? free.id : (Math.max(...tables.filter(t => t.id >= range[0] && t.id <= range[1]).map(t => t.id), range[0] - 1) + 1);
     }
     
@@ -191,12 +197,10 @@ const App: React.FC = () => {
     });
     
     if (error) {
-      console.error("Order error:", error);
       alert("Erro ao enviar pedido. Tente novamente.");
     } else {
       setCartItems([]);
       setIsCartOpen(false);
-      // O Realtime cuidará do resto
     }
   };
 
@@ -211,7 +215,6 @@ const App: React.FC = () => {
         <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 bg-white/10 px-3 py-1.5 rounded-full uppercase tracking-widest backdrop-blur-sm border border-black/5 hover:bg-white/20 transition-all">Painel</button>
       )}
 
-      {/* Alerta Visual de Novo Pedido (Global) */}
       {isAdmin && isLoggedIn && newOrderAlert && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-md px-6 animate-in slide-in-from-top duration-700">
           <div className="bg-black text-white p-6 rounded-[3rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.5)] border-4 border-yellow-400 flex items-center gap-5 ring-8 ring-black/10">
@@ -237,8 +240,7 @@ const App: React.FC = () => {
             tables={tables} menuItems={menuItems} categories={categories}
             audioEnabled={audioEnabled} onToggleAudio={() => setAudioEnabled(!audioEnabled)}
             onUpdateTable={async (id, status, ord) => { 
-              const { error } = await supabase.from('tables').upsert({ id, status, current_order: ord || null }); 
-              if (error) console.error(error);
+              await supabase.from('tables').upsert({ id, status, current_order: ord || null }); 
               fetchData(); 
             }}
             onAddToOrder={(tableId, product) => {
@@ -254,7 +256,7 @@ const App: React.FC = () => {
                 const newOrd: Order = {
                   id: Math.random().toString(36).substr(2, 6).toUpperCase(),
                   customerName: tableId >= 900 ? (tableId >= 950 ? 'Pedido Balcão' : 'Pedido Entrega') : `Mesa ${tableId}`,
-                  items: items, total, finalTotal: total, paymentMethod: 'Pendente',
+                  items, total, finalTotal: total, paymentMethod: 'Pendente',
                   timestamp: new Date().toISOString(), tableId, status: 'pending',
                   orderType: tableId >= 900 ? (tableId >= 950 ? 'counter' : 'delivery') : 'table'
                 };
@@ -264,7 +266,11 @@ const App: React.FC = () => {
               }
             }}
             onRefreshData={fetchData} 
-            onLogout={async () => { await supabase.auth.signOut(); setIsLoggedIn(false); setIsAdmin(false); }}
+            onLogout={async () => { 
+              await supabase.auth.signOut(); 
+              setIsLoggedIn(false); 
+              setIsAdmin(false); 
+            }}
             onSaveProduct={async (p) => { 
               const data = { name: p.name, price: p.price, category: p.category, description: p.description, image: p.image, is_available: p.isAvailable };
               if (p.id) await supabase.from('products').update(data).eq('id', p.id);
@@ -305,10 +311,9 @@ const App: React.FC = () => {
                 setIsLoggedIn(true); 
                 setIsAdmin(true); 
                 setShowLogin(false);
-                // Pré-carrega os dados para garantir sincronia imediata após login
                 fetchData();
               }
-              else alert('Credenciais inválidas. Verifique seu acesso.');
+              else alert('Credenciais inválidas.');
               setIsLoadingLogin(false);
             }} className="space-y-4">
               <input type="email" placeholder="E-MAIL DE ACESSO" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none focus:border-yellow-400 transition-all uppercase" required />
@@ -316,7 +321,7 @@ const App: React.FC = () => {
               <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase text-[10px] tracking-widest shadow-xl hover:brightness-110 active:scale-95 transition-all">
                 {isLoadingLogin ? 'Autenticando...' : 'Acessar Painel'}
               </button>
-              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4 hover:text-black transition-colors">Voltar ao Cardápio</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-4 hover:text-black transition-colors">Voltar</button>
             </form>
           </div>
         </div>
