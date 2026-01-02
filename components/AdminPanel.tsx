@@ -31,6 +31,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const physicalTables = tables.filter(t => t.id <= 12).sort((a,b) => a.id - b.id);
   const deliveryTables = tables.filter(t => t.id >= 900).sort((a,b) => a.id - b.id);
@@ -63,7 +64,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </head>
         <body>
           <div class="center title">${STORE_INFO.name.toUpperCase()}</div>
-          <div class="center" style="font-size: 10px;">${STORE_INFO.slogan}</div>
           <div class="line"></div>
           <div class="bold">PEDIDO: #${order.id}</div>
           <div style="font-size: 10px;">DATA: ${date}</div>
@@ -91,11 +91,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!name || isSaving) return;
     
     setIsSaving(true);
+    setSyncError(null);
     try {
       const { error } = await supabase.from('categories').insert([{ name }]);
       if (error) {
-        if (error.message.includes('schema cache')) {
-          alert('⚠️ ERRO DE SINCRONIZAÇÃO:\nO Supabase ainda não reconheceu a tabela no cache.\n\nSOLUÇÃO:\nVá ao SQL Editor no painel do Supabase e execute:\nNOTIFY pgrst, \'reload schema\';');
+        if (error.message.includes('schema cache') || error.code === 'PGRST104' || error.message.includes('not found')) {
+          setSyncError('ERRO DE CACHE: A tabela "categories" não foi reconhecida pelo Supabase.');
         } else {
           alert('Erro ao salvar categoria: ' + error.message);
         }
@@ -125,7 +126,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="text-center md:text-left">
             <h2 className="text-3xl font-black italic text-yellow-400 leading-none mb-1">D.MOREIRA ADMIN</h2>
-            <p className="text-gray-500 font-bold text-[8px] uppercase tracking-[0.3em]">Gerenciamento em Tempo Real</p>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${dbStatus === 'ok' ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></span>
+              <p className="text-gray-500 font-bold text-[8px] uppercase tracking-[0.3em]">
+                {dbStatus === 'ok' ? 'Conectado ao Banco' : 'Erro de Sincronização'}
+              </p>
+            </div>
           </div>
           
           <nav className="flex flex-wrap justify-center gap-1.5 p-1 bg-gray-900 rounded-2xl">
@@ -170,6 +176,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'categories' && (
           <div className="bg-white p-10 rounded-[3rem] shadow-xl max-w-xl mx-auto border border-gray-50">
             <h3 className="text-2xl font-black italic mb-6">Categorias do Menu</h3>
+            
+            {syncError && (
+              <div className="bg-red-50 border-2 border-red-100 p-6 rounded-3xl mb-8 animate-in fade-in zoom-in duration-300">
+                <p className="text-red-600 font-black text-[10px] uppercase mb-2">⚠️ Atenção</p>
+                <p className="text-red-500 text-xs font-bold leading-relaxed mb-4">
+                  {syncError}
+                </p>
+                <div className="bg-white p-4 rounded-2xl border border-red-100">
+                   <p className="text-[9px] font-black text-gray-400 uppercase mb-2 tracking-widest">Execute no SQL Editor:</p>
+                   <code className="block bg-gray-900 text-yellow-400 p-3 rounded-lg text-[10px] font-mono select-all">NOTIFY pgrst, 'reload schema';</code>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleAddCategory} className="flex gap-2 mb-8">
               <input 
                 type="text" 
@@ -189,6 +209,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   <button onClick={() => { if(confirm('Excluir?')) supabase.from('categories').delete().eq('id', cat.id).then(() => onRefreshData()); }} className="p-2 text-red-400 hover:text-red-600 transition-colors"><TrashIcon/></button>
                 </div>
               ))}
+              {categories.length === 0 && (
+                <div className="text-center py-10">
+                   <p className="text-gray-300 font-black text-[10px] uppercase tracking-widest italic">Nenhuma categoria ativa</p>
+                </div>
+              )}
             </div>
           </div>
         )}

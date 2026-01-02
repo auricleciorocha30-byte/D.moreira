@@ -48,17 +48,19 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      // Fetch Categories
+      // Fetch Categories - Silently handle cache errors
       const { data: catData, error: cError } = await supabase.from('categories').select('*').order('name');
       if (!cError && catData && catData.length > 0) {
         setCategories(catData);
-      } else if (cError?.code === '42P01') {
+      } else if (cError?.code === '42P01' || cError?.code === 'PGRST104') {
+        // Se a tabela não existe ou erro de cache, mantemos as categorias padrão para não quebrar a UI
+        console.warn("Categories table issue:", cError.message);
         setDbStatus('error_tables_missing');
       }
 
       // Fetch Products
-      const { data: prodData } = await supabase.from('products').select('*').order('name');
-      if (prodData && prodData.length > 0) {
+      const { data: prodData, error: pError } = await supabase.from('products').select('*').order('name');
+      if (!pError && prodData && prodData.length > 0) {
         setMenuItems(prodData.map(p => ({
           id: p.id,
           name: p.name,
@@ -74,8 +76,8 @@ const App: React.FC = () => {
       }
 
       // Fetch Tables
-      const { data: tData } = await supabase.from('tables').select('*').order('id');
-      if (tData) {
+      const { data: tData, error: tError } = await supabase.from('tables').select('*').order('id');
+      if (!tError && tData) {
         setTables(prev => {
           const updated = [...INITIAL_TABLES];
           let alertNew = false;
@@ -92,7 +94,7 @@ const App: React.FC = () => {
         });
       }
     } catch (err) {
-      console.warn("Fetch data issues (ignoring for UX):", err);
+      console.error("Fetch data issues:", err);
     }
   }, [isAdmin, playNotification]);
 
@@ -109,6 +111,12 @@ const App: React.FC = () => {
 
     fetchData();
 
+    // Re-tentar fetch se houver erro de cache (delay curto)
+    if (dbStatus === 'error_tables_missing') {
+      const timer = setTimeout(fetchData, 5000);
+      return () => clearTimeout(timer);
+    }
+
     const channel = supabase.channel('realtime_menu')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
@@ -119,7 +127,7 @@ const App: React.FC = () => {
       subscription.unsubscribe(); 
       supabase.removeChannel(channel); 
     };
-  }, [fetchData]);
+  }, [fetchData, dbStatus]);
 
   const handlePlaceOrder = async (order: any) => {
     let targetTableId = order.tableId;
@@ -238,7 +246,7 @@ const App: React.FC = () => {
 
       {showLogin && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
-          <div className="bg-white p-12 rounded-[3.5rem] w-full max-w-sm text-center shadow-2xl">
+          <div className="bg-white p-12 rounded-[3.5rem] w-full max-sm text-center shadow-2xl">
             <h2 className="text-3xl font-black mb-8 italic">Restrito</h2>
             <form onSubmit={async (e) => {
               e.preventDefault();
