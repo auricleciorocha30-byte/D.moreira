@@ -36,6 +36,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
   
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loyalty, setLoyalty] = useState<LoyaltyConfig>({ isActive: false, spendingGoal: 100, scopeType: 'all', scopeValue: '' });
@@ -73,6 +75,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     });
     if (error) alert('Erro: ' + error.message);
     fetchMarketing();
+  };
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    const { error } = await supabase.from('categories').insert([{ 
+      id: 'cat_' + Date.now(), 
+      name: newCategoryName.trim() 
+    }]);
+    if (error) alert('Erro ao adicionar categoria: ' + error.message);
+    else {
+      setNewCategoryName('');
+      setIsCategoryModalOpen(false);
+      onRefreshData();
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    if (!confirm('Deseja excluir esta categoria? Os produtos vinculados a ela permanecerão, mas a categoria sumirá do filtro.')) return;
+    const { error } = await supabase.from('categories').delete().eq('id', id);
+    if (error) alert('Erro ao excluir: ' + error.message);
+    else onRefreshData();
   };
 
   const handlePrint = (order: Order) => {
@@ -123,36 +147,65 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'delivery' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {activeDeliveries.length > 0 ? activeDeliveries.map(t => (
-              <button key={t.id} onClick={() => setSelectedTableId(t.id)} className="bg-white border-2 border-yellow-400 p-6 rounded-[2.5rem] shadow-xl text-left hover:brightness-105 transition-all">
-                <div className="flex justify-between items-start mb-4"><span className="text-2xl">{t.id >= 950 ? '🏪' : '🚚'}</span><span className="bg-yellow-100 text-[9px] font-black px-2 py-1 rounded-full uppercase">#{t.id}</span></div>
+              <button key={t.id} onClick={() => setSelectedTableId(t.id)} className="bg-white border-2 border-yellow-400 p-6 rounded-[2.5rem] shadow-xl text-left hover:brightness-105 transition-all relative overflow-hidden">
+                <div className={`absolute top-0 right-0 px-4 py-2 text-[8px] font-black uppercase ${t.id >= 950 ? 'bg-purple-600 text-white' : 'bg-orange-600 text-white'}`}>
+                  {t.id >= 950 ? 'Balcão' : 'Entrega'}
+                </div>
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-2xl">{t.id >= 950 ? '🏪' : '🚚'}</span>
+                  <span className="bg-yellow-100 text-[9px] font-black px-2 py-1 rounded-full uppercase">#{t.id}</span>
+                </div>
                 <h4 className="font-black text-sm uppercase truncate">{t.currentOrder?.customerName}</h4>
-                <p className="text-[9px] text-gray-400 font-bold truncate mb-3">{t.currentOrder?.address || 'Retirada'}</p>
-                <div className={`${STATUS_CFG[t.currentOrder?.status || 'pending'].bg} ${STATUS_CFG[t.currentOrder?.status || 'pending'].color} text-[8px] font-black px-3 py-1.5 rounded-full inline-block uppercase`}>{STATUS_CFG[t.currentOrder?.status || 'pending'].label}</div>
+                <p className="text-[9px] text-gray-400 font-bold truncate mb-1">{t.currentOrder?.customerPhone || 'Sem telefone'}</p>
+                <p className="text-[9px] text-gray-500 font-bold truncate mb-3">{t.id < 950 ? (t.currentOrder?.address || 'Sem endereço') : 'Retirada no Balcão'}</p>
+                <div className={`${STATUS_CFG[t.currentOrder?.status || 'pending'].bg} ${STATUS_CFG[t.currentOrder?.status || 'pending'].color} text-[8px] font-black px-3 py-1.5 rounded-full inline-block uppercase`}>
+                  {STATUS_CFG[t.currentOrder?.status || 'pending'].label}
+                </div>
               </button>
             )) : <div className="col-span-full py-20 text-center opacity-30 font-black uppercase text-xs">Sem pedidos ativos</div>}
           </div>
         )}
 
         {activeTab === 'menu' && (
-          <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-50">
-            <div className="flex justify-between items-center mb-10 gap-6">
-              <h3 className="text-2xl font-black italic uppercase">Produtos</h3>
-              <div className="flex gap-4">
-                <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="PESQUISAR..." className="bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none" />
-                <button onClick={() => { setEditingProduct({ name: '', price: '', category: categories[0]?.name, image: '', isAvailable: true }); setIsProductModalOpen(true); }} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl">+ Novo</button>
+          <div className="space-y-8">
+            <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-50">
+              <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
+                <h3 className="text-2xl font-black italic uppercase">Categorias</h3>
+                <button onClick={() => setIsCategoryModalOpen(true)} className="bg-yellow-400 text-black px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-lg hover:brightness-110 transition-all">+ Nova Categoria</button>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {categories.map(cat => (
+                  <div key={cat.id} className="bg-gray-50 px-6 py-4 rounded-2xl border flex items-center gap-4 group">
+                    <span className="font-black text-[10px] uppercase tracking-wider">{cat.name}</span>
+                    <button onClick={() => handleDeleteCategory(cat.id)} className="text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"><TrashIcon size={14}/></button>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-6">
-              {filteredMenu.map(item => (
-                <div key={item.id} className="bg-gray-50 p-4 rounded-[2.5rem] border hover:border-yellow-400 transition-all">
-                  <img src={item.image} className="w-full aspect-square object-cover rounded-3xl mb-4" />
-                  <h4 className="font-black text-[10px] uppercase truncate">{item.name}</h4>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-yellow-700 font-black italic text-xs">R$ {item.price.toFixed(2)}</span>
-                    <div className="flex gap-1"><button onClick={() => { setEditingProduct(item); setIsProductModalOpen(true); }} className="p-2 bg-white text-blue-500 rounded-xl shadow-sm"><PrinterIcon size={14}/></button><button onClick={() => onDeleteProduct(item.id)} className="p-2 bg-white text-red-500 rounded-xl shadow-sm"><TrashIcon size={14}/></button></div>
-                  </div>
+
+            <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-50">
+              <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
+                <h3 className="text-2xl font-black italic uppercase">Produtos</h3>
+                <div className="flex gap-4 w-full md:w-auto">
+                  <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="PESQUISAR..." className="flex-1 md:w-64 bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none" />
+                  <button onClick={() => { setEditingProduct({ name: '', price: '', category: categories[0]?.name, image: '', isAvailable: true }); setIsProductModalOpen(true); }} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl">+ Novo Produto</button>
                 </div>
-              ))}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-6">
+                {filteredMenu.map(item => (
+                  <div key={item.id} className="bg-gray-50 p-4 rounded-[2.5rem] border hover:border-yellow-400 transition-all">
+                    <img src={item.image} className="w-full aspect-square object-cover rounded-3xl mb-4" />
+                    <h4 className="font-black text-[10px] uppercase truncate">{item.name}</h4>
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-yellow-700 font-black italic text-xs">R$ {item.price.toFixed(2)}</span>
+                      <div className="flex gap-1">
+                        <button onClick={() => { setEditingProduct(item); setIsProductModalOpen(true); }} className="p-2 bg-white text-blue-500 rounded-xl shadow-sm"><PrinterIcon size={14}/></button>
+                        <button onClick={() => onDeleteProduct(item.id)} className="p-2 bg-white text-red-500 rounded-xl shadow-sm"><TrashIcon size={14}/></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -213,7 +266,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
           <div className="relative bg-white w-full max-w-4xl h-[85vh] rounded-[3.5rem] flex flex-col overflow-hidden shadow-2xl border-t-8 border-yellow-400">
             <div className="p-8 border-b flex justify-between items-center bg-white sticky top-0 z-10">
-              <div><h3 className="text-3xl font-black uppercase italic tracking-tighter leading-none">{selectedTable.id >= 900 ? 'Pedido Externo' : `Mesa ${selectedTable.id}`}</h3><p className="text-[11px] font-black text-gray-400 mt-2 uppercase tracking-widest">{selectedTable.currentOrder?.customerName} • {selectedTable.currentOrder?.paymentMethod}</p></div>
+              <div>
+                <h3 className="text-3xl font-black uppercase italic tracking-tighter leading-none">
+                  {selectedTable.id >= 950 ? 'Retirada Balcão' : selectedTable.id >= 900 ? 'Entrega Domicílio' : `Mesa ${selectedTable.id}`}
+                </h3>
+                <p className="text-[11px] font-black text-gray-400 mt-2 uppercase tracking-widest">
+                  {selectedTable.currentOrder?.customerName} • {selectedTable.currentOrder?.paymentMethod} • {selectedTable.currentOrder?.customerPhone || 'S/ Tel'}
+                </p>
+                {selectedTable.id >= 900 && selectedTable.id < 950 && (
+                  <div className="mt-2 bg-orange-50 p-4 rounded-2xl border border-orange-100">
+                    <p className="text-[9px] font-black text-orange-800 uppercase tracking-widest mb-1">Endereço de Entrega:</p>
+                    <p className="text-xs font-bold text-gray-600 italic">{selectedTable.currentOrder?.address || 'Não informado'}</p>
+                  </div>
+                )}
+              </div>
               <div className="flex gap-3"><button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-4 bg-gray-100 rounded-full hover:bg-yellow-400 transition-all shadow-sm"><PrinterIcon size={24}/></button><button onClick={() => setSelectedTableId(null)} className="p-4 bg-gray-100 rounded-full hover:bg-red-50 transition-all shadow-sm"><CloseIcon size={24}/></button></div>
             </div>
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
@@ -244,6 +310,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
+          <div className="bg-white w-full max-w-md rounded-[3.5rem] p-10 relative shadow-2xl animate-in zoom-in duration-300">
+             <button onClick={() => setIsCategoryModalOpen(false)} className="absolute top-8 right-8 p-4 bg-gray-100 rounded-full"><CloseIcon size={20}/></button>
+             <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">Nova Categoria</h3>
+             <form onSubmit={handleAddCategory} className="space-y-6">
+                <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="NOME DA CATEGORIA (Ex: Bebidas)" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-5 text-sm font-black outline-none transition-all uppercase" required />
+                <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-2xl font-black text-sm uppercase shadow-xl hover:brightness-125 transition-all">Criar Categoria</button>
+             </form>
           </div>
         </div>
       )}
