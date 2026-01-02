@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Table, Order, Product, Category, CartItem } from '../types';
+import { Table, Order, Product, Category, CartItem, OrderStatus } from '../types';
 import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon } from './Icons';
 import { supabase } from '../lib/supabase';
 import { STORE_INFO } from '../constants';
@@ -19,6 +19,13 @@ interface AdminPanelProps {
   onDeleteProduct: (id: string) => void;
   dbStatus: 'loading' | 'ok' | 'error_tables_missing';
 }
+
+const STATUS_CONFIG: Record<OrderStatus, { label: string, color: string, bg: string }> = {
+  'pending': { label: 'Pendente', color: 'text-orange-600', bg: 'bg-orange-100' },
+  'preparing': { label: 'Preparando', color: 'text-blue-600', bg: 'bg-blue-100' },
+  'ready': { label: 'Pronto', color: 'text-green-600', bg: 'bg-green-100' },
+  'delivered': { label: 'Entregue', color: 'text-gray-600', bg: 'bg-gray-100' }
+};
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
   tables, menuItems, categories, audioEnabled, onToggleAudio, 
@@ -41,6 +48,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const physicalTables = tables.filter(t => t.id <= 12).sort((a,b) => a.id - b.id);
   const deliveryTables = tables.filter(t => t.id >= 900).sort((a,b) => a.id - b.id);
   const selectedTable = useMemo(() => tables.find(t => t.id === selectedTableId) || null, [tables, selectedTableId]);
+
+  const handleUpdateOrderStatus = async (status: OrderStatus) => {
+    if (!selectedTable || !selectedTable.currentOrder) return;
+    
+    const updatedOrder = { ...selectedTable.currentOrder, status };
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('tables')
+        .update({ current_order: updatedOrder })
+        .eq('id', selectedTable.id);
+      
+      if (error) throw error;
+      onRefreshData();
+    } catch (err: any) {
+      alert('Erro ao atualizar status: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handlePrint = (order: Order) => {
     const printWindow = window.open('', '_blank', 'width=300,height=600');
@@ -202,21 +229,31 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       <div className="transition-all duration-500">
         {(activeTab === 'tables' || activeTab === 'delivery') && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5">
-            {(activeTab === 'tables' ? physicalTables : deliveryTables).map(t => (
-              <button 
-                key={t.id} 
-                onClick={() => setSelectedTableId(t.id)}
-                className={`h-44 p-6 rounded-[2rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400 shadow-sm' : 'bg-yellow-400 border-black shadow-xl ring-4 ring-yellow-400/20'}`}
-              >
-                <span className="text-4xl font-black italic text-black">{t.id >= 900 ? (t.id === 900 ? '🚚' : '🛍️') : t.id}</span>
-                <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>
-                  {t.status === 'free' ? 'Livre' : 'Ocupada'}
-                </span>
-                {t.status === 'occupied' && (
-                  <span className="text-[11px] font-black mt-1 text-black bg-white/40 px-2 py-0.5 rounded-md">R$ {t.currentOrder?.total.toFixed(2)}</span>
-                )}
-              </button>
-            ))}
+            {(activeTab === 'tables' ? physicalTables : deliveryTables).map(t => {
+              const statusCfg = t.currentOrder ? STATUS_CONFIG[t.currentOrder.status || 'preparing'] : null;
+              return (
+                <button 
+                  key={t.id} 
+                  onClick={() => setSelectedTableId(t.id)}
+                  className={`h-48 p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400 shadow-sm' : 'bg-yellow-400 border-black shadow-xl ring-4 ring-yellow-400/20'}`}
+                >
+                  <span className="text-4xl font-black italic text-black">{t.id >= 900 ? (t.id === 900 ? '🚚' : '🛍️') : t.id}</span>
+                  <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>
+                    {t.status === 'free' ? 'Livre' : 'Ocupada'}
+                  </span>
+                  {t.status === 'occupied' && (
+                    <div className="flex flex-col items-center gap-1 mt-1">
+                      <span className="text-[11px] font-black text-black bg-white/40 px-2 py-0.5 rounded-md">R$ {t.currentOrder?.total.toFixed(2)}</span>
+                      {statusCfg && (
+                        <span className={`text-[7px] font-black uppercase px-2 py-0.5 rounded-full border border-black/10 ${statusCfg.bg} ${statusCfg.color}`}>
+                          {statusCfg.label}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -316,7 +353,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                <div className="flex justify-between items-start mb-8">
                  <div>
                    <h3 className="text-4xl font-black italic tracking-tighter">Local {selectedTable.id >= 900 ? (selectedTable.id === 900 ? 'Entrega' : 'Balcão') : selectedTable.id}</h3>
-                   <span className="text-[9px] font-black uppercase text-gray-400">Status: {selectedTable.status === 'free' ? 'Livre' : 'Ocupada'}</span>
+                   <div className="flex items-center gap-2 mt-1">
+                     <span className="text-[9px] font-black uppercase text-gray-400">Cliente: {selectedTable.currentOrder?.customerName || 'N/A'}</span>
+                     <span className="text-gray-300">|</span>
+                     <span className="text-[9px] font-black uppercase text-gray-400">Status: {selectedTable.status === 'free' ? 'Livre' : 'Ocupada'}</span>
+                   </div>
                  </div>
                  <div className="flex gap-2">
                    {selectedTable.status === 'occupied' && selectedTable.currentOrder && (
@@ -327,6 +368,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                    <button onClick={() => setSelectedTableId(null)} className="p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={24} /></button>
                  </div>
                </div>
+
+               {/* Status Control Bar */}
+               {selectedTable.status === 'occupied' && selectedTable.currentOrder && (
+                 <div className="bg-gray-50 p-2 rounded-2xl mb-8 flex gap-1">
+                   {(['preparing', 'ready', 'delivered'] as OrderStatus[]).map(s => {
+                     const isActive = selectedTable.currentOrder?.status === s;
+                     const cfg = STATUS_CONFIG[s];
+                     return (
+                       <button 
+                        key={s} 
+                        disabled={isSaving}
+                        onClick={() => handleUpdateOrderStatus(s)}
+                        className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${isActive ? 'bg-black text-yellow-400 shadow-lg' : 'text-gray-400 hover:bg-gray-200'}`}
+                       >
+                         {cfg.label}
+                       </button>
+                     );
+                   })}
+                 </div>
+               )}
 
                <div className="flex-1 space-y-3 mb-8">
                  {selectedTable.currentOrder?.items.map((item, idx) => (
@@ -345,7 +406,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <button onClick={() => setSelectedTableId(null)} className="bg-gray-100 text-black py-5 rounded-2xl font-black uppercase text-[10px]">Continuar</button>
-                      <button onClick={() => { if(confirm('Fechar conta?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-lg">Finalizar</button>
+                      <button onClick={() => { if(confirm('Fechar conta e liberar mesa?')) onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-lg">Finalizar e Limpar</button>
                     </div>
                  </div>
                )}
