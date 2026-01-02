@@ -54,7 +54,7 @@ const App: React.FC = () => {
           id: p.id, name: p.name, description: p.description || '', price: Number(p.price),
           category: p.category, image: p.image, isAvailable: p.is_available ?? true
         })));
-      } else {
+      } else if (prodData && prodData.length === 0) {
         setMenuItems(STATIC_MENU);
       }
 
@@ -87,6 +87,7 @@ const App: React.FC = () => {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'coupons' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchData)
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -111,8 +112,8 @@ const App: React.FC = () => {
     }
   };
 
-  const categoryNames = useMemo(() => ['Todos', ...categories.map(c => c.name)], [categories]);
-  const filteredItems = useMemo(() => menuItems.filter(i => selectedCategory === 'Todos' || i.category === selectedCategory), [menuItems, selectedCategory]);
+  const categoryNames = useMemo(() => ['Todos', ...(categories || []).map(c => c.name)], [categories]);
+  const filteredItems = useMemo(() => (menuItems || []).filter(i => selectedCategory === 'Todos' || i.category === selectedCategory), [menuItems, selectedCategory]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans relative">
@@ -139,10 +140,10 @@ const App: React.FC = () => {
               audioEnabled={audioEnabled} onToggleAudio={() => setAudioEnabled(!audioEnabled)}
               onUpdateTable={async (id, status, ord) => { await supabase.from('tables').upsert({ id, status, current_order: ord || null }); fetchData(); }}
               onAddToOrder={(tableId, product) => {
-                const table = tables.find(t => t.id === tableId);
+                const table = (tables || []).find(t => t.id === tableId);
                 const current = table?.currentOrder;
                 if (current) {
-                  const items = [...current.items];
+                  const items = [...(current.items || [])];
                   const ex = items.findIndex(i => i.id === product.id);
                   if (ex >= 0) items[ex].quantity += 1;
                   else items.push({ ...product, quantity: 1 });
@@ -183,7 +184,7 @@ const App: React.FC = () => {
 
       {showLogin && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
-          <div className="bg-white p-10 rounded-[3.5rem] w-full max-w-sm text-center shadow-2xl">
+          <div className="bg-white p-10 rounded-[3.5rem] w-full max-sm text-center shadow-2xl">
             <h2 className="text-2xl font-black mb-8 italic uppercase tracking-tighter">Acesso Restrito</h2>
             <form onSubmit={async (e) => {
               e.preventDefault(); setIsLoadingLogin(true);

@@ -28,7 +28,7 @@ const STATUS_CFG: Record<string, any> = {
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
-  tables, menuItems, categories, audioEnabled, onToggleAudio, 
+  tables = [], menuItems = [], categories = [], audioEnabled, onToggleAudio, 
   onUpdateTable, onRefreshData, onLogout, onSaveProduct, onDeleteProduct, dbStatus, onAddToOrder 
 }) => {
   const [activeTab, setActiveTab] = useState<'tables' | 'delivery' | 'menu' | 'marketing'>('tables');
@@ -124,7 +124,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!newOrderForm.customerName) return alert('Informe o nome do cliente');
     
     const range = newOrderForm.type === 'delivery' ? [900, 949] : [950, 999];
-    const free = tables.find(t => t.id >= range[0] && t.id <= range[1] && t.status === 'free');
+    const free = (tables || []).find(t => t.id >= range[0] && t.id <= range[1] && t.status === 'free');
     
     if (!free) return alert('Limite de pedidos simultâneos atingido para este tipo.');
 
@@ -182,15 +182,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const handlePrint = (order: Order) => {
     const w = window.open('', '_blank');
     if (!w) return;
-    const items = order.items.map(i => `<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span>${i.quantity}x ${i.name}</span><span>R$ ${(i.price*i.quantity).toFixed(2)}</span></div>`).join('');
+    const items = (order.items || []).map(i => `<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span>${i.quantity}x ${i.name}</span><span>R$ ${(i.price*i.quantity).toFixed(2)}</span></div>`).join('');
     w.document.write(`<html><body style="font-family:monospace;width:280px;padding:10px;"><h2 style="text-align:center;">${STORE_INFO.name}</h2><p style="text-align:center;">Pedido #${order.id}</p><hr/>${items}<hr/><div style="display:flex;justify-content:space-between;font-weight:bold;"><span>TOTAL:</span><span>R$ ${order.finalTotal.toFixed(2)}</span></div><script>window.onload=()=>{window.print();window.close();};</script></body></html>`);
     w.document.close();
   };
 
-  const physicalTables = tables.filter(t => t.id <= 12).sort((a,b) => a.id - b.id);
-  const activeDeliveries = tables.filter(t => t.id >= 900 && t.id <= 999 && t.status === 'occupied');
-  const selectedTable = tables.find(t => t.id === selectedTableId) || null;
-  const filteredMenu = menuItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const physicalTables = (tables || []).filter(t => t.id <= 12).sort((a,b) => a.id - b.id);
+  const activeDeliveries = (tables || []).filter(t => t.id >= 900 && t.id <= 999 && t.status === 'occupied');
+  const selectedTable = (tables || []).find(t => t.id === selectedTableId) || null;
+  const filteredMenu = (menuItems || []).filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="w-full">
@@ -271,7 +271,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <button onClick={() => setIsCategoryModalOpen(true)} className="bg-yellow-400 text-black px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-lg hover:brightness-110 transition-all">+ Nova Categoria</button>
               </div>
               <div className="flex flex-wrap gap-3">
-                {categories.map(cat => (
+                {categories?.map(cat => (
                   <div key={cat.id} className="bg-gray-50 px-6 py-4 rounded-2xl border flex items-center gap-4 group">
                     <span className="font-black text-[10px] uppercase tracking-wider">{cat.name}</span>
                     <button onClick={() => handleDeleteCategory(cat.id)} className="text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100">
@@ -287,11 +287,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <h3 className="text-2xl font-black italic uppercase">Produtos</h3>
                 <div className="flex gap-4 w-full md:w-auto">
                   <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="PESQUISAR..." className="flex-1 md:w-64 bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none" />
-                  <button onClick={() => { setEditingProduct({ name: '', price: '', category: categories[0]?.name, image: '', isAvailable: true }); setIsProductModalOpen(true); }} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl">+ Novo Produto</button>
+                  <button onClick={() => { setEditingProduct({ name: '', price: '', category: (categories?.[0]?.name || ''), image: '', isAvailable: true }); setIsProductModalOpen(true); }} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl">+ Novo Produto</button>
                 </div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-6">
-                {filteredMenu.map(item => (
+                {filteredMenu?.map(item => (
                   <div key={item.id} className="bg-gray-50 p-4 rounded-[2.5rem] border hover:border-yellow-400 transition-all">
                     <img src={item.image} className="w-full aspect-square object-cover rounded-3xl mb-4" />
                     <h4 className="font-black text-[10px] uppercase truncate">{item.name}</h4>
@@ -322,7 +322,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="space-y-1"><p className="text-[8px] font-black uppercase text-yellow-800 ml-1">Selecionar {loyalty.scopeType === 'category' ? 'Categoria' : 'Produto'}</p>
                           <select value={loyalty.scopeValue} onChange={e => handleUpdateLoyalty({ scopeValue: e.target.value })} className="w-full bg-white p-4 rounded-xl border-2 border-yellow-200 font-black text-[10px] uppercase outline-none">
                             <option value="">Selecione...</option>
-                            {loyalty.scopeType === 'category' ? categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>) : menuItems.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            {loyalty.scopeType === 'category' ? categories?.map(c => <option key={c.id} value={c.name}>{c.name}</option>) : menuItems?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                           </select>
                         </div>
                       )}
@@ -331,7 +331,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
               <div className="flex-1 space-y-3 overflow-y-auto max-h-80">
                 <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Clientes no Programa</h4>
-                {loyaltyUsers.map((u, i) => (
+                {loyaltyUsers?.map((u, i) => (
                   <div key={u.phone} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border-l-8 border-yellow-400 shadow-sm"><div className="flex items-center gap-4"><span className="w-6 h-6 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[10px] font-black">{i+1}</span><div><p className="font-black text-xs uppercase">{u.name}</p><p className="text-[9px] text-gray-400 font-bold">{u.phone}</p></div></div><span className="text-yellow-700 font-black italic text-xs">R$ {u.accumulated.toFixed(2)}</span></div>
                 ))}
               </div>
@@ -353,20 +353,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   {newCouponForm.scopeType !== 'all' && (
                     <select value={newCouponForm.scopeValue} onChange={e => setNewCouponForm({...newCouponForm, scopeValue: e.target.value})} className="bg-white p-4 rounded-xl font-black text-[10px] uppercase outline-none shadow-sm" required>
                       <option value="">Selecionar...</option>
-                      {newCouponForm.scopeType === 'category' ? categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>) : menuItems.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      {newCouponForm.scopeType === 'category' ? categories?.map(c => <option key={c.id} value={c.name}>{c.name}</option>) : menuItems?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                   )}
                 </div>
                 <button type="submit" className="col-span-2 bg-black text-yellow-400 py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">Criar Cupom</button>
               </form>
               <div className="flex-1 space-y-3 overflow-y-auto max-h-80">
-                {coupons.map(c => (
+                {coupons?.map(c => (
                   <div key={c.id} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border border-gray-100 group">
                     <div>
                       <span className="font-black text-sm">{c.code}</span>
                       <span className="bg-yellow-400 text-black px-2 py-0.5 rounded text-[10px] font-black ml-2">{c.percentage}%</span>
                       <p className="text-[8px] font-black uppercase text-gray-400 mt-1">
-                        {c.scopeType === 'all' ? 'Toda Loja' : c.scopeType === 'category' ? `Cat: ${c.scopeValue}` : `Item: ${menuItems.find(p=>p.id===c.scopeValue)?.name || c.scopeValue}`}
+                        {c.scopeType === 'all' ? 'Toda Loja' : c.scopeType === 'category' ? `Cat: ${c.scopeValue}` : `Item: ${menuItems?.find(p=>p.id===c.scopeValue)?.name || c.scopeValue}`}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -385,7 +385,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </div>
 
-      {/* Modais de Gerenciamento permanecem os mesmos conforme última versão funcional */}
+      {/* Modal de Detalhes do Pedido Selecionado */}
       {selectedTable && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
@@ -409,9 +409,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                <div className="flex-1 p-8 overflow-y-auto space-y-4">
-                  {selectedTable.currentOrder?.items.map((item, i) => (
+                  {selectedTable.currentOrder?.items?.map((item, i) => (
                     <div key={i} className="flex gap-6 bg-gray-50 p-6 rounded-3xl border border-gray-100 items-center"><img src={item.image} className="w-16 h-16 rounded-2xl object-cover shadow-sm" /><div className="flex-1 font-black"><h4 className="text-sm uppercase leading-tight">{item.name}</h4><p className="text-[10px] text-gray-400 mt-1 uppercase">{item.category}</p></div><div className="text-right font-black"><p className="text-xs text-gray-400">{item.quantity}x R$ {item.price.toFixed(2)}</p><p className="text-lg italic">R$ {(item.price*item.quantity).toFixed(2)}</p></div></div>
                   ))}
+                  {(!selectedTable.currentOrder?.items || selectedTable.currentOrder.items.length === 0) && (
+                    <div className="text-center py-20 opacity-20 font-black uppercase text-xs">Vazio. Adicione itens ao lado.</div>
+                  )}
                   <div className="pt-10 border-t-2 border-dashed mt-10">
                     <div className="flex justify-between items-end mb-8"><div className="flex flex-col font-black"><span className="text-[10px] uppercase text-gray-400 tracking-[0.2em] mb-1">Total Final</span><span className="text-5xl italic tracking-tighter">R$ {selectedTable.currentOrder?.finalTotal.toFixed(2).replace('.', ',')}</span></div></div>
                     <div className="grid grid-cols-2 gap-4">
@@ -429,7 +432,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                   <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-6">Adicionar Item</h4>
                   <div className="space-y-2">
-                    {menuItems.filter(p => p.isAvailable).map(p => (
+                    {menuItems?.filter(p => p.isAvailable).map(p => (
                       <button key={p.id} onClick={() => onAddToOrder(selectedTable.id, p)} className="w-full bg-white p-4 rounded-2xl border border-gray-200 flex justify-between items-center text-[10px] font-black uppercase hover:border-yellow-400 transition-all"><span>{p.name}</span><span className="text-yellow-600 text-xl">+</span></button>
                     ))}
                   </div>
@@ -497,7 +500,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="grid grid-cols-2 gap-6">
                     <input type="number" step="0.01" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} placeholder="PREÇO" className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-sm font-black outline-none" required />
                     <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-sm font-black outline-none uppercase">
-                      {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
+                      {categories?.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
                     </select>
                 </div>
                 <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} placeholder="URL DA IMAGEM" className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-xs font-bold outline-none" />
