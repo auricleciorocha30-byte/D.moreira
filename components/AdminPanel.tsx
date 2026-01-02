@@ -116,16 +116,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     <div className="w-full">
       <div className="bg-black p-6 rounded-[2.5rem] shadow-2xl mb-8 border-b-4 border-yellow-400 flex flex-col md:flex-row justify-between items-center gap-6">
         <div>
-          <h2 className="text-2xl font-black italic text-yellow-400 uppercase tracking-tighter">D.MOREIRA ADMIN</h2>
-          <div className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${dbStatus === 'ok' ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></span><p className="text-[8px] text-gray-500 uppercase font-black">{dbStatus === 'ok' ? 'Online' : 'Sincronizando...'}</p></div>
+          <h2 className="text-2xl font-black italic text-yellow-400 uppercase tracking-tighter">{STORE_INFO.name} ADMIN</h2>
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${dbStatus === 'ok' ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></span>
+            <p className="text-[8px] text-gray-500 uppercase font-black">{dbStatus === 'ok' ? 'Online' : 'Sincronizando...'}</p>
+          </div>
         </div>
         <nav className="flex bg-gray-900 p-1.5 rounded-2xl gap-1">
           {(['tables', 'delivery', 'menu', 'marketing'] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${activeTab === tab ? 'bg-yellow-400 text-black' : 'text-gray-500 hover:text-white'}`}>{tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Pedidos' : tab === 'menu' ? 'Produtos' : 'Marketing'}</button>
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${activeTab === tab ? 'bg-yellow-400 text-black' : 'text-gray-500 hover:text-white'}`}>
+              {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Entrega / Balcão' : tab === 'menu' ? 'Produtos' : 'Marketing'}
+            </button>
           ))}
         </nav>
         <div className="flex gap-4">
-          <button onClick={onToggleAudio} className={`p-4 rounded-full transition-all ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-gray-600'}`}><VolumeIcon muted={!audioEnabled} size={20}/></button>
+          <button onClick={onToggleAudio} className={`p-4 rounded-full transition-all ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-gray-600'}`}>
+            <VolumeIcon muted={!audioEnabled} size={20}/>
+          </button>
           <button onClick={onLogout} className="bg-red-600 text-white font-black text-[10px] uppercase px-6 py-4 rounded-2xl shadow-xl">Sair</button>
         </div>
       </div>
@@ -147,22 +154,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'delivery' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {activeDeliveries.length > 0 ? activeDeliveries.map(t => (
-              <button key={t.id} onClick={() => setSelectedTableId(t.id)} className="bg-white border-2 border-yellow-400 p-6 rounded-[2.5rem] shadow-xl text-left hover:brightness-105 transition-all relative overflow-hidden">
+              <button key={t.id} onClick={() => setSelectedTableId(t.id)} className={`bg-white border-2 p-6 rounded-[2.5rem] shadow-xl text-left hover:brightness-105 transition-all relative overflow-hidden ${t.id >= 950 ? 'border-purple-400' : 'border-orange-400'}`}>
                 <div className={`absolute top-0 right-0 px-4 py-2 text-[8px] font-black uppercase ${t.id >= 950 ? 'bg-purple-600 text-white' : 'bg-orange-600 text-white'}`}>
                   {t.id >= 950 ? 'Balcão' : 'Entrega'}
                 </div>
                 <div className="flex justify-between items-start mb-4">
                   <span className="text-2xl">{t.id >= 950 ? '🏪' : '🚚'}</span>
-                  <span className="bg-yellow-100 text-[9px] font-black px-2 py-1 rounded-full uppercase">#{t.id}</span>
+                  <span className="bg-gray-100 text-[9px] font-black px-2 py-1 rounded-full uppercase">#{t.id}</span>
                 </div>
-                <h4 className="font-black text-sm uppercase truncate">{t.currentOrder?.customerName}</h4>
+                <h4 className="font-black text-sm uppercase truncate leading-tight">{t.currentOrder?.customerName}</h4>
                 <p className="text-[9px] text-gray-400 font-bold truncate mb-1">{t.currentOrder?.customerPhone || 'Sem telefone'}</p>
-                <p className="text-[9px] text-gray-500 font-bold truncate mb-3">{t.id < 950 ? (t.currentOrder?.address || 'Sem endereço') : 'Retirada no Balcão'}</p>
+                <div className="bg-gray-50 p-3 rounded-2xl mb-4 h-12 overflow-hidden">
+                   <p className="text-[9px] text-gray-600 font-bold leading-tight line-clamp-2 italic">
+                     {t.id < 950 ? (t.currentOrder?.address || 'Endereço não informado') : 'Retirada no Balcão'}
+                   </p>
+                </div>
                 <div className={`${STATUS_CFG[t.currentOrder?.status || 'pending'].bg} ${STATUS_CFG[t.currentOrder?.status || 'pending'].color} text-[8px] font-black px-3 py-1.5 rounded-full inline-block uppercase`}>
                   {STATUS_CFG[t.currentOrder?.status || 'pending'].label}
                 </div>
               </button>
-            )) : <div className="col-span-full py-20 text-center opacity-30 font-black uppercase text-xs">Sem pedidos ativos</div>}
+            )) : <div className="col-span-full py-20 text-center opacity-30 font-black uppercase text-xs">Sem pedidos externos ativos</div>}
           </div>
         )}
 
@@ -177,7 +188,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 {categories.map(cat => (
                   <div key={cat.id} className="bg-gray-50 px-6 py-4 rounded-2xl border flex items-center gap-4 group">
                     <span className="font-black text-[10px] uppercase tracking-wider">{cat.name}</span>
-                    <button onClick={() => handleDeleteCategory(cat.id)} className="text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"><TrashIcon size={14}/></button>
+                    <button onClick={() => handleDeleteCategory(cat.id)} className="text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100">
+                      <TrashIcon size={14}/>
+                    </button>
                   </div>
                 ))}
               </div>
