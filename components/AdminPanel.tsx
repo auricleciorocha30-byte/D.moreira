@@ -456,15 +456,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         )}
 
-        {/* ... (Manter abas de mesas, delivery e menu conforme original) ... */}
         {activeTab === 'tables' && (
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-5">
             {physicalTables.map(t => (
               <button key={t.id} onClick={() => setSelectedTableId(t.id)} className={`h-48 p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl ring-4 ring-yellow-400/20 active:scale-95'}`}>
                 {t.currentOrder?.status === 'pending' && <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[8px] font-black px-4 py-2 rounded-2xl animate-bounce shadow-lg border-2 border-white">NOVO</span>}
-                <span className="text-5xl font-black italic text-black">{t.id}</span>
+                <span className="text-5xl font-black italic text-black leading-none">{t.id}</span>
                 <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>{t.status === 'free' ? 'Livre' : 'Ocupada'}</span>
-                {t.currentOrder && <span className="text-[11px] font-black mt-2 italic bg-white/40 px-2 py-0.5 rounded">R$ {(Number(t.currentOrder.finalTotal) || 0).toFixed(2)}</span>}
+                {t.currentOrder && (
+                  <div className="flex flex-col items-center mt-1 w-full overflow-hidden">
+                    <span className="text-[10px] font-black text-black uppercase truncate w-full text-center px-2">{t.currentOrder.customerName}</span>
+                    <span className="text-[11px] font-black italic bg-white/40 px-2 py-0.5 rounded mt-0.5 shrink-0">R$ {(Number(t.currentOrder.finalTotal) || 0).toFixed(2)}</span>
+                  </div>
+                )}
               </button>
             ))}
           </div>
@@ -553,7 +557,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </div>
 
-      {/* Modais de Edição (Cupons, Mesas, Produtos, etc) */}
+      {/* Modais de Edição */}
       {isCouponModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
           <div className="bg-white w-full max-w-2xl rounded-[4rem] p-12 relative shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
