@@ -22,10 +22,10 @@ interface AdminPanelProps {
 }
 
 const STATUS_CFG: Record<string, any> = {
-  'pending': { label: 'Pendente', color: 'text-orange-600', bg: 'bg-orange-100' },
-  'preparing': { label: 'Preparando', color: 'text-blue-600', bg: 'bg-blue-100' },
-  'ready': { label: 'Pronto', color: 'text-green-600', bg: 'bg-green-100' },
-  'delivered': { label: 'Entregue', color: 'text-gray-400', bg: 'bg-gray-50' }
+  'pending': { label: 'Pendente', color: 'text-orange-600', bg: 'bg-orange-100', border: 'border-orange-200' },
+  'preparing': { label: 'Preparando', color: 'text-blue-600', bg: 'bg-blue-100', border: 'border-blue-200' },
+  'ready': { label: 'Pronto', color: 'text-green-600', bg: 'bg-green-100', border: 'border-green-200' },
+  'delivered': { label: 'Entregue', color: 'text-gray-400', bg: 'bg-gray-50', border: 'border-gray-200' }
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
@@ -36,14 +36,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Modais
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
   
-  // Novo Pedido Manual
   const [newOrderForm, setNewOrderForm] = useState({
     customerName: '', customerPhone: '', type: 'delivery' as 'delivery' | 'takeaway', address: '', paymentMethod: 'Pix'
   });
@@ -51,8 +49,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loyalty, setLoyalty] = useState<LoyaltyConfig>({ isActive: false, spendingGoal: 100, scopeType: 'all', scopeValue: '' });
   const [loyaltyUsers, setLoyaltyUsers] = useState<LoyaltyUser[]>([]);
-
-  // Estado para novo cupom
   const [newCouponForm, setNewCouponForm] = useState({ code: '', percentage: '', scopeType: 'all' as 'all' | 'category' | 'product', scopeValue: '' });
 
   useEffect(() => { fetchMarketing(); }, []);
@@ -62,6 +58,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       const { data: cData } = await supabase.from('coupons').select('*').order('created_at', { ascending: false });
       if (cData) setCoupons(cData.map(c => ({ id: c.id, code: c.code, percentage: c.percentage, isActive: c.is_active, scopeType: c.scope_type, scopeValue: c.scope_value })));
       const { data: lConfig } = await supabase.from('loyalty_config').select('*').maybeSingle();
+      // Fix: corrected property names from snake_case to camelCase to match LoyaltyConfig interface
       if (lConfig) setLoyalty({ isActive: lConfig.is_active, spendingGoal: lConfig.spending_goal, scopeType: lConfig.scope_type, scopeValue: lConfig.scope_value || '' });
       const { data: lUsers } = await supabase.from('loyalty_users').select('*').order('accumulated', { ascending: false });
       if (lUsers) setLoyaltyUsers(lUsers);
@@ -194,26 +191,40 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <button onClick={() => setIsNewOrderModalOpen(true)} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl hover:brightness-110 active:scale-95 transition-all">+ Novo Pedido</button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {activeDeliveries.length > 0 ? activeDeliveries.map(t => (
-                <button key={t.id} onClick={() => setSelectedTableId(t.id)} className={`bg-white border-2 p-6 rounded-[3rem] shadow-xl text-left hover:brightness-105 transition-all relative overflow-hidden group ${t.id >= 950 ? 'border-purple-400 ring-purple-50' : 'border-orange-400 ring-orange-50'}`}>
-                  <div className={`absolute top-0 right-0 px-4 py-2 text-[8px] font-black uppercase ${t.id >= 950 ? 'bg-purple-600 text-white' : 'bg-orange-600 text-white'}`}>
-                    {t.id >= 950 ? 'Balcão' : 'Entrega'}
-                  </div>
-                  <div className="flex justify-between items-start mb-4">
-                    <span className="text-2xl group-hover:scale-125 transition-transform">{t.id >= 950 ? '🏪' : '🚚'}</span>
-                    <span className="bg-gray-100 text-[9px] font-black px-2 py-1 rounded-full uppercase">#{t.id}</span>
-                  </div>
-                  <h4 className="font-black text-sm uppercase truncate leading-tight mb-1">{t.currentOrder?.customerName || 'Cliente'}</h4>
-                  <div className="bg-gray-50 p-3 rounded-2xl mb-4 h-12 overflow-hidden border border-gray-100">
-                    <p className="text-[9px] text-gray-600 font-bold leading-tight line-clamp-2 italic">
-                      {t.id < 950 ? (t.currentOrder?.address || 'Sem endereço') : 'Aguardando retirada'}
-                    </p>
-                  </div>
-                  <div className={`${STATUS_CFG[t.currentOrder?.status || 'pending'].bg} ${STATUS_CFG[t.currentOrder?.status || 'pending'].color} text-[8px] font-black px-3 py-1.5 rounded-full inline-block uppercase`}>
-                    {STATUS_CFG[t.currentOrder?.status || 'pending'].label}
-                  </div>
-                </button>
-              )) : <div className="col-span-full py-20 text-center opacity-30 font-black uppercase text-xs">Aguardando novos pedidos...</div>}
+              {activeDeliveries.length > 0 ? activeDeliveries.map(t => {
+                const isPending = t.currentOrder?.status === 'pending';
+                return (
+                  <button key={t.id} onClick={() => setSelectedTableId(t.id)} className={`bg-white border-4 p-6 rounded-[3rem] shadow-xl text-left hover:brightness-105 transition-all relative overflow-hidden group ${isPending ? 'border-red-500 animate-[pulse_2s_infinite] ring-4 ring-red-100' : t.id >= 950 ? 'border-purple-400 ring-purple-50' : 'border-orange-400 ring-orange-50'}`}>
+                    <div className={`absolute top-0 right-0 px-4 py-2 text-[8px] font-black uppercase ${t.id >= 950 ? 'bg-purple-600 text-white' : 'bg-orange-600 text-white'}`}>
+                      {t.id >= 950 ? 'Balcão' : 'Entrega'}
+                    </div>
+                    {isPending && (
+                      <div className="absolute top-2 left-2 bg-red-600 text-white text-[8px] font-black px-2 py-1 rounded-full animate-bounce">
+                        NOVO PEDIDO!
+                      </div>
+                    )}
+                    <div className="flex justify-between items-start mb-4 mt-2">
+                      <span className="text-2xl group-hover:scale-125 transition-transform">{t.id >= 950 ? '🏪' : '🚚'}</span>
+                      <span className="bg-gray-100 text-[9px] font-black px-2 py-1 rounded-full uppercase">#{t.id}</span>
+                    </div>
+                    <h4 className="font-black text-sm uppercase truncate leading-tight mb-1">{t.currentOrder?.customerName || 'Cliente'}</h4>
+                    
+                    {/* Exibição clara de endereço no card */}
+                    <div className="bg-gray-50 p-3 rounded-2xl mb-4 h-16 overflow-hidden border border-gray-100 flex flex-col justify-center">
+                      <p className="text-[10px] text-black font-black leading-tight line-clamp-2 uppercase italic">
+                        {t.id < 950 ? (t.currentOrder?.address || '⚠️ Sem endereço informado') : '📍 Retirada no Balcão'}
+                      </p>
+                      {t.currentOrder?.customerPhone && (
+                        <p className="text-[9px] text-gray-500 font-bold mt-1">📞 {t.currentOrder.customerPhone}</p>
+                      )}
+                    </div>
+
+                    <div className={`${STATUS_CFG[t.currentOrder?.status || 'pending'].bg} ${STATUS_CFG[t.currentOrder?.status || 'pending'].color} text-[8px] font-black px-3 py-1.5 rounded-full inline-block uppercase`}>
+                      {STATUS_CFG[t.currentOrder?.status || 'pending'].label}
+                    </div>
+                  </button>
+                );
+              }) : <div className="col-span-full py-20 text-center opacity-30 font-black uppercase text-xs">Aguardando novos pedidos...</div>}
             </div>
           </div>
         )}
@@ -337,7 +348,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </div>
 
-      {/* Modal Detalhes do Pedido */}
+      {/* Modal Detalhes do Pedido - MELHORADO */}
       {selectedTable && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
@@ -347,30 +358,79 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <h3 className="text-3xl font-black uppercase italic tracking-tighter leading-none">
                   {selectedTable.id >= 950 ? 'Pedido Balcão' : selectedTable.id >= 900 ? 'Pedido Entrega' : `Mesa ${selectedTable.id}`}
                 </h3>
-                <p className="text-[11px] font-black text-gray-400 mt-2 uppercase tracking-widest">
-                  Cliente: {selectedTable.currentOrder?.customerName || 'Manual'} • Pagamento: {selectedTable.currentOrder?.paymentMethod || 'Pendente'}
-                </p>
+                <div className="flex items-center gap-3 mt-3">
+                  <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase ${STATUS_CFG[selectedTable.currentOrder?.status || 'pending'].bg} ${STATUS_CFG[selectedTable.currentOrder?.status || 'pending'].color}`}>
+                    Status: {STATUS_CFG[selectedTable.currentOrder?.status || 'pending'].label}
+                  </span>
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">#{selectedTable.id}</span>
+                </div>
               </div>
               <div className="flex gap-3">
-                {selectedTable.currentOrder && <button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-4 bg-gray-100 rounded-full hover:bg-yellow-400 active:scale-90 transition-all"><PrinterIcon size={24}/></button>}
-                <button onClick={() => setSelectedTableId(null)} className="p-4 bg-gray-100 rounded-full hover:bg-red-50 active:scale-90 transition-all"><CloseIcon size={24}/></button>
+                {selectedTable.currentOrder && <button onClick={() => handlePrint(selectedTable.currentOrder!)} className="p-4 bg-gray-100 rounded-full hover:bg-yellow-400 active:scale-90 transition-all shadow-sm"><PrinterIcon size={24}/></button>}
+                <button onClick={() => setSelectedTableId(null)} className="p-4 bg-gray-100 rounded-full hover:bg-red-50 active:scale-90 transition-all shadow-sm"><CloseIcon size={24}/></button>
               </div>
             </div>
+
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-               <div className="flex-1 p-8 overflow-y-auto space-y-4 no-scrollbar">
-                  {selectedTable.currentOrder?.items?.map((item, i) => (
-                    <div key={i} className="flex gap-6 bg-gray-50 p-6 rounded-3xl border border-gray-100 items-center">
-                      <img src={item.image} className="w-16 h-16 rounded-2xl object-cover" />
-                      <div className="flex-1 font-black"><h4 className="text-sm uppercase leading-tight">{item.name}</h4><p className="text-[10px] text-gray-400 uppercase mt-1">{item.category}</p></div>
-                      <div className="text-right font-black"><p className="text-[10px] text-gray-400">{item.quantity}x</p><p className="text-lg italic">R$ {(item.price * item.quantity).toFixed(2)}</p></div>
+               <div className="flex-1 p-8 overflow-y-auto space-y-6 no-scrollbar">
+                  
+                  {/* INFORMAÇÕES DO CLIENTE E ENTREGA - NOVO DESTAQUE */}
+                  {(selectedTable.currentOrder?.address || selectedTable.currentOrder?.customerPhone) && (
+                    <div className="bg-yellow-50 p-6 rounded-[2.5rem] border-2 border-yellow-100 space-y-4">
+                      <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-yellow-800">Dados de Contato e Entrega</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="flex flex-col">
+                          <span className="text-[8px] font-black text-yellow-600 uppercase">Cliente</span>
+                          <span className="font-black text-sm uppercase">{selectedTable.currentOrder?.customerName}</span>
+                        </div>
+                        {selectedTable.currentOrder?.customerPhone && (
+                          <div className="flex flex-col">
+                            <span className="text-[8px] font-black text-yellow-600 uppercase">WhatsApp / Telefone</span>
+                            <a 
+                              href={`https://wa.me/${selectedTable.currentOrder.customerPhone.replace(/\D/g, '')}`} 
+                              target="_blank" 
+                              className="font-black text-sm text-blue-600 underline"
+                            >
+                              {selectedTable.currentOrder.customerPhone} 💬
+                            </a>
+                          </div>
+                        )}
+                        {selectedTable.currentOrder?.address && (
+                          <div className="flex flex-col col-span-full">
+                            <span className="text-[8px] font-black text-yellow-600 uppercase">Endereço de Entrega</span>
+                            <span className="font-black text-sm uppercase leading-tight bg-white/50 p-3 rounded-xl border border-yellow-200 mt-1">
+                              📍 {selectedTable.currentOrder.address}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  ))}
+                  )}
+
+                  <div className="space-y-3">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Itens do Pedido</h4>
+                    {selectedTable.currentOrder?.items?.map((item, i) => (
+                      <div key={i} className="flex gap-4 bg-white p-4 rounded-3xl border border-gray-100 items-center">
+                        <img src={item.image} className="w-12 h-12 rounded-xl object-cover" />
+                        <div className="flex-1 font-black">
+                          <h4 className="text-[11px] uppercase leading-tight">{item.name}</h4>
+                          <p className="text-[8px] text-gray-400 uppercase">{item.category}</p>
+                        </div>
+                        <div className="text-right font-black">
+                          <p className="text-[9px] text-gray-400">{item.quantity}x</p>
+                          <p className="text-sm italic">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
                   {selectedTable.currentOrder && (
                     <div className="pt-10 border-t-2 border-dashed mt-10">
                       <div className="flex justify-between items-end mb-8">
                         <div className="flex flex-col font-black">
-                          <span className="text-[10px] uppercase text-gray-400 tracking-[0.2em] mb-1">Total à Receber</span>
+                          <span className="text-[10px] uppercase text-gray-400 tracking-[0.2em] mb-1">Total a Receber</span>
                           <span className="text-5xl italic tracking-tighter">R$ {(selectedTable.currentOrder?.finalTotal || 0).toFixed(2).replace('.', ',')}</span>
+                          <span className="text-[9px] uppercase mt-2 px-3 py-1 bg-gray-100 rounded-full w-fit">Forma: {selectedTable.currentOrder.paymentMethod}</span>
                         </div>
                         {selectedTable.currentOrder?.discount ? <div className="text-right font-black"><span className="text-green-600 italic">- R$ {selectedTable.currentOrder.discount.toFixed(2)} Desconto</span></div> : null}
                       </div>
@@ -381,18 +441,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   )}
                </div>
+
                <div className="w-full md:w-80 bg-gray-50 border-l p-8 overflow-y-auto space-y-6 no-scrollbar">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-6">Status do Pedido</h4>
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-6">Mudar Status Manual</h4>
                   <div className="grid grid-cols-2 gap-3">
                     {(['pending', 'preparing', 'ready', 'delivered'] as OrderStatus[]).map(s => (
-                      <button key={s} onClick={() => onUpdateTable(selectedTable.id, 'occupied', { ...selectedTable.currentOrder!, status: s })} className={`py-4 rounded-2xl text-[9px] font-black uppercase border-2 transition-all active:scale-95 ${selectedTable.currentOrder?.status === s ? 'bg-black text-white border-black' : 'bg-white text-gray-400 border-gray-100'}`}>{STATUS_CFG[s].label}</button>
+                      <button key={s} onClick={() => onUpdateTable(selectedTable.id, 'occupied', { ...selectedTable.currentOrder!, status: s })} className={`py-4 rounded-2xl text-[9px] font-black uppercase border-2 transition-all active:scale-95 ${selectedTable.currentOrder?.status === s ? 'bg-black text-white border-black shadow-lg' : 'bg-white text-gray-400 border-gray-100 hover:border-black'}`}>{STATUS_CFG[s].label}</button>
                     ))}
                   </div>
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mt-10 mb-6">Adicionar Mais Itens</h4>
+                  
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mt-10 mb-6">Adicionar Itens Extra</h4>
                   <div className="space-y-2">
                     {menuItems?.filter(p => p.isAvailable).map(p => (
-                      <button key={p.id} onClick={() => onAddToOrder(selectedTable.id, p)} className="w-full bg-white p-4 rounded-2xl border border-gray-200 flex justify-between items-center text-[10px] font-black uppercase hover:border-yellow-400 transition-all active:scale-95 shadow-sm">
-                        <span>{p.name}</span><span className="text-yellow-600 text-xl">+</span>
+                      <button key={p.id} onClick={() => onAddToOrder(selectedTable.id, p)} className="w-full bg-white p-4 rounded-2xl border border-gray-200 flex justify-between items-center text-[10px] font-black uppercase hover:border-yellow-400 transition-all active:scale-95 shadow-sm group">
+                        <span>{p.name}</span>
+                        <span className="text-yellow-600 text-xl group-hover:scale-150 transition-transform">+</span>
                       </button>
                     ))}
                   </div>
@@ -402,6 +465,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* Outros Modais Manuais */}
       {isNewOrderModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-sm rounded-[3.5rem] p-10 relative shadow-2xl">
@@ -414,7 +478,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   <button type="button" onClick={() => setNewOrderForm({...newOrderForm, type: 'takeaway'})} className={`py-4 rounded-2xl text-[9px] font-black uppercase border-2 transition-all ${newOrderForm.type === 'takeaway' ? 'bg-black text-white border-black' : 'bg-white text-gray-400 border-gray-100'}`}>Balcão</button>
                 </div>
                 {newOrderForm.type === 'delivery' && (
-                  <textarea value={newOrderForm.address} onChange={e => setNewOrderForm({...newOrderForm, address: e.target.value})} placeholder="ENDEREÇO" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none h-24 resize-none" required />
+                  <textarea value={newOrderForm.address} onChange={e => setNewOrderForm({...newOrderForm, address: e.target.value})} placeholder="ENDEREÇO COMPLETO" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none h-24 resize-none" required />
                 )}
                 <button type="submit" className="w-full bg-yellow-400 text-black py-6 rounded-2xl font-black text-sm uppercase shadow-xl hover:brightness-125 transition-all">Abrir Pedido</button>
              </form>
