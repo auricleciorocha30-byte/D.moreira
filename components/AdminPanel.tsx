@@ -80,6 +80,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     fetchMarketing();
   };
 
+  const toggleLoyaltyItem = (val: string) => {
+    const currentItems = loyalty.scopeValue ? loyalty.scopeValue.split(',') : [];
+    const nextItems = currentItems.includes(val)
+      ? currentItems.filter(i => i !== val)
+      : [...currentItems, val];
+    handleUpdateLoyalty({ scopeValue: nextItems.join(',') });
+  };
+
   const handleSaveCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCode = couponForm.code.toUpperCase().trim();
@@ -242,6 +250,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const selectedTable = (tables || []).find(t => t.id === selectedTableId) || null;
   const filteredMenu = (menuItems || []).filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
+  const loyaltyScopeItems = loyalty.scopeValue ? loyalty.scopeValue.split(',') : [];
+
   return (
     <div className="w-full">
       <div className="bg-black p-6 rounded-[2.5rem] shadow-2xl mb-8 border-b-4 border-yellow-400 flex flex-col md:flex-row justify-between items-center gap-6">
@@ -283,7 +293,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'marketing' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Fidelidade */}
-            <div className="lg:col-span-2 bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col h-[700px]">
+            <div className="lg:col-span-2 bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col h-auto min-h-[700px]">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-black italic uppercase">💎 Ranking de Fidelidade</h3>
                 <div className="flex gap-4 items-center">
@@ -300,31 +310,55 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
               </div>
 
-              <div className="bg-yellow-50 p-6 rounded-[2rem] border-2 border-yellow-100 mb-6 flex flex-wrap gap-8 items-end">
-                <div className="flex-1 min-w-[150px] space-y-1">
-                  <p className="text-[8px] font-black uppercase text-yellow-800">Meta Acumulada R$</p>
-                  <input type="number" value={loyalty.spendingGoal} onChange={e => handleUpdateLoyalty({ spendingGoal: Number(e.target.value) })} className="w-full bg-white p-3 rounded-xl border-2 border-yellow-200 font-black text-sm outline-none" />
-                </div>
-                <div className="flex-1 min-w-[150px] space-y-1">
-                  <p className="text-[8px] font-black uppercase text-yellow-800">Filtro de Escopo</p>
-                  <select value={loyalty.scopeType} onChange={e => handleUpdateLoyalty({ scopeType: e.target.value as any, scopeValue: '' })} className="w-full bg-white p-3 rounded-xl border-2 border-yellow-200 font-black text-[10px] uppercase outline-none">
-                    <option value="all">Loja Toda</option>
-                    <option value="category">Por Categoria</option>
-                    <option value="product">Por Produto</option>
-                  </select>
-                </div>
-                {loyalty.scopeType !== 'all' && (
-                  <div className="flex-1 min-w-[150px] space-y-1">
-                    <p className="text-[8px] font-black uppercase text-yellow-800">Seleção</p>
-                    <select value={loyalty.scopeValue} onChange={e => handleUpdateLoyalty({ scopeValue: e.target.value })} className="w-full bg-white p-3 rounded-xl border-2 border-yellow-200 font-black text-[10px] uppercase outline-none">
-                      <option value="">Selecione...</option>
-                      {loyalty.scopeType === 'category' ? categories?.map(c => <option key={c.id} value={c.name}>{c.name}</option>) : menuItems?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <div className="bg-yellow-50 p-8 rounded-[2rem] border-2 border-yellow-100 mb-8 space-y-6">
+                <div className="flex flex-wrap gap-8 items-end">
+                  <div className="flex-1 min-w-[200px] space-y-1">
+                    <p className="text-[10px] font-black uppercase text-yellow-800 ml-1 tracking-wider">Meta Acumulada R$</p>
+                    <input type="number" value={loyalty.spendingGoal} onChange={e => handleUpdateLoyalty({ spendingGoal: Number(e.target.value) })} className="w-full bg-white p-4 rounded-2xl border-2 border-yellow-200 font-black text-sm outline-none shadow-sm" />
+                  </div>
+                  <div className="flex-1 min-w-[200px] space-y-1">
+                    <p className="text-[10px] font-black uppercase text-yellow-800 ml-1 tracking-wider">Filtro de Pontuação</p>
+                    <select value={loyalty.scopeType} onChange={e => handleUpdateLoyalty({ scopeType: e.target.value as any, scopeValue: '' })} className="w-full bg-white p-4 rounded-2xl border-2 border-yellow-200 font-black text-[10px] uppercase outline-none shadow-sm">
+                      <option value="all">🚀 Loja Toda (Tudo Pontua)</option>
+                      <option value="category">📁 Por Categorias</option>
+                      <option value="product">🍔 Por Produtos Específicos</option>
                     </select>
+                  </div>
+                </div>
+
+                {loyalty.scopeType !== 'all' && (
+                  <div className="space-y-3 pt-4 border-t border-yellow-200">
+                    <p className="text-[10px] font-black uppercase text-yellow-800 ml-1 tracking-widest">
+                      Selecione {loyalty.scopeType === 'category' ? 'Categorias' : 'Produtos'} que acumulam pontos:
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-60 overflow-y-auto p-4 bg-white/50 rounded-2xl border-2 border-dashed border-yellow-300 no-scrollbar">
+                      {loyalty.scopeType === 'category' ? categories?.map(cat => (
+                        <label key={cat.id} className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${loyaltyScopeItems.includes(cat.name) ? 'bg-yellow-400 border-black shadow-md' : 'bg-white border-transparent'}`}>
+                          <span className="text-[10px] font-black uppercase">{cat.name}</span>
+                          <input type="checkbox" className="hidden" checked={loyaltyScopeItems.includes(cat.name)} onChange={() => toggleLoyaltyItem(cat.name)} />
+                          {loyaltyScopeItems.includes(cat.name) && <span className="text-black font-black">✓</span>}
+                        </label>
+                      )) : menuItems?.map(prod => (
+                        <label key={prod.id} className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${loyaltyScopeItems.includes(prod.id) ? 'bg-yellow-400 border-black shadow-md' : 'bg-white border-transparent'}`}>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-black uppercase leading-tight truncate w-32">{prod.name}</span>
+                            <span className="text-[8px] text-gray-500 font-bold uppercase">{prod.category}</span>
+                          </div>
+                          <input type="checkbox" className="hidden" checked={loyaltyScopeItems.includes(prod.id)} onChange={() => toggleLoyaltyItem(prod.id)} />
+                          {loyaltyScopeItems.includes(prod.id) && <span className="text-black font-black">✓</span>}
+                        </label>
+                      ))}
+                    </div>
+                    {loyaltyScopeItems.length > 0 && (
+                      <p className="text-[9px] font-black text-yellow-700 italic uppercase">
+                        {loyaltyScopeItems.length} {loyalty.scopeType === 'category' ? 'Categorias selecionadas' : 'Produtos selecionados'}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto no-scrollbar pr-2 space-y-3">
+              <div className="flex-1 overflow-y-auto no-scrollbar pr-2 space-y-3 pb-8">
                 {filteredLoyaltyUsers?.length > 0 ? filteredLoyaltyUsers.map((u, i) => {
                   const progress = Math.min(100, (u.accumulated / loyalty.spendingGoal) * 100);
                   const isTop3 = i < 3;
@@ -422,6 +456,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         )}
 
+        {/* ... (Manter abas de mesas, delivery e menu conforme original) ... */}
         {activeTab === 'tables' && (
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-5">
             {physicalTables.map(t => (
@@ -518,6 +553,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </div>
 
+      {/* Modais de Edição (Cupons, Mesas, Produtos, etc) */}
       {isCouponModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
           <div className="bg-white w-full max-w-2xl rounded-[4rem] p-12 relative shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
