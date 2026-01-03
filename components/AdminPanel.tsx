@@ -81,15 +81,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleSaveCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!couponForm.code || !couponForm.percentage) return;
+    const cleanCode = couponForm.code.toUpperCase().trim();
+    if (!cleanCode || !couponForm.percentage) return;
     
     if (couponForm.scopeType !== 'all' && couponForm.selectedItems.length === 0) {
       return alert('Selecione ao menos um item para este cupom!');
     }
+
+    // Validação: Apenas um cupom "Loja Toda" por código
+    if (couponForm.scopeType === 'all') {
+      const hasDuplicateAll = coupons.some(c => 
+        c.code === cleanCode && 
+        c.scopeType === 'all' && 
+        c.id !== editingCoupon?.id
+      );
+      if (hasDuplicateAll) {
+        return alert(`Já existe um cupom "${cleanCode}" configurado para "Loja Toda". Para este código, você só pode adicionar um cupom global.`);
+      }
+    }
     
     const scopeValue = couponForm.scopeType === 'all' ? '' : couponForm.selectedItems.join(',');
     const couponData = { 
-      code: couponForm.code.toUpperCase(), 
+      code: cleanCode, 
       percentage: Number(couponForm.percentage), 
       is_active: true, 
       scope_type: couponForm.scopeType, 
