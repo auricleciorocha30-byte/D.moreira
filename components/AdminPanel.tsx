@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Table, Order, Product, Category, Coupon, LoyaltyConfig, LoyaltyUser, OrderStatus, OrderType } from '../types';
-import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon, EditIcon } from './Icons';
+import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon, EditIcon, CopyIcon } from './Icons';
 import { supabase } from '../lib/supabase';
 import { STORE_INFO } from '../constants';
 
@@ -80,7 +80,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     e.preventDefault();
     if (!newCouponForm.code || !newCouponForm.percentage) return;
     
-    // Para categorias ou produtos, exige ao menos um selecionado
     if (newCouponForm.scopeType !== 'all' && newCouponForm.selectedItems.length === 0) {
       return alert('Selecione ao menos um item para este cupom!');
     }
@@ -100,21 +99,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     fetchMarketing();
   };
 
-  // Fix: Added missing handleDeleteCategory function
+  const handleDuplicateCoupon = async (coupon: Coupon) => {
+    if (!confirm(`Deseja duplicar o cupom "${coupon.code}"?`)) return;
+    
+    const { error } = await supabase.from('coupons').insert([{ 
+      id: 'c_'+Date.now(), 
+      code: coupon.code, // Mantém o mesmo nome conforme solicitado
+      percentage: coupon.percentage, 
+      is_active: true, 
+      scope_type: coupon.scopeType, 
+      scope_value: coupon.scopeValue
+    }]); 
+
+    if (error) {
+      alert("Erro ao duplicar cupom.");
+    } else {
+      fetchMarketing();
+    }
+  };
+
   const handleDeleteCategory = async (id: string) => {
     if (!confirm('Excluir esta categoria?')) return;
     await supabase.from('categories').delete().eq('id', id);
     onRefreshData();
   };
 
-  // Fix: Added missing handleDeleteLoyaltyUser function
   const handleDeleteLoyaltyUser = async (phone: string) => {
     if (!confirm('Excluir este cliente da fidelidade?')) return;
     await supabase.from('loyalty_users').delete().eq('phone', phone);
     fetchMarketing();
   };
 
-  // Fix: Added missing handleAddCategory function
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategoryName) return;
@@ -416,13 +431,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   {coupons?.length > 0 ? coupons.map(c => (
                     <div key={c.id} className="p-5 bg-gray-50 rounded-2xl border border-gray-100 group hover:border-black transition-all">
                       <div className="flex justify-between items-start mb-3">
-                        <div>
+                        <div className="flex flex-wrap gap-2">
                           <span className="bg-black text-yellow-400 px-3 py-1.5 rounded-xl font-black text-xs tracking-widest">{c.code}</span>
-                          <span className="text-green-600 font-black text-sm ml-3">{c.percentage}% OFF</span>
+                          <span className="text-green-600 font-black text-sm">{c.percentage}% OFF</span>
                         </div>
-                        <button onClick={async () => { if(confirm('Excluir cupom?')) { await supabase.from('coupons').delete().eq('id', c.id); fetchMarketing(); } }} className="p-2 text-red-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                          <TrashIcon size={16}/>
-                        </button>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => handleDuplicateCoupon(c)} title="Clonar Cupom" className="p-2 text-blue-400 hover:text-blue-600 transition-colors">
+                            <CopyIcon size={16}/>
+                          </button>
+                          <button onClick={async () => { if(confirm('Excluir cupom?')) { await supabase.from('coupons').delete().eq('id', c.id); fetchMarketing(); } }} className="p-2 text-red-300 hover:text-red-500 transition-colors">
+                            <TrashIcon size={16}/>
+                          </button>
+                        </div>
                       </div>
                       <div className="bg-white p-3 rounded-xl border border-gray-100">
                         <p className="text-[8px] font-black uppercase text-gray-400 mb-1">Escopo:</p>
@@ -436,7 +456,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
                       <div className="mt-4 flex justify-between items-center">
                         <span className={`text-[8px] font-black uppercase px-2 py-1 rounded ${c.isActive ? 'text-green-500 bg-green-50' : 'text-gray-400 bg-gray-100'}`}>
-                          {c.isActive ? 'Ativo e Visível' : 'Inativo'}
+                          {c.isActive ? 'Ativo' : 'Inativo'}
                         </span>
                         <button onClick={async () => { await supabase.from('coupons').update({ is_active: !c.isActive }).eq('id', c.id); fetchMarketing(); }} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase shadow-sm ${c.isActive ? 'bg-white text-black border' : 'bg-black text-white'}`}>
                           {c.isActive ? 'Pausar' : 'Ativar'}
@@ -451,7 +471,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </div>
 
-      {/* Modais de Detalhes, Produtos, etc... (Mantidos do Admin anterior com as melhorias de endereço) */}
+      {/* Modais de Detalhes, Produtos, etc... */}
       {selectedTable && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
@@ -550,7 +570,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Outros modais padrão */}
+      {/* Modal Novo Pedido */}
       {isNewOrderModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-sm rounded-[3.5rem] p-10 relative shadow-2xl">
@@ -571,6 +591,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* Modal Categoria */}
       {isCategoryModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-md rounded-[3.5rem] p-10 relative shadow-2xl">
@@ -584,6 +605,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* Modal Produto */}
       {isProductModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
           <div className="bg-white w-full max-w-2xl rounded-[4rem] p-12 relative shadow-2xl">
