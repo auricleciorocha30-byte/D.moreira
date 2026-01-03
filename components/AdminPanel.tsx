@@ -22,10 +22,10 @@ interface AdminPanelProps {
 }
 
 const STATUS_CFG: Record<string, any> = {
-  'pending': { label: 'Pendente', color: 'text-orange-600', bg: 'bg-orange-100', border: 'border-orange-200' },
-  'preparing': { label: 'Preparando', color: 'text-blue-600', bg: 'bg-blue-100', border: 'border-blue-200' },
-  'ready': { label: 'Pronto', color: 'text-green-600', bg: 'bg-green-100', border: 'border-green-200' },
-  'delivered': { label: 'Entregue', color: 'text-gray-400', bg: 'bg-gray-50', border: 'border-gray-200' }
+  'pending': { label: 'Pendente', color: 'text-orange-600', bg: 'bg-orange-100', border: 'border-orange-200', badge: 'bg-orange-600 text-white' },
+  'preparing': { label: 'Preparando', color: 'text-blue-600', bg: 'bg-blue-100', border: 'border-blue-200', badge: 'bg-blue-600 text-white' },
+  'ready': { label: 'Pronto', color: 'text-green-600', bg: 'bg-green-100', border: 'border-green-200', badge: 'bg-green-600 text-white' },
+  'delivered': { label: 'Entregue', color: 'text-gray-400', bg: 'bg-gray-50', border: 'border-gray-200', badge: 'bg-gray-400 text-white' }
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
@@ -458,19 +458,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {activeTab === 'tables' && (
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-5">
-            {physicalTables.map(t => (
-              <button key={t.id} onClick={() => setSelectedTableId(t.id)} className={`h-48 p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl ring-4 ring-yellow-400/20 active:scale-95'}`}>
-                {t.currentOrder?.status === 'pending' && <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[8px] font-black px-4 py-2 rounded-2xl animate-bounce shadow-lg border-2 border-white">NOVO</span>}
-                <span className="text-5xl font-black italic text-black leading-none">{t.id}</span>
-                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : 'bg-black text-white'}`}>{t.status === 'free' ? 'Livre' : 'Ocupada'}</span>
-                {t.currentOrder && (
-                  <div className="flex flex-col items-center mt-1 w-full overflow-hidden">
-                    <span className="text-[10px] font-black text-black uppercase truncate w-full text-center px-2">{t.currentOrder.customerName}</span>
-                    <span className="text-[11px] font-black italic bg-white/40 px-2 py-0.5 rounded mt-0.5 shrink-0">R$ {(Number(t.currentOrder.finalTotal) || 0).toFixed(2)}</span>
-                  </div>
-                )}
-              </button>
-            ))}
+            {physicalTables.map(t => {
+              const currentStatus = t.currentOrder?.status || 'pending';
+              const statusInfo = STATUS_CFG[currentStatus];
+              
+              return (
+                <button key={t.id} onClick={() => setSelectedTableId(t.id)} className={`h-48 p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative ${t.status === 'free' ? 'bg-white border-gray-100 hover:border-yellow-400' : 'bg-yellow-400 border-black shadow-xl ring-4 ring-yellow-400/20 active:scale-95'}`}>
+                  {t.currentOrder?.status === 'pending' && <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[8px] font-black px-4 py-2 rounded-2xl animate-bounce shadow-lg border-2 border-white">NOVO</span>}
+                  <span className="text-5xl font-black italic text-black leading-none">{t.id}</span>
+                  <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${t.status === 'free' ? 'bg-gray-100 text-gray-400' : statusInfo.badge}`}>
+                    {t.status === 'free' ? 'Livre' : statusInfo.label}
+                  </span>
+                  {t.currentOrder && (
+                    <div className="flex flex-col items-center mt-1 w-full overflow-hidden">
+                      <span className="text-[10px] font-black text-black uppercase truncate w-full text-center px-2">{t.currentOrder.customerName}</span>
+                      <span className="text-[11px] font-black italic bg-white/40 px-2 py-0.5 rounded mt-0.5 shrink-0">R$ {(Number(t.currentOrder.finalTotal) || 0).toFixed(2)}</span>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
 
