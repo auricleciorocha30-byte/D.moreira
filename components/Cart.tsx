@@ -68,31 +68,6 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
 
   const finalTotal = subtotal - discount;
 
-  const sendWhatsAppMessage = (order: Order) => {
-    const itemsList = order.items.map(i => `• ${i.quantity}x ${i.name} - R$ ${(i.price * i.quantity).toFixed(2)}`).join('\n');
-    const typeLabel = order.orderType === 'table' ? `📍 Mesa: ${order.tableId}` : 
-                      order.orderType === 'delivery' ? `🚚 Entrega\n🏠 Endereço: ${order.address}` : 
-                      `🏪 Retirada no Balcão`;
-    
-    const message = `*NOVO PEDIDO - ${STORE_INFO.name.toUpperCase()}*\n` +
-                    `--------------------------------\n` +
-                    `*Cliente:* ${order.customerName}\n` +
-                    `*WhatsApp:* ${order.customerPhone || 'Não informado'}\n` +
-                    `*Local:* ${typeLabel}\n` +
-                    `--------------------------------\n` +
-                    `*ÍTENS:*\n${itemsList}\n` +
-                    `--------------------------------\n` +
-                    (order.discount ? `*Desconto:* -R$ ${order.discount.toFixed(2)}\n` : '') +
-                    `*TOTAL:* R$ ${order.finalTotal.toFixed(2)}\n` +
-                    `*PAGAMENTO:* ${order.paymentMethod}\n` +
-                    `--------------------------------\n` +
-                    `_Pedido enviado via Cardápio Digital_`;
-
-    const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/${STORE_INFO.whatsapp}?text=${encodedMessage}`;
-    window.open(whatsappUrl, '_blank');
-  };
-
   const handleCheckout = async () => {
     if (items.length === 0) return;
     if (!customerName.trim()) return alert('Por favor, informe seu nome.');
@@ -113,7 +88,6 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
     };
 
     try {
-      // Lógica de Fidelidade (Acúmulo real proporcional ao valor pago)
       if (loyaltyConfig?.isActive && customerPhone.trim()) {
         const eligibleValues = (loyaltyConfig.scopeValue || '').split(',');
         const grossEligible = items.reduce((acc, item) => {
@@ -131,10 +105,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
         else await supabase.from('loyalty_users').insert([{ phone: customerPhone, name: customerName, accumulated: finalEligible }]);
       }
 
-      // Envia para o painel admin e redireciona para WhatsApp
       onPlaceOrder(newOrder);
-      sendWhatsAppMessage(newOrder);
-      
       setIsSuccess(true);
       setAppliedCoupons([]);
       setCouponCode('');
@@ -173,7 +144,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
               <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg>
             </div>
             <h2 className="text-4xl mb-4 italic uppercase tracking-tighter">Pedido Enviado!</h2>
-            <p className="text-gray-500 uppercase text-[10px] tracking-widest leading-relaxed">Verifique seu WhatsApp para confirmar os detalhes com nossa equipe.</p>
+            <p className="text-gray-500 uppercase text-[10px] tracking-widest leading-relaxed">Seu pedido foi registrado com sucesso em nosso sistema.</p>
             <button onClick={() => { setIsSuccess(false); onClose(); }} className="w-full bg-black text-white py-6 rounded-[2.5rem] uppercase mt-12 text-[11px] font-black tracking-widest shadow-2xl active:scale-95 transition-all">Voltar para a Loja</button>
           </div>
         ) : (
@@ -285,12 +256,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                   disabled={isProcessing} 
                   className="w-full bg-yellow-400 text-black py-7 rounded-[2.5rem] uppercase text-[12px] font-black tracking-widest shadow-xl active:scale-95 transition-all hover:brightness-110 flex items-center justify-center gap-3"
                 >
-                  {isProcessing ? 'Enviando...' : (
-                    <>
-                      <span>Finalizar via WhatsApp</span>
-                      <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.025 3.14l-.693 2.536 2.593-.68c.843.458 1.787.7 2.84.7 3.181 0 5.767-2.586 5.768-5.766.001-3.181-2.586-5.766-5.765-5.766zm3.385 8.196c-.147.414-.716.756-1.015.805-.286.046-.566.078-1.574-.316-1.127-.44-1.857-1.583-1.913-1.657-.056-.074-.463-.615-.463-1.17 0-.557.292-.83.398-.94.106-.11.23-.138.303-.138h.22c.074 0 .17.001.244.17.073.17.253.615.276.66.023.046.037.1.009.156-.028.056-.042.092-.083.138-.041.046-.087.102-.124.138-.041.037-.083.078-.037.156.046.078.204.336.438.544.3.267.553.35.636.395.083.046.134.037.184-.018.05-.056.216-.253.276-.341.06-.087.115-.074.193-.046.078.028.497.235.584.276.087.041.147.06.17.097.023.037.023.216-.124.63zM12 1c-6.075 0-11 4.925-11 11s4.925 11 11 11 11-4.925 11-11-4.925-11-11-11z"/></svg>
-                    </>
-                  )}
+                  {isProcessing ? 'Enviando...' : 'Finalizar Pedido'}
                 </button>
               </div>
             )}
