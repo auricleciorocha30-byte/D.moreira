@@ -58,7 +58,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       const { data: cData } = await supabase.from('coupons').select('*').order('created_at', { ascending: false });
       if (cData) setCoupons(cData.map(c => ({ id: c.id, code: c.code, percentage: c.percentage, isActive: c.is_active, scopeType: c.scope_type, scopeValue: c.scope_value })));
       const { data: lConfig } = await supabase.from('loyalty_config').select('*').maybeSingle();
-      // Fix: corrected property names from snake_case to camelCase to match LoyaltyConfig interface
       if (lConfig) setLoyalty({ isActive: lConfig.is_active, spendingGoal: lConfig.spending_goal, scopeType: lConfig.scope_type, scopeValue: lConfig.scope_value || '' });
       const { data: lUsers } = await supabase.from('loyalty_users').select('*').order('accumulated', { ascending: false });
       if (lUsers) setLoyaltyUsers(lUsers);
@@ -115,7 +114,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleCreateCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCouponForm.code || !newCouponForm.percentage) return;
-    await supabase.from('coupons').insert([{ id: 'c_'+Date.now(), code: newCouponForm.code.toUpperCase(), percentage: Number(newCouponForm.percentage), is_active: true, scope_type: newCouponForm.scopeType, scope_value: newCouponForm.scopeValue }]); 
+    // Validação extra para escopos que exigem valor
+    if (newCouponForm.scopeType !== 'all' && !newCouponForm.scopeValue) return alert('Selecione uma categoria ou produto!');
+    
+    await supabase.from('coupons').insert([{ 
+      id: 'c_'+Date.now(), 
+      code: newCouponForm.code.toUpperCase(), 
+      percentage: Number(newCouponForm.percentage), 
+      is_active: true, 
+      scope_type: newCouponForm.scopeType, 
+      scope_value: newCouponForm.scopeValue 
+    }]); 
     setNewCouponForm({ code: '', percentage: '', scopeType: 'all', scopeValue: '' });
     fetchMarketing();
   };
@@ -209,7 +218,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                     <h4 className="font-black text-sm uppercase truncate leading-tight mb-1">{t.currentOrder?.customerName || 'Cliente'}</h4>
                     
-                    {/* Exibição clara de endereço no card */}
                     <div className="bg-gray-50 p-3 rounded-2xl mb-4 h-16 overflow-hidden border border-gray-100 flex flex-col justify-center">
                       <p className="text-[10px] text-black font-black leading-tight line-clamp-2 uppercase italic">
                         {t.id < 950 ? (t.currentOrder?.address || '⚠️ Sem endereço informado') : '📍 Retirada no Balcão'}
@@ -323,22 +331,61 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
             <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
               <h3 className="text-xl font-black italic uppercase mb-8">🎫 Cupons</h3>
-              <form onSubmit={handleCreateCoupon} className="grid grid-cols-2 gap-4 mb-8 bg-gray-50 p-6 rounded-[2.5rem] border border-gray-100">
-                <input value={newCouponForm.code} onChange={e => setNewCouponForm({...newCouponForm, code: e.target.value})} placeholder="CÓDIGO" className="bg-white p-4 rounded-xl font-black text-xs uppercase outline-none shadow-sm" required />
-                <input value={newCouponForm.percentage} onChange={e => setNewCouponForm({...newCouponForm, percentage: e.target.value})} type="number" placeholder="% OFF" className="bg-white p-4 rounded-xl font-black text-xs outline-none shadow-sm" required />
-                <div className="col-span-2"><button type="submit" className="w-full bg-black text-yellow-400 py-4 rounded-xl font-black text-[10px] uppercase shadow-lg hover:brightness-125 active:scale-95 transition-all">Criar Cupom</button></div>
+              
+              {/* Form de Criação de Cupom - MELHORADO COM ESCOPO */}
+              <form onSubmit={handleCreateCoupon} className="space-y-4 mb-8 bg-gray-50 p-6 rounded-[2.5rem] border border-gray-100">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-black uppercase text-gray-400 ml-1">Código</p>
+                    <input value={newCouponForm.code} onChange={e => setNewCouponForm({...newCouponForm, code: e.target.value})} placeholder="EX: NATAL10" className="w-full bg-white p-4 rounded-xl font-black text-xs uppercase outline-none shadow-sm border border-gray-200 focus:border-black transition-all" required />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-black uppercase text-gray-400 ml-1">% de Desconto</p>
+                    <input value={newCouponForm.percentage} onChange={e => setNewCouponForm({...newCouponForm, percentage: e.target.value})} type="number" placeholder="10" className="w-full bg-white p-4 rounded-xl font-black text-xs outline-none shadow-sm border border-gray-200 focus:border-black transition-all" required />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-black uppercase text-gray-400 ml-1">Onde Aplicar?</p>
+                    <select value={newCouponForm.scopeType} onChange={e => setNewCouponForm({...newCouponForm, scopeType: e.target.value as any, scopeValue: ''})} className="w-full bg-white p-4 rounded-xl font-black text-[10px] uppercase outline-none shadow-sm border border-gray-200">
+                      <option value="all">Loja Toda</option>
+                      <option value="category">Por Categoria</option>
+                      <option value="product">Por Produto</option>
+                    </select>
+                  </div>
+                  {newCouponForm.scopeType !== 'all' && (
+                    <div className="space-y-1 animate-in slide-in-from-left duration-300">
+                      <p className="text-[8px] font-black uppercase text-gray-400 ml-1">Selecione</p>
+                      <select value={newCouponForm.scopeValue} onChange={e => setNewCouponForm({...newCouponForm, scopeValue: e.target.value})} className="w-full bg-white p-4 rounded-xl font-black text-[10px] uppercase outline-none shadow-sm border border-gray-200" required>
+                        <option value="">Selecione...</option>
+                        {newCouponForm.scopeType === 'category' 
+                          ? categories?.map(c => <option key={c.id} value={c.name}>{c.name}</option>) 
+                          : menuItems?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)
+                        }
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <button type="submit" className="w-full bg-black text-yellow-400 py-4 rounded-xl font-black text-[10px] uppercase shadow-lg hover:brightness-125 active:scale-95 transition-all mt-2">
+                  Gerar Cupom 🎫
+                </button>
               </form>
+
               <div className="flex-1 space-y-3 overflow-y-auto max-h-80 no-scrollbar">
                 {coupons?.map(c => (
                   <div key={c.id} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border border-gray-100 group">
                     <div>
                       <span className="font-black text-sm">{c.code}</span>
                       <span className="bg-yellow-400 text-black px-2 py-0.5 rounded text-[10px] font-black ml-2">{c.percentage}%</span>
-                      <p className="text-[8px] font-black uppercase text-gray-400 mt-1">{c.scopeType === 'all' ? 'Toda Loja' : c.scopeValue}</p>
+                      <p className="text-[8px] font-black uppercase text-gray-400 mt-1">
+                        Escopo: {c.scopeType === 'all' ? 'Toda Loja' : c.scopeType === 'category' ? `Cat: ${c.scopeValue}` : `Prod: ${menuItems.find(p => p.id === c.scopeValue)?.name || 'Produto'}`}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={async () => { await supabase.from('coupons').update({ is_active: !c.isActive }).eq('id', c.id); fetchMarketing(); }} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase ${c.isActive ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-500'}`}>{c.isActive ? 'On' : 'Off'}</button>
-                      <button onClick={async () => { if(confirm('Excluir?')) { await supabase.from('coupons').delete().eq('id', c.id); fetchMarketing(); } }} className="p-2 bg-white text-red-400 rounded-xl shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon size={14}/></button>
+                      <button onClick={async () => { if(confirm('Excluir cupom permanentemente?')) { await supabase.from('coupons').delete().eq('id', c.id); fetchMarketing(); } }} className="p-2 bg-white text-red-400 rounded-xl shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon size={14}/></button>
                     </div>
                   </div>
                 ))}
@@ -348,7 +395,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </div>
 
-      {/* Modal Detalhes do Pedido - MELHORADO */}
+      {/* Modal Detalhes do Pedido */}
       {selectedTable && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
@@ -374,7 +421,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                <div className="flex-1 p-8 overflow-y-auto space-y-6 no-scrollbar">
                   
-                  {/* INFORMAÇÕES DO CLIENTE E ENTREGA - NOVO DESTAQUE */}
                   {(selectedTable.currentOrder?.address || selectedTable.currentOrder?.customerPhone) && (
                     <div className="bg-yellow-50 p-6 rounded-[2.5rem] border-2 border-yellow-100 space-y-4">
                       <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-yellow-800">Dados de Contato e Entrega</h4>
@@ -465,7 +511,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Outros Modais Manuais */}
       {isNewOrderModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-sm rounded-[3.5rem] p-10 relative shadow-2xl">
