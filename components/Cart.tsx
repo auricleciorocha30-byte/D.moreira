@@ -12,7 +12,7 @@ interface CartProps {
   onUpdateQuantity: (id: string, delta: number) => void;
   onRemove: (id: string) => void;
   onAdd: (product: Product) => void;
-  onPlaceOrder: (order: Order) => void;
+  onPlaceOrder: (order: Order) => Promise<boolean>;
 }
 
 const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, onRemove, onAdd, onPlaceOrder }) => {
@@ -38,6 +38,9 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
           scopeValue: data.scope_value || ''
         }); 
       });
+    } else {
+      // Quando fechar o modal, resetamos o estado de sucesso para o próximo pedido
+      if (!isOpen) setTimeout(() => setIsSuccess(false), 500);
     }
   }, [isOpen]);
 
@@ -67,6 +70,37 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   }, [appliedCoupons, items]);
 
   const finalTotal = subtotal - discount;
+
+  // Fix: Implemented handleValidateCoupon to fetch and apply valid coupons from database
+  const handleValidateCoupon = async () => {
+    if (!couponCode.trim()) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('coupons')
+        .select('*')
+        .eq('code', couponCode.trim().toUpperCase())
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) throw error;
+      
+      if (data) {
+        setAppliedCoupons([{
+          id: data.id,
+          code: data.code,
+          percentage: data.percentage,
+          isActive: data.is_active,
+          scopeType: data.scope_type,
+          scopeValue: data.scope_value || ''
+        }]);
+      } else {
+        alert('Cupom inválido ou expirado.');
+      }
+    } catch (err) {
+      alert('Erro ao validar cupom.');
+    }
+  };
 
   const handleCheckout = async () => {
     if (items.length === 0) return;
@@ -105,32 +139,16 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
         else await supabase.from('loyalty_users').insert([{ phone: customerPhone, name: customerName, accumulated: finalEligible }]);
       }
 
-      onPlaceOrder(newOrder);
-      setIsSuccess(true);
-      setAppliedCoupons([]);
-      setCouponCode('');
+      const success = await onPlaceOrder(newOrder);
+      if (success) {
+        setIsSuccess(true);
+        setAppliedCoupons([]);
+        setCouponCode('');
+      }
     } catch (err) { 
       alert('Erro ao processar checkout. Tente novamente.'); 
     } finally { 
       setIsProcessing(false); 
-    }
-  };
-
-  const handleValidateCoupon = async () => {
-    if (!couponCode) return;
-    const { data, error } = await supabase.from('coupons')
-      .select('*')
-      .eq('code', couponCode.toUpperCase())
-      .eq('is_active', true);
-    
-    if (error || !data || data.length === 0) {
-      alert('Cupom inválido ou expirado.');
-      setAppliedCoupons([]);
-    } else {
-      setAppliedCoupons(data.map(c => ({
-        id: c.id, code: c.code, percentage: c.percentage, isActive: c.is_active,
-        scopeType: c.scope_type, scopeValue: c.scope_value
-      })));
     }
   };
 
@@ -139,13 +157,13 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
       <div className={`fixed inset-0 bg-black/70 backdrop-blur-md z-[50] transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={onClose}/>
       <div className={`fixed right-0 top-0 h-full w-full max-w-md bg-white z-[60] shadow-2xl transition-transform duration-500 transform ${isOpen ? 'translate-x-0' : 'translate-x-full'} flex flex-col`}>
         {isSuccess ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center font-black">
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center font-black animate-in fade-in zoom-in duration-500">
             <div className="w-24 h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce shadow-xl">
               <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg>
             </div>
             <h2 className="text-4xl mb-4 italic uppercase tracking-tighter">Pedido Enviado!</h2>
-            <p className="text-gray-500 uppercase text-[10px] tracking-widest leading-relaxed">Seu pedido foi registrado com sucesso em nosso sistema.</p>
-            <button onClick={() => { setIsSuccess(false); onClose(); }} className="w-full bg-black text-white py-6 rounded-[2.5rem] uppercase mt-12 text-[11px] font-black tracking-widest shadow-2xl active:scale-95 transition-all">Voltar para a Loja</button>
+            <p className="text-gray-500 uppercase text-[10px] tracking-widest leading-relaxed">Seu pedido foi registrado com sucesso. Aguarde enquanto preparamos com carinho!</p>
+            <button onClick={() => { onClose(); }} className="w-full bg-black text-white py-6 rounded-[2.5rem] uppercase mt-12 text-[11px] font-black tracking-widest shadow-2xl active:scale-95 transition-all">Voltar para a Loja</button>
           </div>
         ) : (
           <>
@@ -167,7 +185,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                     <div className="space-y-2">
                       <p className="text-[8px] tracking-[0.2em] text-gray-400 ml-2">Tipo de Pedido</p>
                       <div className="grid grid-cols-3 gap-2">{(['table', 'takeaway', 'delivery'] as OrderType[]).map(type => (
-                        <button key={type} onClick={() => setOrderType(type)} className={`py-4 rounded-2xl text-[9px] border-2 transition-all ${orderType === type ? 'bg-black text-white border-black' : 'bg-white text-gray-400 border-gray-100'}`}>
+                        <button key={type} onClick={() => setOrderType(type)} className={`py-4 rounded-2xl text-[9px] border-2 transition-all ${orderType === type ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>
                           {type === 'table' ? 'Na Mesa' : type === 'takeaway' ? 'Balcão' : 'Entrega'}
                         </button>
                       ))}</div>
@@ -192,7 +210,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                     <div className="space-y-2">
                       <p className="text-[8px] tracking-[0.2em] text-gray-400 ml-2">Forma de Pagamento</p>
                       <div className="grid grid-cols-3 gap-2">{(['Pix', 'Dinheiro', 'Cartão'] as const).map(method => (
-                        <button key={method} onClick={() => setPaymentMethod(method)} className={`py-4 rounded-2xl text-[9px] border-2 transition-all ${paymentMethod === method ? 'bg-black text-white border-black' : 'bg-white text-gray-400 border-gray-100'}`}>{method}</button>
+                        <button key={method} onClick={() => setPaymentMethod(method)} className={`py-4 rounded-2xl text-[9px] border-2 transition-all ${paymentMethod === method ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>{method}</button>
                       ))}</div>
                     </div>
 
@@ -212,14 +230,14 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                   <div className="space-y-4">
                     <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-4">Resumo dos Itens</p>
                     {items.map(item => (
-                      <div key={item.id} className="flex gap-5 bg-white p-5 rounded-[2rem] border items-center group shadow-sm">
+                      <div key={item.id} className="flex gap-5 bg-white p-5 rounded-[2rem] border items-center group shadow-sm hover:border-black transition-all">
                         <img src={item.image} className="w-20 h-20 rounded-2xl object-cover shrink-0 shadow-sm" />
                         <div className="flex-1 font-black"><h4 className="text-xs uppercase leading-none truncate">{item.name}</h4><p className="text-yellow-700 text-sm italic mt-2">R$ {item.price.toFixed(2)}</p></div>
                         <div className="flex flex-col items-end gap-2">
-                          <button onClick={() => onRemove(item.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-lg transition-colors">
+                          <button onClick={() => onRemove(item.id)} className="text-red-300 p-2 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors">
                             <TrashIcon size={18} />
                           </button>
-                          <div className="flex items-center gap-3 bg-gray-50 p-1 rounded-xl font-black">
+                          <div className="flex items-center gap-3 bg-gray-50 p-1 rounded-xl font-black shadow-inner">
                             <button onClick={() => onUpdateQuantity(item.id, -1)} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center hover:bg-gray-100 transition-colors">-</button>
                             <span className="text-sm w-4 text-center">{item.quantity}</span>
                             <button onClick={() => onUpdateQuantity(item.id, 1)} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center hover:bg-gray-100 transition-colors">+</button>
@@ -238,16 +256,16 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
             </div>
 
             {items.length > 0 && (
-              <div className="p-10 border-t-4 bg-white sticky bottom-0 rounded-t-[4rem] z-20 font-black italic shadow-2xl">
+              <div className="p-10 border-t-4 bg-white sticky bottom-0 rounded-t-[4rem] z-20 font-black italic shadow-[0_-20px_50px_-12px_rgba(0,0,0,0.15)]">
                 <div className="flex justify-between items-center mb-8">
                   <div>
                     <span className="text-[10px] text-gray-400 not-italic uppercase tracking-widest">Total do Pedido</span>
-                    <span className="text-5xl block tracking-tighter">R$ {finalTotal.toFixed(2)}</span>
+                    <span className="text-5xl block tracking-tighter">R$ {finalTotal.toFixed(2).replace('.', ',')}</span>
                   </div>
                   {discount > 0 && (
                     <div className="text-right">
-                      <span className="text-green-600 text-xs block">- R$ {discount.toFixed(2)}</span>
-                      <span className="text-[9px] text-gray-300 not-italic uppercase">Economia</span>
+                      <span className="text-green-600 text-xs block font-black">- R$ {discount.toFixed(2).replace('.', ',')}</span>
+                      <span className="text-[9px] text-gray-300 not-italic uppercase font-black">Economia</span>
                     </div>
                   )}
                 </div>
