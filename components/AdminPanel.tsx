@@ -11,6 +11,7 @@ interface AdminPanelProps {
   categories: Category[];
   audioEnabled: boolean;
   onToggleAudio: () => void;
+  onTestSound: () => void;
   onUpdateTable: (tableId: number, status: 'free' | 'occupied', order?: Order | null) => void;
   onAddToOrder: (tableId: number, product: Product) => void;
   onRefreshData: () => void;
@@ -28,7 +29,7 @@ const STATUS_CFG: Record<string, any> = {
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
-  tables = [], menuItems = [], categories = [], audioEnabled, onToggleAudio, 
+  tables = [], menuItems = [], categories = [], audioEnabled, onToggleAudio, onTestSound,
   onUpdateTable, onRefreshData, onLogout, onSaveProduct, onDeleteProduct, dbStatus, onAddToOrder 
 }) => {
   const [activeTab, setActiveTab] = useState<'tables' | 'delivery' | 'menu' | 'marketing'>('tables');
@@ -137,7 +138,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mt-1">Painel Admin</p>
           </div>
           <div className="h-10 w-[1px] bg-gray-800 hidden md:block"></div>
-          {/* AUTO SYNC INDICATOR */}
           <div className="flex items-center gap-3 bg-gray-900 px-4 py-2.5 rounded-2xl border border-gray-800 relative group">
             <div className="relative flex h-3 w-3">
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${dbStatus === 'ok' ? 'bg-green-400' : 'bg-blue-400'}`}></span>
@@ -146,7 +146,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <span className="text-[9px] font-black uppercase text-white tracking-widest">
               {dbStatus === 'ok' ? 'Auto Sync On' : 'Sincronizando...'}
             </span>
-            <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-black text-white text-[8px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Conectado ao Supabase Realtime</div>
           </div>
         </div>
 
@@ -158,7 +157,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           ))}
         </nav>
         
-        <div className="flex gap-4">
+        <div className="flex gap-4 items-center">
+          <button onClick={onTestSound} className="bg-gray-800 text-white text-[8px] font-black uppercase px-3 py-2 rounded-xl border border-gray-700 hover:bg-gray-700 transition-all">Testar Som 🔊</button>
           <button onClick={onToggleAudio} className={`p-4 rounded-full transition-all ${audioEnabled ? 'bg-yellow-400 text-black shadow-lg ring-4 ring-yellow-400/20' : 'bg-gray-800 text-gray-600'}`}>
             <VolumeIcon muted={!audioEnabled} size={20}/>
           </button>
@@ -378,7 +378,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Outros Modais Manter como estão... */}
       {isNewOrderModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-sm rounded-[3.5rem] p-10 relative shadow-2xl">
@@ -399,7 +398,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Modal de Categoria */}
       {isCategoryModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-md rounded-[3.5rem] p-10 relative shadow-2xl">
@@ -413,7 +411,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Modal de Produto */}
       {isProductModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
           <div className="bg-white w-full max-w-2xl rounded-[4rem] p-12 relative shadow-2xl">

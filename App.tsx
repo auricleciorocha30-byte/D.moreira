@@ -26,26 +26,37 @@ const App: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCoupons, setActiveCoupons] = useState<Coupon[]>([]);
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ok' | 'error' | 'syncing'>('loading');
   const [newOrderAlert, setNewOrderAlert] = useState<{ id: number; type: string } | null>(null);
 
   const notificationSound = useRef<HTMLAudioElement | null>(null);
-  const audioUnlocked = useRef(false);
 
   useEffect(() => {
+    // Som de notificação mais robusto e curto
     notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     notificationSound.current.load();
   }, []);
 
-  const unlockAudio = useCallback(() => {
-    if (!audioUnlocked.current && notificationSound.current) {
-      notificationSound.current.play().then(() => {
-        notificationSound.current?.pause();
-        if (notificationSound.current) notificationSound.current.currentTime = 0;
-        audioUnlocked.current = true;
-      }).catch(() => {});
+  const handleUnlockAudio = useCallback(() => {
+    if (!audioUnlocked && notificationSound.current) {
+      notificationSound.current.play()
+        .then(() => {
+          notificationSound.current?.pause();
+          if (notificationSound.current) notificationSound.current.currentTime = 0;
+          setAudioUnlocked(true);
+          console.log("🔊 Áudio desbloqueado com sucesso!");
+        })
+        .catch(err => console.warn("Aguardando interação para áudio...", err));
     }
-  }, []);
+  }, [audioUnlocked]);
+
+  const testSound = () => {
+    if (notificationSound.current) {
+      notificationSound.current.currentTime = 0;
+      notificationSound.current.play().catch(e => alert("Clique na tela primeiro para autorizar o som!"));
+    }
+  };
 
   const fetchData = useCallback(async (isSilent = false) => {
     try {
@@ -118,24 +129,16 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [fetchData]);
 
-  // MOTOR REALTIME MASTER V4 - FOCO EM EVENTOS GRANULARES
+  // MOTOR REALTIME MASTER V5 - SOM E SINCRONIZAÇÃO
   useEffect(() => {
-    const channel = supabase.channel('dmoreira_realtime_v4')
+    const channel = supabase.channel('dmoreira_master_v5')
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'tables' }, 
         (payload) => {
-          console.log("🔥 Evento Realtime Recebido:", payload.eventType, payload.new);
-          
-          if (payload.eventType === 'DELETE') {
-            const oldId = (payload.old as any).id;
-            setTables(current => current.map(t => t.id === oldId ? { ...t, status: 'free', currentOrder: null } : t));
-            return;
-          }
-
           const newRec = payload.new as any;
           const oldRec = payload.old as any;
 
-          // Atualização de Estado Ultra-Rápida
+          // Atualização de Estado
           setTables(current => {
             const exists = current.some(t => t.id === newRec.id);
             const updatedTable: Table = {
@@ -151,14 +154,14 @@ const App: React.FC = () => {
             }
           });
 
-          // Lógica de Notificação de Novo Pedido
+          // DISPARO DE SOM: Só toca se o status mudou de 'free' para 'occupied'
           if (newRec && newRec.status === 'occupied') {
-            // Se o status mudou de livre para ocupado ou se é um novo insert
             const wasFree = !oldRec || oldRec.status === 'free';
             if (wasFree) {
+              console.log("🔔 NOVO PEDIDO DETECTADO!");
               if (audioEnabled && notificationSound.current) {
                 notificationSound.current.currentTime = 0;
-                notificationSound.current.play().catch(e => console.warn("Áudio pausado pelo navegador", e));
+                notificationSound.current.play().catch(e => console.error("Falha ao tocar som. Precisa de clique.", e));
               }
               setNewOrderAlert({ 
                 id: newRec.id, 
@@ -169,17 +172,12 @@ const App: React.FC = () => {
           }
         }
       )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => fetchData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => fetchData(true))
-      .subscribe((status) => {
-        console.log("🛰️ Status da Conexão:", status);
-        if (status === 'SUBSCRIBED') setDbStatus('ok');
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [audioEnabled, fetchData]);
+  }, [audioEnabled]);
 
   const handlePlaceOrder = async (order: Order) => {
     let targetId = order.tableId;
@@ -189,7 +187,6 @@ const App: React.FC = () => {
       targetId = free ? free.id : (Math.max(...tables.filter(t => t.id >= range[0] && t.id <= range[1]).map(t => t.id), range[0] - 1) + 1);
     }
     
-    // O Realtime via UPSERT
     const { error } = await supabase.from('tables').upsert({ 
       id: targetId, 
       status: 'occupied', 
@@ -197,7 +194,7 @@ const App: React.FC = () => {
     });
     
     if (error) {
-      alert("Erro ao enviar pedido ao servidor.");
+      alert("Erro ao enviar pedido.");
     } else {
       setCartItems([]);
       setIsCartOpen(false);
@@ -208,7 +205,7 @@ const App: React.FC = () => {
   const filteredItems = useMemo(() => (menuItems || []).filter(i => selectedCategory === 'Todos' || i.category === selectedCategory), [menuItems, selectedCategory]);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans relative" onClick={unlockAudio}>
+    <div className="min-h-screen bg-gray-50 flex flex-col font-sans relative" onClick={handleUnlockAudio}>
       <Header />
       
       {!isLoggedIn && (
@@ -235,12 +232,10 @@ const App: React.FC = () => {
           <AdminPanel 
             tables={tables} menuItems={menuItems} categories={categories}
             audioEnabled={audioEnabled} onToggleAudio={() => setAudioEnabled(!audioEnabled)}
+            onTestSound={testSound}
             onUpdateTable={async (id, status, ord) => { 
-              if (status === 'free') {
-                await supabase.from('tables').update({ status: 'free', current_order: null }).eq('id', id);
-              } else {
-                await supabase.from('tables').upsert({ id, status, current_order: ord || null });
-              }
+              if (status === 'free') await supabase.from('tables').update({ status: 'free', current_order: null }).eq('id', id);
+              else await supabase.from('tables').upsert({ id, status, current_order: ord || null });
             }}
             onAddToOrder={(tableId, product) => {
               const table = (tables || []).find(t => t.id === tableId);
@@ -249,7 +244,6 @@ const App: React.FC = () => {
               const ex = items.findIndex(i => i.id === product.id);
               if (ex >= 0) items[ex].quantity += 1; else items.push({ ...product, quantity: 1 });
               const total = items.reduce((a, b) => a + (b.price * b.quantity), 0);
-              
               const newOrd: Order = current ? { ...current, items, total, finalTotal: total - (current.discount || 0) } : {
                 id: Math.random().toString(36).substr(2, 6).toUpperCase(),
                 customerName: tableId >= 950 ? 'Balcão' : tableId >= 900 ? 'Entrega' : `Mesa ${tableId}`,
@@ -296,7 +290,7 @@ const App: React.FC = () => {
             <h2 className="text-2xl font-black mb-8 italic uppercase tracking-tighter">Painel D.Moreira</h2>
             <form onSubmit={async (e) => {
               e.preventDefault(); setIsLoadingLogin(true);
-              unlockAudio();
+              handleUnlockAudio();
               const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPass });
               if (!error && data.session) { 
                 setIsLoggedIn(true); setIsAdmin(true); setShowLogin(false);
@@ -318,7 +312,7 @@ const App: React.FC = () => {
 
       {!isAdmin && cartItems.length > 0 && (
         <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 z-40 animate-in slide-in-from-bottom duration-500">
-          <button onClick={() => setIsCartOpen(true)} className="w-full max-w-md bg-black text-white rounded-[2.5rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30 active:scale-95 transition-all">
+          <button onClick={() => { setIsCartOpen(true); handleUnlockAudio(); }} className="w-full max-w-md bg-black text-white rounded-[2.5rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30 active:scale-95 transition-all">
             <div className="flex items-center gap-4">
               <div className="bg-yellow-400 text-black w-9 h-9 flex items-center justify-center rounded-2xl text-xs font-black">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
               <span className="font-black text-xs uppercase tracking-widest">Ver Minha Sacola</span>
