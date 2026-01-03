@@ -28,12 +28,12 @@ const App: React.FC = () => {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ok' | 'error' | 'syncing'>('loading');
-  const [newOrderAlert, setNewOrderAlert] = useState<{ id: number; type: string } | null>(null);
+  const [newOrderAlert, setNewOrderAlert] = useState<{ id: number; type: string; timestamp: number } | null>(null);
 
   const notificationSound = useRef<HTMLAudioElement | null>(null);
+  const lastNotifiedOrderId = useRef<string | null>(null);
 
   useEffect(() => {
-    // Som de notificação mais robusto e curto
     notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     notificationSound.current.load();
   }, []);
@@ -45,9 +45,9 @@ const App: React.FC = () => {
           notificationSound.current?.pause();
           if (notificationSound.current) notificationSound.current.currentTime = 0;
           setAudioUnlocked(true);
-          console.log("🔊 Áudio desbloqueado com sucesso!");
+          console.log("🔊 Áudio desbloqueado!");
         })
-        .catch(err => console.warn("Aguardando interação para áudio...", err));
+        .catch(err => console.warn("Aguardando interação...", err));
     }
   }, [audioUnlocked]);
 
@@ -129,16 +129,14 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [fetchData]);
 
-  // MOTOR REALTIME MASTER V5 - SOM E SINCRONIZAÇÃO
+  // MOTOR REALTIME MASTER V6 - CORREÇÃO DE NOTIFICAÇÕES RECORRENTES
   useEffect(() => {
-    const channel = supabase.channel('dmoreira_master_v5')
+    const channel = supabase.channel('dmoreira_realtime_v6')
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'tables' }, 
         (payload) => {
           const newRec = payload.new as any;
-          const oldRec = payload.old as any;
-
-          // Atualização de Estado
+          
           setTables(current => {
             const exists = current.some(t => t.id === newRec.id);
             const updatedTable: Table = {
@@ -146,29 +144,37 @@ const App: React.FC = () => {
               status: newRec.status,
               currentOrder: newRec.current_order
             };
-
-            if (exists) {
-              return current.map(t => t.id === newRec.id ? updatedTable : t);
-            } else {
-              return [...current, updatedTable].sort((a, b) => a.id - b.id);
-            }
+            if (exists) return current.map(t => t.id === newRec.id ? updatedTable : t);
+            return [...current, updatedTable].sort((a, b) => a.id - b.id);
           });
 
-          // DISPARO DE SOM: Só toca se o status mudou de 'free' para 'occupied'
-          if (newRec && newRec.status === 'occupied') {
-            const wasFree = !oldRec || oldRec.status === 'free';
-            if (wasFree) {
-              console.log("🔔 NOVO PEDIDO DETECTADO!");
+          // Lógica de Notificação baseada em ID de Pedido (mais confiável que oldRec)
+          if (newRec && newRec.status === 'occupied' && newRec.current_order) {
+            const orderId = newRec.current_order.id;
+            
+            // Só dispara se for um ID de pedido que ainda não notificamos nesta sessão
+            if (orderId !== lastNotifiedOrderId.current) {
+              lastNotifiedOrderId.current = orderId;
+              
+              console.log(`🔔 NOVO PEDIDO DETECTADO: ${orderId}`);
+              
               if (audioEnabled && notificationSound.current) {
                 notificationSound.current.currentTime = 0;
-                notificationSound.current.play().catch(e => console.error("Falha ao tocar som. Precisa de clique.", e));
+                notificationSound.current.play().catch(e => console.warn("Interação necessária para som."));
               }
+              
+              // Atualiza o estado com timestamp para garantir que o React veja como "novo"
               setNewOrderAlert({ 
                 id: newRec.id, 
-                type: newRec.id >= 950 ? 'Balcão' : newRec.id >= 900 ? 'Entrega' : 'Mesa' 
+                type: newRec.id >= 950 ? 'Balcão' : newRec.id >= 900 ? 'Entrega' : 'Mesa',
+                timestamp: Date.now()
               });
-              setTimeout(() => setNewOrderAlert(null), 15000);
+              
+              setTimeout(() => setNewOrderAlert(null), 10000);
             }
+          } else if (newRec && newRec.status === 'free') {
+            // Se a mesa foi liberada, resetamos o último ID para permitir novas notificações se a mesma mesa for re-usada
+            // Mas o ID do pedido seria diferente de qualquer forma.
           }
         }
       )
@@ -213,7 +219,7 @@ const App: React.FC = () => {
       )}
 
       {isAdmin && isLoggedIn && newOrderAlert && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-md px-6 animate-in slide-in-from-top duration-700">
+        <div key={newOrderAlert.timestamp} className="fixed top-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-md px-6 animate-in slide-in-from-top duration-700">
           <div className="bg-black text-white p-6 rounded-[3rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.5)] border-4 border-yellow-400 flex items-center gap-5 ring-8 ring-black/10">
             <div className="bg-yellow-400 text-black w-14 h-14 rounded-2xl flex items-center justify-center font-black animate-bounce shrink-0">
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
