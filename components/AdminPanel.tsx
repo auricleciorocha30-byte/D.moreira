@@ -49,7 +49,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loyalty, setLoyalty] = useState<LoyaltyConfig>({ isActive: false, spendingGoal: 100, scopeType: 'all', scopeValue: '' });
   const [loyaltyUsers, setLoyaltyUsers] = useState<LoyaltyUser[]>([]);
-  const [newCouponForm, setNewCouponForm] = useState({ 
+  
+  // Estados para Cupons
+  const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
+  const [editingCoupon, setEditingCoupon] = useState<Partial<Coupon> | null>(null);
+  const [couponForm, setCouponForm] = useState({ 
     code: '', 
     percentage: '', 
     scopeType: 'all' as 'all' | 'category' | 'product', 
@@ -76,27 +80,44 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     fetchMarketing();
   };
 
-  const handleCreateCoupon = async (e: React.FormEvent) => {
+  const handleSaveCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCouponForm.code || !newCouponForm.percentage) return;
+    if (!couponForm.code || !couponForm.percentage) return;
     
-    if (newCouponForm.scopeType !== 'all' && newCouponForm.selectedItems.length === 0) {
+    if (couponForm.scopeType !== 'all' && couponForm.selectedItems.length === 0) {
       return alert('Selecione ao menos um item para este cupom!');
     }
     
-    const scopeValue = newCouponForm.scopeType === 'all' ? '' : newCouponForm.selectedItems.join(',');
-    
-    await supabase.from('coupons').insert([{ 
-      id: 'c_'+Date.now(), 
-      code: newCouponForm.code.toUpperCase(), 
-      percentage: Number(newCouponForm.percentage), 
+    const scopeValue = couponForm.scopeType === 'all' ? '' : couponForm.selectedItems.join(',');
+    const couponData = { 
+      code: couponForm.code.toUpperCase(), 
+      percentage: Number(couponForm.percentage), 
       is_active: true, 
-      scope_type: newCouponForm.scopeType, 
+      scope_type: couponForm.scopeType, 
       scope_value: scopeValue
-    }]); 
+    };
+
+    if (editingCoupon?.id) {
+      await supabase.from('coupons').update(couponData).eq('id', editingCoupon.id);
+    } else {
+      await supabase.from('coupons').insert([{ id: 'c_'+Date.now(), ...couponData }]); 
+    }
     
-    setNewCouponForm({ code: '', percentage: '', scopeType: 'all', selectedItems: [] });
+    setIsCouponModalOpen(false);
+    setEditingCoupon(null);
+    setCouponForm({ code: '', percentage: '', scopeType: 'all', selectedItems: [] });
     fetchMarketing();
+  };
+
+  const openEditCoupon = (coupon: Coupon) => {
+    setEditingCoupon(coupon);
+    setCouponForm({
+      code: coupon.code,
+      percentage: coupon.percentage.toString(),
+      scopeType: coupon.scopeType,
+      selectedItems: coupon.scopeValue ? coupon.scopeValue.split(',') : []
+    });
+    setIsCouponModalOpen(true);
   };
 
   const handleDuplicateCoupon = async (coupon: Coupon) => {
@@ -104,18 +125,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     
     const { error } = await supabase.from('coupons').insert([{ 
       id: 'c_'+Date.now(), 
-      code: coupon.code, // Mantém o mesmo nome conforme solicitado
+      code: coupon.code, 
       percentage: coupon.percentage, 
       is_active: true, 
       scope_type: coupon.scopeType, 
       scope_value: coupon.scopeValue
     }]); 
 
-    if (error) {
-      alert("Erro ao duplicar cupom.");
-    } else {
-      fetchMarketing();
-    }
+    if (error) alert("Erro ao duplicar cupom.");
+    else fetchMarketing();
   };
 
   const handleDeleteCategory = async (id: string) => {
@@ -140,7 +158,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const toggleCouponItem = (val: string) => {
-    setNewCouponForm(prev => {
+    setCouponForm(prev => {
       const items = prev.selectedItems.includes(val) 
         ? prev.selectedItems.filter(i => i !== val)
         : [...prev.selectedItems, val];
@@ -210,7 +228,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <nav className="flex bg-gray-900 p-1.5 rounded-2xl gap-1">
           {(['tables', 'delivery', 'menu', 'marketing'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${activeTab === tab ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-500 hover:text-white'}`}>
-              {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Externo' : tab === 'menu' ? 'Menu' : 'Fidelidade'}
+              {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Externo' : tab === 'menu' ? 'Menu' : 'Marketing'}
             </button>
           ))}
         </nav>
@@ -262,16 +280,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       <span className="bg-gray-100 text-[9px] font-black px-2 py-1 rounded-full uppercase">#{t.id}</span>
                     </div>
                     <h4 className="font-black text-sm uppercase truncate leading-tight mb-1">{t.currentOrder?.customerName || 'Cliente'}</h4>
-                    
-                    <div className="bg-gray-50 p-3 rounded-2xl mb-4 h-16 overflow-hidden border border-gray-100 flex flex-col justify-center">
-                      <p className="text-[10px] text-black font-black leading-tight line-clamp-2 uppercase italic">
-                        {t.id < 950 ? (t.currentOrder?.address || '⚠️ Sem endereço informado') : '📍 Retirada no Balcão'}
-                      </p>
-                      {t.currentOrder?.customerPhone && (
-                        <p className="text-[9px] text-gray-500 font-bold mt-1">📞 {t.currentOrder.customerPhone}</p>
-                      )}
-                    </div>
-
                     <div className={`${STATUS_CFG[t.currentOrder?.status || 'pending'].bg} ${STATUS_CFG[t.currentOrder?.status || 'pending'].color} text-[8px] font-black px-3 py-1.5 rounded-full inline-block uppercase`}>
                       {STATUS_CFG[t.currentOrder?.status || 'pending'].label}
                     </div>
@@ -367,111 +375,127 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* Cupons - Configuração */}
-            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col h-full">
-                <h3 className="text-xl font-black italic uppercase mb-8">🎫 Gerar Novo Cupom</h3>
-                <form onSubmit={handleCreateCoupon} className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <p className="text-[8px] font-black uppercase text-gray-400 ml-1">Código</p>
-                      <input value={newCouponForm.code} onChange={e => setNewCouponForm({...newCouponForm, code: e.target.value})} placeholder="EX: MAIO15" className="w-full bg-gray-50 p-4 rounded-xl font-black text-xs uppercase outline-none border-2 focus:border-black transition-all" required />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[8px] font-black uppercase text-gray-400 ml-1">% OFF</p>
-                      <input value={newCouponForm.percentage} onChange={e => setNewCouponForm({...newCouponForm, percentage: e.target.value})} type="number" placeholder="15" className="w-full bg-gray-50 p-4 rounded-xl font-black text-xs outline-none border-2 focus:border-black transition-all" required />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <p className="text-[8px] font-black uppercase text-gray-400 ml-1">Escopo de Aplicação</p>
-                    <div className="flex bg-gray-100 p-1 rounded-2xl gap-1">
-                      {(['all', 'category', 'product'] as const).map(s => (
-                        <button key={s} type="button" onClick={() => setNewCouponForm({...newCouponForm, scopeType: s, selectedItems: []})} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${newCouponForm.scopeType === s ? 'bg-black text-white' : 'text-gray-400 hover:text-gray-600'}`}>
-                          {s === 'all' ? 'Geral' : s === 'category' ? 'Categorias' : 'Produtos'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {newCouponForm.scopeType !== 'all' && (
-                    <div className="space-y-2 bg-gray-50 p-4 rounded-2xl border-2 border-dashed max-h-60 overflow-y-auto no-scrollbar animate-in slide-in-from-top duration-300">
-                      <p className="text-[8px] font-black uppercase text-gray-400 mb-3 sticky top-0 bg-gray-50 py-1">Selecione os itens ativos:</p>
-                      <div className="grid grid-cols-1 gap-2">
-                        {newCouponForm.scopeType === 'category' ? categories?.map(cat => (
-                          <label key={cat.id} className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${newCouponForm.selectedItems.includes(cat.name) ? 'bg-yellow-400 border-black' : 'bg-white border-transparent'}`}>
-                            <span className="text-[10px] font-black uppercase">{cat.name}</span>
-                            <input type="checkbox" className="hidden" checked={newCouponForm.selectedItems.includes(cat.name)} onChange={() => toggleCouponItem(cat.name)} />
-                            {newCouponForm.selectedItems.includes(cat.name) && <span className="text-sm">✓</span>}
-                          </label>
-                        )) : menuItems?.filter(p => p.isAvailable).map(prod => (
-                          <label key={prod.id} className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${newCouponForm.selectedItems.includes(prod.id) ? 'bg-yellow-400 border-black' : 'bg-white border-transparent'}`}>
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-black uppercase leading-tight">{prod.name}</span>
-                              <span className="text-[8px] text-gray-500 font-bold uppercase">{prod.category}</span>
-                            </div>
-                            <input type="checkbox" className="hidden" checked={newCouponForm.selectedItems.includes(prod.id)} onChange={() => toggleCouponItem(prod.id)} />
-                            {newCouponForm.selectedItems.includes(prod.id) && <span className="text-sm">✓</span>}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-2xl font-black text-xs uppercase shadow-xl hover:brightness-125 transition-all">
-                    Criar Cupom Acumulativo 🎫
-                  </button>
-                </form>
+            {/* Cupons - Lista e Botão para Abrir Modal */}
+            <div className="lg:col-span-2 flex flex-col bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 h-full">
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-xl font-black italic uppercase">🎫 Cupons Promocionais</h3>
+                <button 
+                  onClick={() => { setEditingCoupon(null); setCouponForm({ code: '', percentage: '', scopeType: 'all', selectedItems: [] }); setIsCouponModalOpen(true); }} 
+                  className="bg-black text-yellow-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg hover:brightness-125 transition-all"
+                >
+                  + Novo Cupom
+                </button>
               </div>
-
-              {/* Lista de Cupons Ativos */}
-              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col h-full">
-                <h3 className="text-xl font-black italic uppercase mb-8">Cupons Ativos</h3>
-                <div className="space-y-4 overflow-y-auto no-scrollbar">
-                  {coupons?.length > 0 ? coupons.map(c => (
-                    <div key={c.id} className="p-5 bg-gray-50 rounded-2xl border border-gray-100 group hover:border-black transition-all">
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex flex-wrap gap-2">
-                          <span className="bg-black text-yellow-400 px-3 py-1.5 rounded-xl font-black text-xs tracking-widest">{c.code}</span>
-                          <span className="text-green-600 font-black text-sm">{c.percentage}% OFF</span>
-                        </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => handleDuplicateCoupon(c)} title="Clonar Cupom" className="p-2 text-blue-400 hover:text-blue-600 transition-colors">
-                            <CopyIcon size={16}/>
-                          </button>
-                          <button onClick={async () => { if(confirm('Excluir cupom?')) { await supabase.from('coupons').delete().eq('id', c.id); fetchMarketing(); } }} className="p-2 text-red-300 hover:text-red-500 transition-colors">
-                            <TrashIcon size={16}/>
-                          </button>
-                        </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto no-scrollbar">
+                {coupons?.length > 0 ? coupons.map(c => (
+                  <div key={c.id} className="p-5 bg-gray-50 rounded-2xl border border-gray-100 group hover:border-black transition-all flex flex-col">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex flex-wrap gap-2">
+                        <span className="bg-black text-yellow-400 px-3 py-1.5 rounded-xl font-black text-xs tracking-widest">{c.code}</span>
+                        <span className="text-green-600 font-black text-sm">{c.percentage}% OFF</span>
                       </div>
-                      <div className="bg-white p-3 rounded-xl border border-gray-100">
-                        <p className="text-[8px] font-black uppercase text-gray-400 mb-1">Escopo:</p>
-                        <p className="text-[10px] font-black uppercase line-clamp-2 leading-tight">
-                          {c.scopeType === 'all' ? '🚀 Toda a Loja' : c.scopeValue.split(',').length > 3 
-                            ? `${c.scopeValue.split(',').length} Itens selecionados` 
-                            : c.scopeType === 'product' 
-                              ? c.scopeValue.split(',').map(id => menuItems.find(p => p.id === id)?.name).join(', ')
-                              : c.scopeValue.replace(/,/g, ', ')}
-                        </p>
-                      </div>
-                      <div className="mt-4 flex justify-between items-center">
-                        <span className={`text-[8px] font-black uppercase px-2 py-1 rounded ${c.isActive ? 'text-green-500 bg-green-50' : 'text-gray-400 bg-gray-100'}`}>
-                          {c.isActive ? 'Ativo' : 'Inativo'}
-                        </span>
-                        <button onClick={async () => { await supabase.from('coupons').update({ is_active: !c.isActive }).eq('id', c.id); fetchMarketing(); }} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase shadow-sm ${c.isActive ? 'bg-white text-black border' : 'bg-black text-white'}`}>
-                          {c.isActive ? 'Pausar' : 'Ativar'}
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => openEditCoupon(c)} title="Editar Cupom" className="p-2 text-gray-500 hover:text-black transition-colors">
+                          <EditIcon size={16}/>
+                        </button>
+                        <button onClick={() => handleDuplicateCoupon(c)} title="Clonar Cupom" className="p-2 text-blue-400 hover:text-blue-600 transition-colors">
+                          <CopyIcon size={16}/>
+                        </button>
+                        <button onClick={async () => { if(confirm('Excluir cupom?')) { await supabase.from('coupons').delete().eq('id', c.id); fetchMarketing(); } }} className="p-2 text-red-300 hover:text-red-500 transition-colors">
+                          <TrashIcon size={16}/>
                         </button>
                       </div>
                     </div>
-                  )) : <div className="py-20 text-center opacity-30 font-black uppercase text-[10px]">Nenhum cupom cadastrado</div>}
-                </div>
+                    <div className="bg-white p-3 rounded-xl border border-gray-100 flex-1">
+                      <p className="text-[8px] font-black uppercase text-gray-400 mb-1">Escopo:</p>
+                      <p className="text-[10px] font-black uppercase line-clamp-2 leading-tight">
+                        {c.scopeType === 'all' ? '🚀 Toda a Loja' : c.scopeValue.split(',').length > 3 
+                          ? `${c.scopeValue.split(',').length} Itens selecionados` 
+                          : c.scopeType === 'product' 
+                            ? c.scopeValue.split(',').map(id => menuItems.find(p => p.id === id)?.name || 'Prod Removido').join(', ')
+                            : c.scopeValue.replace(/,/g, ', ')}
+                      </p>
+                    </div>
+                    <div className="mt-4 flex justify-between items-center">
+                      <span className={`text-[8px] font-black uppercase px-2 py-1 rounded ${c.isActive ? 'text-green-500 bg-green-50' : 'text-gray-400 bg-gray-100'}`}>
+                        {c.isActive ? 'Ativo' : 'Pausado'}
+                      </span>
+                      <button onClick={async () => { await supabase.from('coupons').update({ is_active: !c.isActive }).eq('id', c.id); fetchMarketing(); }} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase shadow-sm ${c.isActive ? 'bg-white text-black border' : 'bg-black text-white'}`}>
+                        {c.isActive ? 'Pausar' : 'Ativar'}
+                      </button>
+                    </div>
+                  </div>
+                )) : <div className="py-20 text-center opacity-30 font-black uppercase text-[10px]">Nenhum cupom cadastrado</div>}
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Modais de Detalhes, Produtos, etc... */}
+      {/* MODAL PARA CRIAR/EDITAR CUPOM */}
+      {isCouponModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
+          <div className="bg-white w-full max-w-2xl rounded-[4rem] p-12 relative shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+             <button onClick={() => setIsCouponModalOpen(false)} className="absolute top-10 right-10 p-5 bg-gray-100 rounded-full"><CloseIcon size={24}/></button>
+             <h3 className="text-3xl font-black italic mb-10 uppercase tracking-tighter">{editingCoupon ? 'Editar' : 'Novo'} Cupom</h3>
+             
+             <form onSubmit={handleSaveCoupon} className="space-y-8 overflow-y-auto no-scrollbar pr-2">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black uppercase text-gray-400 ml-1">Código do Cupom</p>
+                    <input value={couponForm.code} onChange={e => setCouponForm({...couponForm, code: e.target.value})} placeholder="EX: NATAL10" className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-sm font-black outline-none uppercase focus:border-black transition-all" required />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black uppercase text-gray-400 ml-1">Desconto (%)</p>
+                    <input type="number" value={couponForm.percentage} onChange={e => setCouponForm({...couponForm, percentage: e.target.value})} placeholder="10" className="w-full bg-gray-50 border-2 rounded-3xl px-8 py-5 text-sm font-black outline-none focus:border-black transition-all" required />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-[10px] font-black uppercase text-gray-400 ml-1">Área de Atuação</p>
+                  <div className="flex bg-gray-100 p-1.5 rounded-3xl gap-1">
+                    {(['all', 'category', 'product'] as const).map(s => (
+                      <button key={s} type="button" onClick={() => setCouponForm({...couponForm, scopeType: s, selectedItems: []})} className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase transition-all ${couponForm.scopeType === s ? 'bg-black text-white shadow-xl scale-105' : 'text-gray-400 hover:text-gray-600'}`}>
+                        {s === 'all' ? 'Toda a Loja' : s === 'category' ? 'Categorias' : 'Produtos'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {couponForm.scopeType !== 'all' && (
+                  <div className="space-y-3">
+                    <p className="text-[10px] font-black uppercase text-gray-400 ml-1">Selecionar {couponForm.scopeType === 'category' ? 'Categorias' : 'Produtos'} ativos:</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto p-2 bg-gray-50 rounded-[2.5rem] border-2 border-dashed no-scrollbar">
+                      {couponForm.scopeType === 'category' ? categories?.map(cat => (
+                        <label key={cat.id} className={`flex items-center justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all ${couponForm.selectedItems.includes(cat.name) ? 'bg-yellow-400 border-black shadow-md' : 'bg-white border-transparent'}`}>
+                          <span className="text-[11px] font-black uppercase">{cat.name}</span>
+                          <input type="checkbox" className="hidden" checked={couponForm.selectedItems.includes(cat.name)} onChange={() => toggleCouponItem(cat.name)} />
+                          {couponForm.selectedItems.includes(cat.name) && <span className="text-black font-black">✓</span>}
+                        </label>
+                      )) : menuItems?.filter(p => p.isAvailable).map(prod => (
+                        <label key={prod.id} className={`flex items-center justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all ${couponForm.selectedItems.includes(prod.id) ? 'bg-yellow-400 border-black shadow-md' : 'bg-white border-transparent'}`}>
+                          <div className="flex flex-col">
+                            <span className="text-[11px] font-black uppercase leading-none mb-1">{prod.name}</span>
+                            <span className="text-[9px] text-gray-500 font-bold uppercase">{prod.category}</span>
+                          </div>
+                          <input type="checkbox" className="hidden" checked={couponForm.selectedItems.includes(prod.id)} onChange={() => toggleCouponItem(prod.id)} />
+                          {couponForm.selectedItems.includes(prod.id) && <span className="text-black font-black">✓</span>}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <button type="submit" className="w-full bg-black text-yellow-400 py-7 rounded-[2.5rem] font-black text-sm uppercase shadow-2xl hover:scale-[1.02] active:scale-95 transition-all">
+                  {editingCoupon ? 'Salvar Alterações 💾' : 'Criar Cupom Promocional 🎫'}
+                </button>
+             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modais de Detalhes, Produtos, etc... (Já presentes no arquivo) */}
       {selectedTable && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
