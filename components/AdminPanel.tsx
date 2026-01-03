@@ -88,7 +88,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       return alert('Selecione ao menos um item para este cupom!');
     }
 
-    // Validação: Apenas um cupom "Loja Toda" por código
     if (couponForm.scopeType === 'all') {
       const hasDuplicateAll = coupons.some(c => 
         c.code === cleanCode && 
@@ -191,8 +190,42 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const handlePrint = (order: Order) => {
     if (!order) return;
     const w = window.open('', '_blank'); if (!w) return;
-    const items = (order.items || []).map(i => `<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span>${i.quantity}x ${i.name}</span><span>R$ ${(i.price*i.quantity).toFixed(2)}</span></div>`).join('');
-    w.document.write(`<html><body style="font-family:monospace;width:280px;padding:10px;"><h2 style="text-align:center;">${STORE_INFO.name}</h2><p style="text-align:center;">Pedido #${order.id}</p><hr/>${items}<hr/><div style="display:flex;justify-content:space-between;font-weight:bold;"><span>TOTAL:</span><span>R$ ${(order.finalTotal || 0).toFixed(2)}</span></div><script>window.onload=()=>{window.print();window.close();};</script></body></html>`);
+    const itemsHtml = (order.items || []).map(i => `
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:11px;">
+        <span>${i.quantity}x ${i.name}</span>
+        <span>R$ ${(i.price * i.quantity).toFixed(2)}</span>
+      </div>
+    `).join('');
+
+    const customerInfo = `
+      <div style="font-size: 11px; margin: 10px 0;">
+        <div style="margin-bottom: 2px;"><b>CLIENTE:</b> ${order.customerName.toUpperCase()}</div>
+        ${order.customerPhone ? `<div style="margin-bottom: 2px;"><b>WHATSAPP:</b> ${order.customerPhone}</div>` : ''}
+        <div style="margin-bottom: 2px;"><b>PEDIDO:</b> ${order.orderType === 'delivery' ? 'ENTREGA' : order.orderType === 'counter' ? 'BALCÃO / RETIRADA' : `MESA ${order.tableId}`}</div>
+        ${order.address ? `<div style="margin-top: 5px; border: 1px solid #000; padding: 5px;"><b>ENDEREÇO:</b><br/>${order.address.toUpperCase()}</div>` : ''}
+      </div>
+    `;
+
+    w.document.write(`
+      <html>
+        <body style="font-family:monospace;width:280px;padding:10px;margin:0;">
+          <h2 style="text-align:center;margin:0 0 5px 0;font-size:18px;">${STORE_INFO.name}</h2>
+          <p style="text-align:center;margin:0 0 10px 0;font-size:12px;">Comprovante #${order.id}</p>
+          <hr style="border:0;border-top:1px dashed #000;"/>
+          ${customerInfo}
+          <hr style="border:0;border-top:1px dashed #000;"/>
+          <div style="margin:10px 0;">${itemsHtml}</div>
+          <hr style="border:0;border-top:1px dashed #000;"/>
+          <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:14px;margin-top:5px;">
+            <span>TOTAL:</span>
+            <span>R$ ${(order.finalTotal || 0).toFixed(2)}</span>
+          </div>
+          <div style="font-size:10px;margin-top:8px;">PAGAMENTO: ${order.paymentMethod.toUpperCase()}</div>
+          <p style="text-align:center;font-size:10px;margin-top:30px;">Obrigado pela preferência!</p>
+          <script>window.onload=()=>{window.print();window.close();};</script>
+        </body>
+      </html>
+    `);
     w.document.close();
   };
 
@@ -336,7 +369,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {activeTab === 'marketing' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Fidelidade */}
             <div className="lg:col-span-1 bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
               <div className="flex justify-between items-center mb-8"><h3 className="text-xl font-black italic uppercase">💎 Fidelidade</h3><button onClick={() => handleUpdateLoyalty({ isActive: !loyalty.isActive })} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase transition-all shadow-sm ${loyalty.isActive ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-400'}`}>{loyalty.isActive ? 'Ativo' : 'Pausado'}</button></div>
               <div className="bg-yellow-50 p-6 rounded-[2.5rem] border-2 border-yellow-100 mb-8 space-y-4">
@@ -371,7 +403,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* Cupons - Lista e Botão para Abrir Modal */}
             <div className="lg:col-span-2 flex flex-col bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 h-full">
               <div className="flex justify-between items-center mb-8">
                 <h3 className="text-xl font-black italic uppercase">🎫 Cupons Promocionais</h3>
@@ -426,7 +457,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </div>
 
-      {/* MODAL PARA CRIAR/EDITAR CUPOM */}
       {isCouponModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
           <div className="bg-white w-full max-w-2xl rounded-[4rem] p-12 relative shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -488,7 +518,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Modais de Detalhes, Produtos, etc... (Já presentes no arquivo) */}
       {selectedTable && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
@@ -587,7 +616,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Modal Novo Pedido */}
       {isNewOrderModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-sm rounded-[3.5rem] p-10 relative shadow-2xl">
@@ -608,7 +636,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Modal Categoria */}
       {isCategoryModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-md rounded-[3.5rem] p-10 relative shadow-2xl">
@@ -622,7 +649,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Modal Produto */}
       {isProductModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
           <div className="bg-white w-full max-w-2xl rounded-[4rem] p-12 relative shadow-2xl">
