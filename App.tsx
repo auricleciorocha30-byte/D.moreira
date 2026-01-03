@@ -28,7 +28,8 @@ const App: React.FC = () => {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ok' | 'error' | 'syncing'>('loading');
-  const [alert, setAlert] = useState<{ id: number; type: string; msg: string; isUpdate?: boolean; timestamp: number } | null>(null);
+  // Fixed: Renamed state 'alert' to 'activeAlert' to avoid conflict with window.alert()
+  const [activeAlert, setActiveAlert] = useState<{ id: number; type: string; msg: string; isUpdate?: boolean; timestamp: number } | null>(null);
 
   const notificationSound = useRef<HTMLAudioElement | null>(null);
   const lastNotifiedOrderId = useRef<string | null>(null);
@@ -116,15 +117,17 @@ const App: React.FC = () => {
               notificationSound.current.play().catch(() => {});
             }
             
-            setAlert({ id: newRec.id, type: tableType, msg: 'Novo Pedido!', timestamp: Date.now() });
-            setTimeout(() => setAlert(null), 10000);
+            // Fixed: use setActiveAlert instead of setAlert
+            setActiveAlert({ id: newRec.id, type: tableType, msg: 'Novo Pedido!', timestamp: Date.now() });
+            setTimeout(() => setActiveAlert(null), 10000);
           } 
           // ATUALIZAÇÃO DE STATUS: Mesmo ID, Status diferente
           else if (status !== lastNotifiedStatus.current) {
             lastNotifiedStatus.current = status;
             const statusLabels: any = { pending: 'Pendente', preparing: 'Em Preparo', ready: 'Pronto p/ Entrega', delivered: 'Entregue' };
-            setAlert({ id: newRec.id, type: tableType, msg: `Status: ${statusLabels[status] || status}`, isUpdate: true, timestamp: Date.now() });
-            setTimeout(() => setAlert(null), 6000);
+            // Fixed: use setActiveAlert instead of setAlert
+            setActiveAlert({ id: newRec.id, type: tableType, msg: `Status: ${statusLabels[status] || status}`, isUpdate: true, timestamp: Date.now() });
+            setTimeout(() => setActiveAlert(null), 6000);
           }
         } else if (newRec && newRec.status === 'free') {
            // Se a mesa for liberada, limpamos o cache de notificação para esta mesa
@@ -163,17 +166,18 @@ const App: React.FC = () => {
       <Header />
       {!isLoggedIn && <button onClick={() => setShowLogin(true)} className="absolute top-4 right-4 z-50 text-[10px] font-black text-black/30 bg-white/10 px-3 py-1.5 rounded-full uppercase tracking-widest backdrop-blur-sm border border-black/5">Painel</button>}
 
-      {isAdmin && isLoggedIn && alert && (
-        <div key={alert.timestamp} className="fixed top-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-md px-6 animate-in slide-in-from-top duration-700">
-          <div className={`${alert.isUpdate ? 'bg-blue-600 border-blue-400' : 'bg-black border-yellow-400'} text-white p-5 rounded-[2.5rem] shadow-2xl border-4 flex items-center gap-5`}>
-            <div className={`${alert.isUpdate ? 'bg-white text-blue-600' : 'bg-yellow-400 text-black'} w-12 h-12 rounded-xl flex items-center justify-center font-black shrink-0 shadow-lg`}>
-              {alert.isUpdate ? '🔄' : '🔔'}
+      {/* Fixed: use activeAlert instead of alert */}
+      {isAdmin && isLoggedIn && activeAlert && (
+        <div key={activeAlert.timestamp} className="fixed top-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-md px-6 animate-in slide-in-from-top duration-700">
+          <div className={`${activeAlert.isUpdate ? 'bg-blue-600 border-blue-400' : 'bg-black border-yellow-400'} text-white p-5 rounded-[2.5rem] shadow-2xl border-4 flex items-center gap-5`}>
+            <div className={`${activeAlert.isUpdate ? 'bg-white text-blue-600' : 'bg-yellow-400 text-black'} w-12 h-12 rounded-xl flex items-center justify-center font-black shrink-0 shadow-lg`}>
+              {activeAlert.isUpdate ? '🔄' : '🔔'}
             </div>
             <div className="flex-1 font-black">
-              <h4 className={`text-[10px] uppercase ${alert.isUpdate ? 'text-blue-100' : 'text-yellow-400'} tracking-widest mb-0.5`}>{alert.msg}</h4>
-              <p className="text-lg italic uppercase tracking-tighter leading-none">{alert.type} #{alert.id}</p>
+              <h4 className={`text-[10px] uppercase ${activeAlert.isUpdate ? 'text-blue-100' : 'text-yellow-400'} tracking-widest mb-0.5`}>{activeAlert.msg}</h4>
+              <p className="text-lg italic uppercase tracking-tighter leading-none">{activeAlert.type} #{activeAlert.id}</p>
             </div>
-            <button onClick={() => setAlert(null)} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"><CloseIcon size={18}/></button>
+            <button onClick={() => setActiveAlert(null)} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"><CloseIcon size={18}/></button>
           </div>
         </div>
       )}
