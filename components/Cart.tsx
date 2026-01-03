@@ -43,10 +43,17 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const subtotal = useMemo(() => items.reduce((acc, item) => acc + item.price * item.quantity, 0), [items]);
   const discount = useMemo(() => {
     if (!appliedCoupon) return 0;
+    
+    const scopeValues = (appliedCoupon.scopeValue || '').split(',');
+    
     const eligibleTotal = appliedCoupon.scopeType === 'all' ? subtotal : items.reduce((acc, item) => {
-      const isEligible = (appliedCoupon.scopeType === 'category' && item.category === appliedCoupon.scopeValue) || (appliedCoupon.scopeType === 'product' && item.id === appliedCoupon.scopeValue);
+      const isEligible = 
+        (appliedCoupon.scopeType === 'category' && scopeValues.includes(item.category)) || 
+        (appliedCoupon.scopeType === 'product' && scopeValues.includes(item.id));
+      
       return isEligible ? acc + (item.price * item.quantity) : acc;
     }, 0);
+    
     return (eligibleTotal * appliedCoupon.percentage) / 100;
   }, [appliedCoupon, items, subtotal]);
 
@@ -68,8 +75,11 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
 
     try {
       if (loyaltyConfig?.isActive && customerPhone.trim()) {
+        const eligibleValues = (loyaltyConfig.scopeValue || '').split(',');
         const eligible = items.reduce((acc, item) => {
-          const ok = loyaltyConfig.scopeType === 'all' || (loyaltyConfig.scopeType === 'category' && item.category === loyaltyConfig.scopeValue) || (loyaltyConfig.scopeType === 'product' && item.id === loyaltyConfig.scopeValue);
+          const ok = loyaltyConfig.scopeType === 'all' || 
+                    (loyaltyConfig.scopeType === 'category' && eligibleValues.includes(item.category)) || 
+                    (loyaltyConfig.scopeType === 'product' && eligibleValues.includes(item.id));
           return ok ? acc + (item.price * item.quantity) : acc;
         }, 0);
         

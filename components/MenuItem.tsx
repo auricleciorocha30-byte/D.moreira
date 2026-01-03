@@ -13,13 +13,17 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd, activeCoupons }) =>
   const isAvailable = product.isAvailable !== false;
 
   // Encontra o melhor cupom aplicável para este item
-  const applicableCoupon = activeCoupons.find(c => 
-    c.isActive && (
-      (c.scopeType === 'product' && c.scopeValue === product.id) ||
-      (c.scopeType === 'category' && c.scopeValue === product.category) ||
-      (c.scopeType === 'all')
-    )
-  );
+  // Suporta múltiplos valores separados por vírgula no scopeValue
+  const applicableCoupon = activeCoupons.find(c => {
+    if (!c.isActive) return false;
+    if (c.scopeType === 'all') return true;
+    
+    const scopeValues = (c.scopeValue || '').split(',');
+    if (c.scopeType === 'product') return scopeValues.includes(product.id);
+    if (c.scopeType === 'category') return scopeValues.includes(product.category);
+    
+    return false;
+  });
 
   // Calcula o valor real da economia baseada no cupom
   const savingsValue = applicableCoupon 
