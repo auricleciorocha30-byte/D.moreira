@@ -18,7 +18,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [couponCode, setCouponCode] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [appliedCoupons, setAppliedCoupons] = useState<Coupon[]>([]);
   const [loyaltyConfig, setLoyaltyConfig] = useState<LoyaltyConfig | null>(null);
   const [tableNumber, setTableNumber] = useState('');
   const [orderType, setOrderType] = useState<OrderType>('table');
@@ -41,21 +41,31 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   }, [isOpen]);
 
   const subtotal = useMemo(() => items.reduce((acc, item) => acc + item.price * item.quantity, 0), [items]);
+  
   const discount = useMemo(() => {
-    if (!appliedCoupon) return 0;
+    if (appliedCoupons.length === 0) return 0;
     
-    const scopeValues = (appliedCoupon.scopeValue || '').split(',');
-    
-    const eligibleTotal = appliedCoupon.scopeType === 'all' ? subtotal : items.reduce((acc, item) => {
-      const isEligible = 
-        (appliedCoupon.scopeType === 'category' && scopeValues.includes(item.category)) || 
-        (appliedCoupon.scopeType === 'product' && scopeValues.includes(item.id));
-      
-      return isEligible ? acc + (item.price * item.quantity) : acc;
+    return items.reduce((totalDiscount, item) => {
+      // Encontra todos os cupons que podem ser aplicados a este item específico
+      const validCoupons = appliedCoupons.filter(c => {
+        if (!c.isActive) return false;
+        if (c.scopeType === 'all') return true;
+        const scopeValues = (c.scopeValue || '').split(',');
+        if (c.scopeType === 'category') return scopeValues.includes(item.category);
+        if (c.scopeType === 'product') return scopeValues.includes(item.id);
+        return false;
+      });
+
+      if (validCoupons.length === 0) return totalDiscount;
+
+      // Se houver mais de um cupom com o mesmo código aplicável ao item, escolhe o melhor desconto
+      const bestCoupon = validCoupons.reduce((prev, curr) => 
+        (curr.percentage > prev.percentage) ? curr : prev
+      );
+
+      return totalDiscount + (item.price * item.quantity * bestCoupon.percentage / 100);
     }, 0);
-    
-    return (eligibleTotal * appliedCoupon.percentage) / 100;
-  }, [appliedCoupon, items, subtotal]);
+  }, [appliedCoupons, items]);
 
   const finalTotal = subtotal - discount;
 
@@ -70,7 +80,8 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
       items: [...items], total: subtotal, discount, finalTotal, paymentMethod,
       timestamp: new Date().toISOString(), tableId: targetTableId,
       orderType: orderType === 'takeaway' ? 'counter' : orderType,
-      address: orderType === 'delivery' ? address : undefined, status: 'pending', couponCode: appliedCoupon?.code
+      address: orderType === 'delivery' ? address : undefined, status: 'pending', 
+      couponCode: appliedCoupons.length > 0 ? appliedCoupons[0].code : undefined
     };
 
     try {
@@ -89,10 +100,31 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
       }
       onPlaceOrder(newOrder);
       setIsSuccess(true);
+      setAppliedCoupons([]);
+      setCouponCode('');
     } catch (err) { 
       alert('Erro no checkout.'); 
     } finally { 
       setIsProcessing(false); 
+    }
+  };
+
+  const handleValidateCoupon = async () => {
+    if (!couponCode) return;
+    // Busca todos os cupons que compartilham o mesmo código
+    const { data, error } = await supabase.from('coupons')
+      .select('*')
+      .eq('code', couponCode.toUpperCase())
+      .eq('is_active', true);
+    
+    if (error || !data || data.length === 0) {
+      alert('Cupom inválido ou expirado.');
+      setAppliedCoupons([]);
+    } else {
+      setAppliedCoupons(data.map(c => ({
+        id: c.id, code: c.code, percentage: c.percentage, isActive: c.is_active,
+        scopeType: c.scope_type, scopeValue: c.scope_value
+      })));
     }
   };
 
@@ -126,7 +158,15 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                       <button key={num} onClick={() => setTableNumber(num.toString())} className={`py-3 rounded-xl text-xs transition-all ${tableNumber === num.toString() ? 'bg-yellow-400 text-black' : 'bg-white text-gray-400 border'}`}>{num}</button>
                     ))}</div>}
                     {orderType === 'delivery' && <textarea value={address} onChange={(e) => setAddress(e.target.value)} placeholder="ENDEREÇO COMPLETO" className="w-full bg-white border-2 rounded-2xl px-6 py-5 text-xs outline-none h-28 resize-none shadow-sm"/>}
-                    <div className="flex gap-3 pt-4"><input type="text" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} placeholder="CUPOM" className="flex-1 bg-white border-2 rounded-2xl px-6 py-4 text-[10px] outline-none shadow-sm"/><button onClick={async () => { const { data } = await supabase.from('coupons').select('*').eq('code', couponCode.toUpperCase()).eq('is_active', true).single(); if (data) setAppliedCoupon({ id: data.id, code: data.code, percentage: data.percentage, isActive: data.is_active, scopeType: data.scope_type, scopeValue: data.scope_value }); else alert('Invalido'); }} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl text-[10px] shadow-lg">Validar</button></div>
+                    <div className="flex gap-3 pt-4">
+                      <input type="text" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} placeholder="CUPOM" className="flex-1 bg-white border-2 rounded-2xl px-6 py-4 text-[10px] outline-none shadow-sm"/>
+                      <button onClick={handleValidateCoupon} className="bg-black text-yellow-400 px-8 py-4 rounded-2xl text-[10px] shadow-lg active:scale-95 transition-all">Validar</button>
+                    </div>
+                    {appliedCoupons.length > 0 && (
+                      <div className="text-green-600 text-[9px] font-black px-4 py-2 bg-green-50 rounded-xl flex items-center gap-2">
+                        <span>✓ Cupom {appliedCoupons[0].code} Aplicado</span>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-4">
                     {items.map(item => (

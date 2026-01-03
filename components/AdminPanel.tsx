@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Table, Order, Product, Category, Coupon, LoyaltyConfig, LoyaltyUser, OrderStatus, OrderType } from '../types';
-import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon, EditIcon, CopyIcon } from './Icons';
+import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon, EditIcon } from './Icons';
 import { supabase } from '../lib/supabase';
 import { STORE_INFO } from '../constants';
 
@@ -50,7 +50,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [loyalty, setLoyalty] = useState<LoyaltyConfig>({ isActive: false, spendingGoal: 100, scopeType: 'all', scopeValue: '' });
   const [loyaltyUsers, setLoyaltyUsers] = useState<LoyaltyUser[]>([]);
   
-  // Estados para Cupons
   const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Partial<Coupon> | null>(null);
   const [couponForm, setCouponForm] = useState({ 
@@ -118,22 +117,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       selectedItems: coupon.scopeValue ? coupon.scopeValue.split(',') : []
     });
     setIsCouponModalOpen(true);
-  };
-
-  const handleDuplicateCoupon = async (coupon: Coupon) => {
-    if (!confirm(`Deseja duplicar o cupom "${coupon.code}"?`)) return;
-    
-    const { error } = await supabase.from('coupons').insert([{ 
-      id: 'c_'+Date.now(), 
-      code: coupon.code, 
-      percentage: coupon.percentage, 
-      is_active: true, 
-      scope_type: coupon.scopeType, 
-      scope_value: coupon.scopeValue
-    }]); 
-
-    if (error) alert("Erro ao duplicar cupom.");
-    else fetchMarketing();
   };
 
   const handleDeleteCategory = async (id: string) => {
@@ -399,9 +382,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <button onClick={() => openEditCoupon(c)} title="Editar Cupom" className="p-2 text-gray-500 hover:text-black transition-colors">
                           <EditIcon size={16}/>
                         </button>
-                        <button onClick={() => handleDuplicateCoupon(c)} title="Clonar Cupom" className="p-2 text-blue-400 hover:text-blue-600 transition-colors">
-                          <CopyIcon size={16}/>
-                        </button>
                         <button onClick={async () => { if(confirm('Excluir cupom?')) { await supabase.from('coupons').delete().eq('id', c.id); fetchMarketing(); } }} className="p-2 text-red-300 hover:text-red-500 transition-colors">
                           <TrashIcon size={16}/>
                         </button>
@@ -566,7 +546,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <button onClick={() => { handleUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="bg-green-600 text-white py-6 rounded-[2rem] font-black uppercase text-xs shadow-2xl hover:brightness-110 active:scale-95 transition-all">Finalizar & Liberar 🏁</button>
-                        <button onClick={() => handleUpdateTable(selectedTable.id, 'occupied', { ...selectedTable.currentOrder!, status: 'preparing' })} className={`py-6 rounded-[2rem] font-black uppercase text-xs transition-all border-4 border-black active:scale-95 ${selectedTable.currentOrder?.status === 'preparing' ? 'bg-black text-white' : 'bg-white text-black'}`}>Em Preparo 🍳</button>
+                        <button onClick={async () => { await handleUpdateTable(selectedTable.id, 'occupied', { ...selectedTable.currentOrder!, status: 'preparing' }); setSelectedTableId(null); }} className={`py-6 rounded-[2rem] font-black uppercase text-xs transition-all border-4 border-black active:scale-95 ${selectedTable.currentOrder?.status === 'preparing' ? 'bg-black text-white' : 'bg-white text-black'}`}>Em Preparo 🍳</button>
                       </div>
                     </div>
                   )}

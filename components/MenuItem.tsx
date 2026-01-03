@@ -12,9 +12,8 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd, activeCoupons }) =>
   const isCombo = product.category === 'Combos';
   const isAvailable = product.isAvailable !== false;
 
-  // Encontra o melhor cupom aplicável para este item
-  // Suporta múltiplos valores separados por vírgula no scopeValue
-  const applicableCoupon = activeCoupons.find(c => {
+  // Encontra todos os cupons aplicáveis para este item e seleciona o de MAIOR desconto
+  const validCoupons = activeCoupons.filter(c => {
     if (!c.isActive) return false;
     if (c.scopeType === 'all') return true;
     
@@ -24,6 +23,10 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd, activeCoupons }) =>
     
     return false;
   });
+
+  const applicableCoupon = validCoupons.length > 0 
+    ? validCoupons.reduce((prev, curr) => (curr.percentage > prev.percentage) ? curr : prev)
+    : null;
 
   // Calcula o valor real da economia baseada no cupom
   const savingsValue = applicableCoupon 
