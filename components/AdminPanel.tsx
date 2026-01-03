@@ -36,6 +36,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [loyaltySearch, setLoyaltySearch] = useState('');
+  const [productSearchForTable, setProductSearchForTable] = useState('');
   
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
@@ -154,6 +155,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const loyaltyScopeItems = useMemo(() => {
     return (loyalty.scopeValue || "").split(',').filter(Boolean);
   }, [loyalty.scopeValue]);
+
+  // Filtro de produtos para adicionar à mesa
+  const filteredProductsForTable = useMemo(() => {
+    if (!productSearchForTable.trim()) return menuItems.filter(p => p.isAvailable).slice(0, 8);
+    return menuItems.filter(p => 
+      p.isAvailable && 
+      (p.name.toLowerCase().includes(productSearchForTable.toLowerCase()) || 
+       p.category.toLowerCase().includes(productSearchForTable.toLowerCase()))
+    );
+  }, [menuItems, productSearchForTable]);
 
   return (
     <div className="w-full">
@@ -360,8 +371,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* MODAL DETALHES PEDIDO */}
       {selectedTable && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTableId(null)} />
-          <div className="relative bg-white w-full max-w-4xl h-[92vh] rounded-[3rem] flex flex-col overflow-hidden shadow-2xl border-t-8 border-yellow-400 animate-in zoom-in duration-300">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => { setSelectedTableId(null); setProductSearchForTable(''); }} />
+          <div className="relative bg-white w-full max-w-5xl h-[92vh] rounded-[3rem] flex flex-col overflow-hidden shadow-2xl border-t-8 border-yellow-400 animate-in zoom-in duration-300">
             <div className="p-6 border-b flex justify-between items-center bg-white shadow-sm sticky top-0 z-10">
               <div>
                 <h3 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
@@ -371,10 +382,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   ID: #{selectedTable.currentOrder?.id} • <span className={STATUS_CFG[selectedTable.currentOrder?.status || 'pending'].color}>{STATUS_CFG[selectedTable.currentOrder?.status || 'pending'].label}</span>
                 </p>
               </div>
-              <button onClick={() => setSelectedTableId(null)} className="p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
+              <button onClick={() => { setSelectedTableId(null); setProductSearchForTable(''); }} className="p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
             </div>
+            
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-               <div className="w-full md:w-72 bg-gray-50 p-6 border-b md:border-b-0 md:border-r overflow-y-auto no-scrollbar shrink-0">
+               {/* Coluna Lateral: Status e Ações */}
+               <div className="w-full md:w-64 bg-gray-50 p-6 border-b md:border-b-0 md:border-r overflow-y-auto no-scrollbar shrink-0">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Mudar Status</h4>
                   <div className="grid grid-cols-2 md:grid-cols-1 gap-2">
                     {(['pending', 'preparing', 'ready', 'delivered'] as OrderStatus[]).map(s => (
@@ -384,12 +397,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   <div className="mt-8">
                     <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Ações do Pedido</h4>
                     <div className="space-y-2">
-                      <button onClick={() => onUpdateTable(selectedTable.id, 'free')} className="w-full bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-lg hover:brightness-110 active:scale-95 transition-all">Finalizar e Liberar 🏁</button>
+                      <button onClick={() => { onUpdateTable(selectedTable.id, 'free'); setSelectedTableId(null); }} className="w-full bg-green-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] shadow-lg hover:brightness-110 active:scale-95 transition-all">Finalizar e Liberar 🏁</button>
                       <button className="w-full bg-white text-black border-2 border-black py-4 rounded-2xl font-black uppercase text-[10px] hover:bg-black hover:text-white transition-all flex items-center justify-center gap-2"><PrinterIcon size={16}/> Imprimir Via</button>
                     </div>
                   </div>
                </div>
-               <div className="flex-1 p-6 overflow-y-auto space-y-6 no-scrollbar pb-20">
+
+               {/* Coluna Central: Itens do Pedido */}
+               <div className="flex-1 p-6 overflow-y-auto space-y-6 no-scrollbar bg-white">
                   <div className="bg-yellow-50 p-6 rounded-[2.5rem] border-2 border-yellow-100 shadow-sm">
                     <div className="flex justify-between items-start mb-4 text-black">
                       <div className="flex flex-col"><p className="text-[8px] font-black text-yellow-700 uppercase tracking-widest">Cliente</p><p className="font-black text-lg uppercase tracking-tight">{selectedTable.currentOrder?.customerName}</p></div>
@@ -406,6 +421,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="text-right font-black"><p className="text-[10px] text-gray-400">{item.quantity}x</p><p className="text-sm italic">R$ {(item.price * item.quantity).toFixed(2)}</p></div>
                       </div>
                     ))}
+                    {(!selectedTable.currentOrder?.items || selectedTable.currentOrder.items.length === 0) && (
+                      <p className="text-center py-10 text-gray-300 font-black uppercase text-[10px]">Sem itens no pedido</p>
+                    )}
+                  </div>
+               </div>
+
+               {/* Coluna Direita: Adicionar Produtos com Busca */}
+               <div className="w-full md:w-80 bg-gray-50 p-6 border-l overflow-y-auto no-scrollbar shrink-0">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Adicionar ao Pedido</h4>
+                  <div className="relative mb-6">
+                    <input 
+                      type="text" 
+                      value={productSearchForTable} 
+                      onChange={e => setProductSearchForTable(e.target.value)} 
+                      placeholder="BUSCAR PRODUTO..." 
+                      className="w-full bg-white border-2 rounded-2xl px-5 py-3 text-[10px] font-black outline-none uppercase focus:border-yellow-400 transition-all shadow-sm" 
+                    />
+                    {productSearchForTable && (
+                      <button onClick={() => setProductSearchForTable('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black">
+                        <CloseIcon size={16} />
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {filteredProductsForTable.map(p => (
+                      <button 
+                        key={p.id} 
+                        onClick={() => onAddToOrder(selectedTable.id, p)} 
+                        className="w-full bg-white p-3 rounded-2xl border border-gray-100 flex gap-3 items-center hover:border-black transition-all active:scale-[0.98] shadow-sm group"
+                      >
+                        <img src={p.image} className="w-10 h-10 rounded-lg object-cover" />
+                        <div className="flex-1 text-left">
+                          <p className="text-[9px] font-black uppercase leading-none truncate mb-1">{p.name}</p>
+                          <p className="text-[8px] font-black text-yellow-700 italic">R$ {p.price.toFixed(2)}</p>
+                        </div>
+                        <span className="bg-yellow-400 text-black w-6 h-6 rounded-lg flex items-center justify-center font-black text-sm group-hover:scale-110 transition-transform">+</span>
+                      </button>
+                    ))}
+                    {filteredProductsForTable.length === 0 && (
+                      <p className="text-center py-10 text-gray-300 font-black uppercase text-[10px]">Nenhum produto encontrado</p>
+                    )}
                   </div>
                </div>
             </div>
