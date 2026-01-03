@@ -12,15 +12,19 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd, activeCoupons }) =>
   const isCombo = product.category === 'Combos';
   const isAvailable = product.isAvailable !== false;
 
-  // Verifica se existe algum cupom ativo ESPECÍFICO para este produto ou sua categoria
-  // Se o admin não selecionou este produto/categoria, o selo não aparece
-  const hasCoupon = activeCoupons.some(c => 
+  // Encontra o melhor cupom aplicável para este item
+  const applicableCoupon = activeCoupons.find(c => 
     c.isActive && (
       (c.scopeType === 'product' && c.scopeValue === product.id) ||
       (c.scopeType === 'category' && c.scopeValue === product.category) ||
       (c.scopeType === 'all')
     )
   );
+
+  // Calcula o valor real da economia baseada no cupom
+  const savingsValue = applicableCoupon 
+    ? (product.price * (applicableCoupon.percentage / 100)) 
+    : 0;
 
   return (
     <div className={`group bg-white rounded-[2rem] shadow-md border overflow-hidden flex flex-col relative transition-all duration-300 ${!isAvailable ? 'opacity-70' : 'hover:shadow-2xl hover:-translate-y-1'} ${isCombo ? 'border-yellow-400 border-2' : 'border-gray-100'}`}>
@@ -30,9 +34,9 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd, activeCoupons }) =>
         </div>
       )}
 
-      {hasCoupon && isAvailable && (
+      {applicableCoupon && isAvailable && (
         <div className="absolute top-4 right-4 z-10 bg-green-600 text-white text-[9px] font-black uppercase px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1 border-b-2 border-green-800">
-          <span>PROMO</span> 🎫
+          <span>{applicableCoupon.percentage}% OFF</span> 🎫
         </div>
       )}
 
@@ -62,10 +66,12 @@ const MenuItem: React.FC<MenuItemProps> = ({ product, onAdd, activeCoupons }) =>
         <h3 className="font-extrabold text-gray-900 text-xl mb-1 leading-tight">{product.name}</h3>
         <p className="text-gray-500 text-xs mb-5 flex-1 line-clamp-2 leading-relaxed">{product.description}</p>
         
-        {product.savings && isAvailable && (
+        {/* Selo de Economia Dinâmico: Só aparece se houver cupom ativo */}
+        {savingsValue > 0 && isAvailable && (
           <div className="mb-4">
-            <span className="bg-green-100 text-green-700 text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-wider">
-              {product.savings}
+            <span className="bg-green-100 text-green-700 text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-wider flex items-center gap-1.5 w-fit">
+              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+              Economize R$ {savingsValue.toFixed(2).replace('.', ',')}
             </span>
           </div>
         )}

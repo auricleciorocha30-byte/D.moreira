@@ -75,6 +75,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     fetchMarketing();
   };
 
+  const handleDeleteLoyaltyUser = async (phone: string) => {
+    if (!confirm('Deseja realmente remover este participante? Todo o saldo acumulado será perdido.')) return;
+    const { error } = await supabase.from('loyalty_users').delete().eq('phone', phone);
+    if (!error) fetchMarketing();
+    else alert('Erro ao remover participante.');
+  };
+
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategoryName.trim()) return;
@@ -281,7 +288,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
               <div className="flex-1 space-y-3 overflow-y-auto max-h-80 no-scrollbar">
                 {loyaltyUsers?.map((u, i) => (
-                  <div key={u.phone} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border-l-8 border-yellow-400 shadow-sm"><div className="flex items-center gap-4"><span className="w-6 h-6 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[10px] font-black">{i+1}</span><div><p className="font-black text-xs uppercase">{u.name}</p><p className="text-[9px] text-gray-400 font-bold">{u.phone}</p></div></div><span className="text-yellow-700 font-black italic text-xs">R$ {(u.accumulated || 0).toFixed(2)}</span></div>
+                  <div key={u.phone} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border-l-8 border-yellow-400 shadow-sm hover:border-black transition-all group">
+                    <div className="flex items-center gap-4">
+                      <span className="w-6 h-6 bg-black text-yellow-400 rounded-full flex items-center justify-center text-[10px] font-black">{i+1}</span>
+                      <div>
+                        <p className="font-black text-xs uppercase">{u.name}</p>
+                        <p className="text-[9px] text-gray-400 font-bold">{u.phone}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <span className="text-yellow-700 font-black italic text-xs">R$ {(u.accumulated || 0).toFixed(2)}</span>
+                      <button 
+                        onClick={() => handleDeleteLoyaltyUser(u.phone)} 
+                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                      >
+                        <TrashIcon size={16} />
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
