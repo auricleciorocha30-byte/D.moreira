@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Table, Order, Product, Category, Coupon, LoyaltyConfig, LoyaltyUser, OrderStatus, OrderType } from '../types';
 import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon, EditIcon } from './Icons';
@@ -66,7 +67,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       const { data: cData } = await supabase.from('coupons').select('*').order('created_at', { ascending: false });
       if (cData) setCoupons(cData.map(c => ({ id: c.id, code: c.code, percentage: c.percentage, isActive: c.is_active, scopeType: c.scope_type, scopeValue: c.scope_value })));
       const { data: lConfig } = await supabase.from('loyalty_config').select('*').maybeSingle();
-      // Fix: Corrected property name from spending_goal to spendingGoal to match LoyaltyConfig interface on line 70
       if (lConfig) setLoyalty({ isActive: lConfig.is_active, spendingGoal: lConfig.spending_goal, scopeType: lConfig.scope_type, scopeValue: lConfig.scope_value || '' });
       const { data: lUsers } = await supabase.from('loyalty_users').select('*').order('accumulated', { ascending: false });
       if (lUsers) setLoyaltyUsers(lUsers);
@@ -318,7 +318,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <p className="text-[8px] font-black uppercase text-yellow-800">Seleção</p>
                     <select value={loyalty.scopeValue} onChange={e => handleUpdateLoyalty({ scopeValue: e.target.value })} className="w-full bg-white p-3 rounded-xl border-2 border-yellow-200 font-black text-[10px] uppercase outline-none">
                       <option value="">Selecione...</option>
-                      {loyalty.scopeType === 'category' ? categories?.map(c => <option key={c.id} value={cat.name}>{c.name}</option>) : menuItems?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      {loyalty.scopeType === 'category' ? categories?.map(c => <option key={c.id} value={c.name}>{c.name}</option>) : menuItems?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                   </div>
                 )}
@@ -422,7 +422,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         )}
 
-        {/* Mantenha as outras tabs (tables, delivery, menu) iguais aos backups anteriores */}
         {activeTab === 'tables' && (
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-5">
             {physicalTables.map(t => (
@@ -519,8 +518,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </div>
 
-      {/* Modais omitidos para brevidade mas mantidos do arquivo original */}
-      {/* ... (Modal Cupom, Modal Mesa, Modal Produto, etc) ... */}
       {isCouponModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
           <div className="bg-white w-full max-w-2xl rounded-[4rem] p-12 relative shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">

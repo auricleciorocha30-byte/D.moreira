@@ -29,12 +29,12 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
 
   useEffect(() => {
     if (isOpen) {
-      supabase.from('loyalty_config').select('*').single().then(({ data }) => { 
+      supabase.from('loyalty_config').select('*').maybeSingle().then(({ data }) => { 
         if (data) setLoyaltyConfig({
           isActive: data.is_active,
           spendingGoal: data.spending_goal,
           scopeType: data.scope_type,
-          scopeValue: data.scope_value
+          scopeValue: data.scope_value || ''
         }); 
       });
     }
@@ -46,7 +46,6 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
     if (appliedCoupons.length === 0) return 0;
     
     return items.reduce((totalDiscount, item) => {
-      // Encontra todos os cupons que podem ser aplicados a este item específico
       const validCoupons = appliedCoupons.filter(c => {
         if (!c.isActive) return false;
         if (c.scopeType === 'all') return true;
@@ -58,7 +57,6 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
 
       if (validCoupons.length === 0) return totalDiscount;
 
-      // Se houver mais de um cupom com o mesmo código aplicável ao item, escolhe o melhor desconto
       const bestCoupon = validCoupons.reduce((prev, curr) => 
         (curr.percentage > prev.percentage) ? curr : prev
       );
@@ -87,16 +85,23 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
     try {
       if (loyaltyConfig?.isActive && customerPhone.trim()) {
         const eligibleValues = (loyaltyConfig.scopeValue || '').split(',');
-        const eligible = items.reduce((acc, item) => {
+        
+        // Calcula o valor BRUTO dos itens elegíveis (sem o desconto ainda)
+        const grossEligible = items.reduce((acc, item) => {
           const ok = loyaltyConfig.scopeType === 'all' || 
                     (loyaltyConfig.scopeType === 'category' && eligibleValues.includes(item.category)) || 
                     (loyaltyConfig.scopeType === 'product' && eligibleValues.includes(item.id));
           return ok ? acc + (item.price * item.quantity) : acc;
         }, 0);
         
+        // Aplica a proporção do valor realmente pago (considerando o desconto global/item)
+        // Se o carrinho tem R$ 100 em itens elegíveis e pagou R$ 90 (10% cupom), acumula R$ 90.
+        const pointRatio = subtotal > 0 ? (finalTotal / subtotal) : 0;
+        const finalEligible = grossEligible * pointRatio;
+        
         const { data: user } = await supabase.from('loyalty_users').select('*').eq('phone', customerPhone).maybeSingle();
-        if (user) await supabase.from('loyalty_users').update({ accumulated: Number(user.accumulated) + eligible }).eq('phone', customerPhone);
-        else await supabase.from('loyalty_users').insert([{ phone: customerPhone, name: customerName, accumulated: eligible }]);
+        if (user) await supabase.from('loyalty_users').update({ accumulated: Number(user.accumulated) + finalEligible }).eq('phone', customerPhone);
+        else await supabase.from('loyalty_users').insert([{ phone: customerPhone, name: customerName, accumulated: finalEligible }]);
       }
       onPlaceOrder(newOrder);
       setIsSuccess(true);
@@ -111,7 +116,6 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
 
   const handleValidateCoupon = async () => {
     if (!couponCode) return;
-    // Busca todos os cupons que compartilham o mesmo código
     const { data, error } = await supabase.from('coupons')
       .select('*')
       .eq('code', couponCode.toUpperCase())
