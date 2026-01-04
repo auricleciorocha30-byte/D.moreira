@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Table, Order, Product, Category, Coupon, LoyaltyConfig, LoyaltyUser, OrderStatus, StoreConfig } from '../types';
-import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon, EditIcon } from './Icons';
+import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon, EditIcon, BackupIcon, RestoreIcon } from './Icons';
 import { supabase } from '../lib/supabase';
 import { STORE_INFO } from '../constants';
 
@@ -41,6 +41,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [loyaltySearch, setLoyaltySearch] = useState('');
   const [productSearchForTable, setProductSearchForTable] = useState('');
   const [currentObservation, setCurrentObservation] = useState('');
+  const [isDataProcessing, setIsDataProcessing] = useState(false);
   
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
@@ -55,6 +56,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Partial<Coupon> | null>(null);
   const [couponForm, setCouponForm] = useState({ code: '', percentage: '', scopeType: 'all' as 'all' | 'category' | 'product', selectedItems: [] as string[] });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchMarketing(); }, []);
 
@@ -83,6 +86,82 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       const { data: lUsers } = await supabase.from('loyalty_users').select('*').order('accumulated', { ascending: false });
       if (lUsers) setLoyaltyUsers(lUsers);
     } catch (e) { console.error("Error fetching marketing data", e); }
+  };
+
+  const handleExportBackup = async () => {
+    setIsDataProcessing(true);
+    try {
+      const [products, categories, coupons, loyalty, store] = await Promise.all([
+        supabase.from('products').select('*'),
+        supabase.from('categories').select('*'),
+        supabase.from('coupons').select('*'),
+        supabase.from('loyalty_config').select('*'),
+        supabase.from('store_config').select('*')
+      ]);
+
+      const backupData = {
+        storeName: STORE_INFO.name,
+        timestamp: new Date().toISOString(),
+        data: {
+          products: products.data || [],
+          categories: categories.data || [],
+          coupons: coupons.data || [],
+          loyalty_config: loyalty.data || [],
+          store_config: store.data || []
+        }
+      };
+
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `backup_dmoreira_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      alert("Erro ao gerar backup!");
+    } finally {
+      setIsDataProcessing(false);
+    }
+  };
+
+  const handleImportBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm("Isso irá sobrescrever seus produtos e configurações atuais. Deseja continuar?")) {
+      event.target.value = '';
+      return;
+    }
+
+    setIsDataProcessing(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = JSON.parse(e.target?.result as string);
+        if (!content.data) throw new Error("Formato inválido");
+
+        const d = content.data;
+        
+        // Executa as restaurações em ordem
+        if (d.categories?.length) await supabase.from('categories').upsert(d.categories);
+        if (d.products?.length) await supabase.from('products').upsert(d.products);
+        if (d.coupons?.length) await supabase.from('coupons').upsert(d.coupons);
+        if (d.loyalty_config?.length) await supabase.from('loyalty_config').upsert(d.loyalty_config);
+        if (d.store_config?.length) await supabase.from('store_config').upsert(d.store_config);
+
+        alert("Restauração concluída com sucesso! Recarregando dados...");
+        onRefreshData();
+      } catch (err) {
+        alert("Erro ao restaurar: Arquivo inválido.");
+      } finally {
+        setIsDataProcessing(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleUpdateLoyalty = async (updates: Partial<LoyaltyConfig>) => {
@@ -199,33 +278,81 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       <div className="animate-in fade-in duration-500">
         {activeTab === 'setup' && (
-          <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-gray-100 max-w-2xl mx-auto">
-            <h3 className="text-2xl font-black italic uppercase mb-8 tracking-tighter">Disponibilidade de Serviços</h3>
-            <div className="space-y-6">
-              {[
-                { key: 'tablesEnabled', label: 'Atendimento nas Mesas', icon: '🪑' },
-                { key: 'deliveryEnabled', label: 'Serviço de Entrega', icon: '🚚' },
-                { key: 'counterEnabled', label: 'Retirada no Balcão', icon: '🏪' }
-              ].map(opt => (
-                <div key={opt.key} className="flex items-center justify-between p-6 bg-gray-50 rounded-[2rem] border border-gray-100 hover:border-yellow-400 transition-all">
-                  <div className="flex items-center gap-4">
-                    <span className="text-2xl">{opt.icon}</span>
-                    <span className="font-black text-[11px] uppercase tracking-wider">{opt.label}</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+            {/* Disponibilidade */}
+            <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-gray-100">
+              <h3 className="text-xl font-black italic uppercase mb-8 tracking-tighter">Serviços Ativos</h3>
+              <div className="space-y-4">
+                {[
+                  { key: 'tablesEnabled', label: 'Atendimento Mesas', icon: '🪑' },
+                  { key: 'deliveryEnabled', label: 'Serviço Entrega', icon: '🚚' },
+                  { key: 'counterEnabled', label: 'Retirada Balcão', icon: '🏪' }
+                ].map(opt => (
+                  <div key={opt.key} className="flex items-center justify-between p-5 bg-gray-50 rounded-[2rem] border border-gray-100">
+                    <div className="flex items-center gap-4">
+                      <span className="text-xl">{opt.icon}</span>
+                      <span className="font-black text-[10px] uppercase tracking-wider">{opt.label}</span>
+                    </div>
+                    <button 
+                      onClick={() => onUpdateStoreConfig({ ...storeConfig, [opt.key]: !storeConfig[opt.key as keyof StoreConfig] })}
+                      className={`w-14 h-7 rounded-full transition-all relative ${storeConfig[opt.key as keyof StoreConfig] ? 'bg-green-500' : 'bg-gray-300'}`}
+                    >
+                      <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-md ${storeConfig[opt.key as keyof StoreConfig] ? 'left-8' : 'left-1'}`} />
+                    </button>
                   </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Backups */}
+            <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
+              <h3 className="text-xl font-black italic uppercase mb-8 tracking-tighter text-gray-400">Dados do Sistema</h3>
+              <div className="space-y-4 flex-1">
+                <button 
+                  onClick={handleExportBackup}
+                  disabled={isDataProcessing}
+                  className="w-full p-6 bg-black text-yellow-400 rounded-[2rem] flex items-center justify-between hover:scale-[1.02] transition-all active:scale-95 shadow-xl disabled:opacity-50"
+                >
+                  <div className="text-left">
+                    <p className="font-black text-sm uppercase leading-none mb-1">Fazer Backup</p>
+                    <p className="text-[9px] uppercase font-bold text-gray-500 tracking-widest">Salvar catálogo e configurações</p>
+                  </div>
+                  <BackupIcon size={24} />
+                </button>
+
+                <div className="relative">
+                  <input 
+                    type="file" 
+                    accept=".json" 
+                    ref={fileInputRef}
+                    onChange={handleImportBackup}
+                    className="hidden" 
+                  />
                   <button 
-                    onClick={() => onUpdateStoreConfig({ ...storeConfig, [opt.key]: !storeConfig[opt.key as keyof StoreConfig] })}
-                    className={`w-16 h-8 rounded-full transition-all relative ${storeConfig[opt.key as keyof StoreConfig] ? 'bg-green-500' : 'bg-gray-300'}`}
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isDataProcessing}
+                    className="w-full p-6 bg-gray-100 text-black border-2 border-dashed border-gray-300 rounded-[2rem] flex items-center justify-between hover:border-black transition-all active:scale-95 disabled:opacity-50"
                   >
-                    <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-md ${storeConfig[opt.key as keyof StoreConfig] ? 'left-9' : 'left-1'}`} />
+                    <div className="text-left">
+                      <p className="font-black text-sm uppercase leading-none mb-1">Restaurar</p>
+                      <p className="text-[9px] uppercase font-bold text-gray-400 tracking-widest">Carregar arquivo de backup</p>
+                    </div>
+                    <RestoreIcon size={24} />
                   </button>
                 </div>
-              ))}
-              
-              {!storeConfig.tablesEnabled && !storeConfig.deliveryEnabled && !storeConfig.counterEnabled && (
-                <div className="mt-8 p-6 bg-red-50 rounded-[2rem] border-2 border-red-100 text-center">
-                  <p className="text-red-600 font-black uppercase text-[10px] tracking-widest">⚠️ Loja fechada para clientes online</p>
-                </div>
-              )}
+
+                {isDataProcessing && (
+                  <div className="flex items-center justify-center gap-2 py-4">
+                    <span className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce"></span>
+                    <span className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                    <span className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                    <span className="text-[8px] font-black uppercase tracking-widest ml-2">Processando...</span>
+                  </div>
+                )}
+              </div>
+              <p className="mt-6 text-[8px] text-gray-300 font-bold uppercase tracking-[0.2em] text-center leading-relaxed">
+                Recomendamos fazer backup semanalmente para garantir a segurança do seu catálogo.
+              </p>
             </div>
           </div>
         )}
