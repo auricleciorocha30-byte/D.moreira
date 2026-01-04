@@ -175,6 +175,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     fetchMarketing();
   };
 
+  const toggleLoyaltyItem = (val: string) => {
+    const currentItems = loyalty.scopeValue ? loyalty.scopeValue.split(',').filter(Boolean) : [];
+    const nextItems = currentItems.includes(val) ? currentItems.filter(i => i !== val) : [...currentItems, val];
+    handleUpdateLoyalty({ scopeValue: nextItems.join(',') });
+  };
+
   const handleSaveCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCode = couponForm.code.toUpperCase().trim();
@@ -224,6 +230,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const activeDeliveries = tables.filter(t => t.id >= 900 && t.id <= 999 && t.status === 'occupied');
   const selectedTable = tables.find(t => t.id === selectedTableId) || null;
   const filteredMenu = (menuItems || []).filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  const loyaltyScopeItems = useMemo(() => {
+    return (loyalty.scopeValue || "").split(',').filter(Boolean);
+  }, [loyalty.scopeValue]);
 
   const filteredProductsForTable = useMemo(() => {
     if (!productSearchForTable.trim()) return menuItems.filter(p => p.isAvailable).slice(0, 8);
@@ -343,12 +353,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   <div className="space-y-1">
                     <p className="text-[9px] font-black uppercase text-yellow-800">Tipo de Pontuação</p>
                     <select value={loyalty.scopeType} onChange={e => handleUpdateLoyalty({ scopeType: e.target.value as any, scopeValue: '' })} className="w-full bg-white p-4 rounded-xl border-2 border-yellow-200 font-black text-[9px] uppercase outline-none">
-                      <option value="all">🚀 Loja Toda</option>
-                      <option value="category">📁 Por Categorias</option>
-                      <option value="product">🍔 Por Produtos</option>
+                      <option value="all">Loja Toda</option>
+                      <option value="category">Por Categorias</option>
+                      <option value="product">Por Produtos</option>
                     </select>
                   </div>
                 </div>
+                {loyalty.scopeType !== 'all' && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto no-scrollbar p-2 bg-white/50 rounded-xl">
+                    {loyalty.scopeType === 'category' ? categories?.map(cat => (
+                      <button key={cat.id} onClick={() => toggleLoyaltyItem(cat.name)} className={`p-2 rounded-lg border-2 text-[8px] font-black uppercase transition-all ${loyaltyScopeItems.includes(cat.name) ? 'bg-yellow-400 border-black' : 'bg-white border-transparent'}`}>
+                        {cat.name}
+                      </button>
+                    )) : menuItems?.map(prod => (
+                      <button key={prod.id} onClick={() => toggleLoyaltyItem(prod.id)} className={`p-2 rounded-lg border-2 text-[8px] font-black uppercase transition-all ${loyaltyScopeItems.includes(prod.id) ? 'bg-yellow-400 border-black' : 'bg-white border-transparent'}`}>
+                        {prod.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex-1 overflow-y-auto no-scrollbar space-y-3">
