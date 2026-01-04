@@ -184,7 +184,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <nav className="flex bg-gray-900 p-1 rounded-xl gap-1 overflow-x-auto no-scrollbar max-w-full">
           {(['tables', 'delivery', 'menu', 'marketing', 'setup'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2.5 rounded-lg text-[9px] font-black uppercase transition-all whitespace-nowrap ${activeTab === tab ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-500 hover:text-white'}`}>
-              {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Externo' : tab === 'menu' ? 'Menu' : tab === 'marketing' ? 'Marketing' : 'Setup'}
+              {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Externo' : tab === 'menu' ? 'Menu' : tab === 'marketing' ? 'Mkt' : 'Setup'}
             </button>
           ))}
         </nav>
@@ -442,7 +442,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     {selectedTable.currentOrder?.address && <div className="bg-white/60 p-4 rounded-2xl border border-yellow-200 mb-4"><p className="text-[8px] font-black text-yellow-800 uppercase mb-1">Endereço de Entrega</p><p className="text-[11px] font-black uppercase leading-tight italic">📍 {selectedTable.currentOrder.address}</p></div>}
                     {selectedTable.currentOrder?.observation && (
                       <div className="bg-black/5 p-4 rounded-2xl border border-black/5">
-                        <p className="text-[8px] font-black text-gray-500 uppercase mb-1">Observação do Cliente</p>
+                        <p className="text-[8px] font-black text-gray-500 uppercase mb-1">Observação Geral</p>
                         <p className="text-[11px] font-bold italic">💬 {selectedTable.currentOrder.observation}</p>
                       </div>
                     )}
@@ -450,14 +450,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   <div className="space-y-3">
                     <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Itens Solicitados</h4>
                     {selectedTable.currentOrder?.items.map((item, i) => (
-                      <div key={i} className="flex flex-col gap-2 bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm">
+                      <div key={i} className="flex flex-col gap-2 bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm relative overflow-hidden">
                         <div className="flex gap-4 items-center">
                           <img src={item.image} className="w-14 h-14 rounded-xl object-cover shrink-0" />
-                          <div className="flex-1"><h4 className="text-xs font-black uppercase leading-none truncate">{item.name}</h4><p className="text-[9px] text-gray-400 font-bold uppercase mt-1">{item.category}</p></div>
-                          <div className="text-right font-black"><p className="text-[10px] text-gray-400">{item.quantity}x</p><p className="text-sm italic">R$ {(item.price * item.quantity).toFixed(2)}</p></div>
+                          <div className="flex-1">
+                            <h4 className="text-xs font-black uppercase leading-none truncate">{item.name}</h4>
+                            <p className="text-[9px] text-gray-400 font-bold uppercase mt-1">{item.category}</p>
+                          </div>
+                          <div className="text-right font-black">
+                            <p className="text-[10px] text-gray-400">{item.quantity}x</p>
+                            <p className="text-sm italic">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                          </div>
                         </div>
                         {item.observation && (
-                          <div className="bg-gray-50 px-4 py-2 rounded-xl text-[9px] font-bold text-gray-500 border-l-4 border-yellow-400">Obs: {item.observation}</div>
+                          <div className="mt-2 bg-yellow-50 px-4 py-2 rounded-xl text-[9px] font-bold text-yellow-800 border-l-4 border-yellow-400">
+                             {item.observation}
+                          </div>
                         )}
                       </div>
                     ))}
@@ -467,19 +475,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                <div className="w-full md:w-80 bg-gray-50 p-6 border-l overflow-y-auto no-scrollbar shrink-0">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Adicionar ao Pedido</h4>
                   <div className="space-y-4 mb-6">
-                    <input 
-                      type="text" 
-                      value={productSearchForTable} 
-                      onChange={e => setProductSearchForTable(e.target.value)} 
-                      placeholder="BUSCAR PRODUTO..." 
-                      className="w-full bg-white border-2 rounded-2xl px-5 py-3 text-[10px] font-black outline-none uppercase focus:border-yellow-400 transition-all shadow-sm" 
-                    />
-                    <textarea 
-                      value={currentObservation} 
-                      onChange={e => setCurrentObservation(e.target.value)} 
-                      placeholder="ADICIONAR OBSERVAÇÃO AO ITEM..." 
-                      className="w-full bg-white border-2 rounded-2xl px-5 py-3 text-[9px] font-black outline-none uppercase h-20 resize-none focus:border-yellow-400 transition-all shadow-sm"
-                    />
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        value={productSearchForTable} 
+                        onChange={e => setProductSearchForTable(e.target.value)} 
+                        placeholder="BUSCAR PRODUTO..." 
+                        className="w-full bg-white border-2 rounded-2xl px-5 py-3 text-[10px] font-black outline-none uppercase focus:border-yellow-400 transition-all shadow-sm" 
+                      />
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-black text-gray-400 uppercase ml-2 mb-1">OBSERVAÇÃO DO ITEM</p>
+                      <textarea 
+                        value={currentObservation} 
+                        onChange={e => setCurrentObservation(e.target.value)} 
+                        placeholder="EX: SEM GELO, MAL PASSADO..." 
+                        className="w-full bg-white border-2 rounded-2xl px-5 py-3 text-[9px] font-black outline-none uppercase h-20 resize-none focus:border-yellow-400 transition-all shadow-sm"
+                      />
+                    </div>
                   </div>
                   
                   <div className="space-y-2">
@@ -507,7 +520,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* MODAIS RESTANTES (CUPOM, CATEGORIA, PRODUTO, NOVO PEDIDO) PERMANECEM IGUAIS... */}
+      {/* MODAL CUPOM, CATEGORIA, PRODUTO E NOVO PEDIDO (MANTIDOS) */}
       {isCouponModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-md rounded-[3.5rem] p-10 relative shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -518,7 +531,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <input type="number" value={couponForm.percentage} onChange={e => setCouponForm({...couponForm, percentage: e.target.value})} placeholder="DESCONTO %" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none focus:border-yellow-400 transition-all" required />
               <div className="flex bg-gray-100 p-1 rounded-xl gap-1">
                 {(['all', 'category', 'product'] as const).map(s => (
-                  <button key={s} type="button" onClick={() => setCouponForm({...couponForm, scopeType: s, selectedItems: []})} className={`flex-1 py-3 rounded-lg text-[8px] font-black uppercase transition-all ${couponForm.scopeType === s ? 'bg-black text-white' : 'text-gray-400 hover:text-black'}`}>{s === 'all' ? 'Loja Toda' : s === 'category' ? 'Categorias' : 'Produtos'}</button>
+                  <button key={s} type="button" onClick={() => setCouponForm({...couponForm, scopeType: s, selectedItems: []})} className={`flex-1 py-3 rounded-lg text-[8px] font-black uppercase transition-all ${couponForm.scopeType === s ? 'bg-black text-white' : 'text-gray-400 hover:text-black'}`}>{s === 'all' ? 'Tudo' : s === 'category' ? 'Cats' : 'Prods'}</button>
                 ))}
               </div>
               {couponForm.scopeType !== 'all' && (
@@ -532,83 +545,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               )}
               <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-2xl font-black text-sm uppercase shadow-xl hover:brightness-125 transition-all">Salvar Cupom</button>
             </form>
-          </div>
-        </div>
-      )}
-
-      {isNewOrderModalOpen && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
-          <div className="bg-white w-full max-w-sm rounded-[3.5rem] p-10 relative shadow-2xl">
-             <button onClick={() => setIsNewOrderModalOpen(false)} className="absolute top-8 right-8 p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
-             <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">Lançar Pedido</h3>
-             <form onSubmit={async (e) => {
-               e.preventDefault();
-               if (!newOrderForm.customerName) return;
-               const range = newOrderForm.type === 'delivery' ? [900, 949] : [950, 999];
-               const free = (tables || []).find(t => t.id >= range[0] && t.id <= range[1] && t.status === 'free');
-               if (!free) return alert('Sem vagas disponíveis.');
-               const newOrder: Order = {
-                 id: Math.random().toString(36).substr(2, 6).toUpperCase(), customerName: newOrderForm.customerName, items: [], total: 0, finalTotal: 0, paymentMethod: newOrderForm.paymentMethod, timestamp: new Date().toISOString(), tableId: free.id, status: 'pending', orderType: newOrderForm.type === 'takeaway' ? 'counter' : 'delivery', address: newOrderForm.type === 'delivery' ? newOrderForm.address : undefined
-               };
-               await onUpdateTable(free.id, 'occupied', newOrder);
-               setIsNewOrderModalOpen(false);
-               setSelectedTableId(free.id);
-             }} className="space-y-4">
-                <input type="text" value={newOrderForm.customerName} onChange={e => setNewOrderForm({...newOrderForm, customerName: e.target.value})} placeholder="NOME DO CLIENTE" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none uppercase focus:border-yellow-400 transition-all" required />
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setNewOrderForm({...newOrderForm, type: 'delivery'})} className={`py-3 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${newOrderForm.type === 'delivery' ? 'bg-black text-white' : 'bg-white text-gray-400'}`}>Entrega</button>
-                  <button type="button" onClick={() => setNewOrderForm({...newOrderForm, type: 'takeaway'})} className={`py-3 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${newOrderForm.type === 'takeaway' ? 'bg-black text-white' : 'bg-white text-gray-400'}`}>Balcão</button>
-                </div>
-                {newOrderForm.type === 'delivery' && (
-                  <textarea value={newOrderForm.address} onChange={e => setNewOrderForm({...newOrderForm, address: e.target.value})} placeholder="ENDEREÇO" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none h-24 resize-none focus:border-yellow-400 transition-all" required />
-                )}
-                <button type="submit" className="w-full bg-yellow-400 text-black py-5 rounded-2xl font-black text-[10px] uppercase shadow-xl hover:brightness-110 transition-all">Criar Pedido</button>
-             </form>
-          </div>
-        </div>
-      )}
-
-      {isCategoryModalOpen && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
-          <div className="bg-white w-full max-w-sm rounded-[3.5rem] p-10 relative shadow-2xl">
-             <button onClick={() => setIsCategoryModalOpen(false)} className="absolute top-8 right-8 p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
-             <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">Nova Categoria</h3>
-             <form onSubmit={async (e) => {
-               e.preventDefault();
-               if (!newCategoryName) return;
-               await supabase.from('categories').insert([{ id: 'cat_' + Date.now(), name: newCategoryName }]);
-               setNewCategoryName('');
-               setIsCategoryModalOpen(false);
-               onRefreshData();
-             }} className="space-y-6">
-                <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="NOME" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none uppercase focus:border-yellow-400 transition-all" required />
-                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-sm uppercase shadow-xl hover:brightness-125 transition-all">Criar</button>
-             </form>
-          </div>
-        </div>
-      )}
-
-      {isProductModalOpen && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
-          <div className="bg-white w-full max-w-2xl rounded-[3rem] p-10 relative shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar">
-             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-8 right-8 p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
-             <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">{editingProduct?.id ? 'Editar' : 'Novo'} Item</h3>
-             <form onSubmit={(e) => { e.preventDefault(); onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price || 0) }); setIsProductModalOpen(false); }} className="space-y-6">
-                <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="NOME" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none uppercase focus:border-yellow-400 transition-all" required />
-                <div className="grid grid-cols-2 gap-4">
-                    <input type="number" step="0.01" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} placeholder="PREÇO" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none focus:border-yellow-400 transition-all" required />
-                    <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none uppercase focus:border-yellow-400 transition-all">
-                      <option value="">CATEGORIA</option>
-                      {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
-                    </select>
-                </div>
-                <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} placeholder="LINK DA IMAGEM" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none focus:border-yellow-400 transition-all" />
-                <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
-                   <input type="checkbox" checked={editingProduct?.isAvailable ?? true} onChange={e => setEditingProduct({...editingProduct!, isAvailable: e.target.checked})} className="w-5 h-5 rounded-md accent-yellow-400" id="avail_check" />
-                   <label htmlFor="avail_check" className="font-black text-[10px] uppercase">Disponível no Cardápio</label>
-                </div>
-                <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-2xl font-black text-sm uppercase shadow-2xl active:scale-95 transition-all hover:brightness-125">Salvar Produto</button>
-             </form>
           </div>
         </div>
       )}

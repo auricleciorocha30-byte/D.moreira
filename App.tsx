@@ -113,7 +113,7 @@ const App: React.FC = () => {
   }, [fetchData]);
 
   useEffect(() => {
-    const channel = supabase.channel('dmoreira_realtime_v8')
+    const channel = supabase.channel('dmoreira_realtime_v9')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (payload) => {
         const newRec = payload.new as any;
         setTables(current => current.map(t => t.id === newRec.id ? { id: newRec.id, status: newRec.status, currentOrder: newRec.current_order } : t));
@@ -216,13 +216,17 @@ const App: React.FC = () => {
               const table = tables.find(t => t.id === tableId);
               let current = table?.currentOrder;
               const items = current ? [...(current.items || [])] : [];
-              const ex = items.findIndex(i => i.id === product.id);
+              
+              // Standard behavior: if observation is different, add as a new line item
+              // If exactly the same, increment quantity
+              const ex = items.findIndex(i => i.id === product.id && (i.observation || '') === (observation || ''));
+              
               if (ex >= 0) {
                 items[ex].quantity += 1;
-                if (observation) items[ex].observation = observation;
               } else {
                 items.push({ ...product, quantity: 1, observation });
               }
+              
               const total = items.reduce((a, b) => a + (b.price * b.quantity), 0);
               handlePlaceOrder(current ? { ...current, items, total, finalTotal: total - (current.discount || 0) } : { id: Math.random().toString(36).substr(2, 6).toUpperCase(), customerName: tableId >= 950 ? 'Balcão' : tableId >= 900 ? 'Entrega' : `Mesa ${tableId}`, items, total, finalTotal: total, paymentMethod: 'Pendente', timestamp: new Date().toISOString(), tableId, status: 'pending', orderType: tableId >= 950 ? 'counter' : tableId >= 900 ? 'delivery' : 'table' });
             }}
