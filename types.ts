@@ -17,6 +17,7 @@ export interface Category {
 
 export interface CartItem extends Product {
   quantity: number;
+  observation?: string;
 }
 
 export interface StoreInfo {
@@ -46,6 +47,7 @@ export interface Order {
   address?: string;
   couponCode?: string;
   isUpdated?: boolean;
+  observation?: string;
 }
 
 export interface Table {
@@ -74,4 +76,10 @@ export interface LoyaltyUser {
   phone: string;
   name: string;
   accumulated: number;
+}
+
+export interface StoreConfig {
+  tablesEnabled: boolean;
+  deliveryEnabled: boolean;
+  counterEnabled: boolean;
 }

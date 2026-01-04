@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CartItem, Product, Order, OrderType, Coupon, LoyaltyConfig } from '../types';
+import { CartItem, Product, Order, OrderType, Coupon, LoyaltyConfig, StoreConfig } from '../types';
 import { CloseIcon, TrashIcon } from './Icons';
 import { supabase } from '../lib/supabase';
 import { STORE_INFO } from '../constants';
@@ -13,9 +13,10 @@ interface CartProps {
   onRemove: (id: string) => void;
   onAdd: (product: Product) => void;
   onPlaceOrder: (order: Order) => Promise<boolean>;
+  storeConfig: StoreConfig;
 }
 
-const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, onRemove, onAdd, onPlaceOrder }) => {
+const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, onRemove, onAdd, onPlaceOrder, storeConfig }) => {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [couponCode, setCouponCode] = useState('');
@@ -24,9 +25,17 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const [tableNumber, setTableNumber] = useState('');
   const [orderType, setOrderType] = useState<OrderType>('table');
   const [address, setAddress] = useState('');
+  const [observation, setObservation] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'Dinheiro' | 'Pix' | 'Cartão'>('Pix');
   const [isSuccess, setIsSuccess] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  useEffect(() => {
+    // Definir tipo de pedido inicial baseado no que está disponível
+    if (storeConfig.tablesEnabled) setOrderType('table');
+    else if (storeConfig.deliveryEnabled) setOrderType('delivery');
+    else if (storeConfig.counterEnabled) setOrderType('takeaway');
+  }, [storeConfig]);
 
   useEffect(() => {
     if (isOpen) {
@@ -39,7 +48,6 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
         }); 
       });
     } else {
-      // Quando fechar o modal, resetamos o estado de sucesso para o próximo pedido
       if (!isOpen) setTimeout(() => setIsSuccess(false), 500);
     }
   }, [isOpen]);
@@ -60,46 +68,21 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
       });
 
       if (validCoupons.length === 0) return totalDiscount;
-
-      const bestCoupon = validCoupons.reduce((prev, curr) => 
-        (curr.percentage > prev.percentage) ? curr : prev
-      );
-
+      const bestCoupon = validCoupons.reduce((prev, curr) => (curr.percentage > prev.percentage) ? curr : prev);
       return totalDiscount + (item.price * item.quantity * bestCoupon.percentage / 100);
     }, 0);
   }, [appliedCoupons, items]);
 
   const finalTotal = subtotal - discount;
 
-  // Fix: Implemented handleValidateCoupon to fetch and apply valid coupons from database
   const handleValidateCoupon = async () => {
     if (!couponCode.trim()) return;
-    
     try {
-      const { data, error } = await supabase
-        .from('coupons')
-        .select('*')
-        .eq('code', couponCode.trim().toUpperCase())
-        .eq('is_active', true)
-        .maybeSingle();
-
+      const { data, error } = await supabase.from('coupons').select('*').eq('code', couponCode.trim().toUpperCase()).eq('is_active', true).maybeSingle();
       if (error) throw error;
-      
-      if (data) {
-        setAppliedCoupons([{
-          id: data.id,
-          code: data.code,
-          percentage: data.percentage,
-          isActive: data.is_active,
-          scopeType: data.scope_type,
-          scopeValue: data.scope_value || ''
-        }]);
-      } else {
-        alert('Cupom inválido ou expirado.');
-      }
-    } catch (err) {
-      alert('Erro ao validar cupom.');
-    }
+      if (data) setAppliedCoupons([{ id: data.id, code: data.code, percentage: data.percentage, isActive: data.is_active, scopeType: data.scope_type, scopeValue: data.scope_value || '' }]);
+      else alert('Cupom inválido ou expirado.');
+    } catch (err) { alert('Erro ao validar cupom.'); }
   };
 
   const handleCheckout = async () => {
@@ -118,7 +101,8 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
       timestamp: new Date().toISOString(), tableId: targetTableId,
       orderType: orderType === 'takeaway' ? 'counter' : orderType,
       address: orderType === 'delivery' ? address : undefined, status: 'pending', 
-      couponCode: appliedCoupons.length > 0 ? appliedCoupons[0].code : undefined
+      couponCode: appliedCoupons.length > 0 ? appliedCoupons[0].code : undefined,
+      observation: observation.trim() || undefined
     };
 
     try {
@@ -133,7 +117,6 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
         
         const pointRatio = subtotal > 0 ? (finalTotal / subtotal) : 0;
         const finalEligible = grossEligible * pointRatio;
-        
         const { data: user } = await supabase.from('loyalty_users').select('*').eq('phone', customerPhone).maybeSingle();
         if (user) await supabase.from('loyalty_users').update({ accumulated: Number(user.accumulated) + finalEligible }).eq('phone', customerPhone);
         else await supabase.from('loyalty_users').insert([{ phone: customerPhone, name: customerName, accumulated: finalEligible }]);
@@ -144,12 +127,9 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
         setIsSuccess(true);
         setAppliedCoupons([]);
         setCouponCode('');
+        setObservation('');
       }
-    } catch (err) { 
-      alert('Erro ao processar checkout. Tente novamente.'); 
-    } finally { 
-      setIsProcessing(false); 
-    }
+    } catch (err) { alert('Erro ao processar checkout.'); } finally { setIsProcessing(false); }
   };
 
   return (
@@ -184,11 +164,17 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
 
                     <div className="space-y-2">
                       <p className="text-[8px] tracking-[0.2em] text-gray-400 ml-2">Tipo de Pedido</p>
-                      <div className="grid grid-cols-3 gap-2">{(['table', 'takeaway', 'delivery'] as OrderType[]).map(type => (
-                        <button key={type} onClick={() => setOrderType(type)} className={`py-4 rounded-2xl text-[9px] border-2 transition-all ${orderType === type ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>
-                          {type === 'table' ? 'Na Mesa' : type === 'takeaway' ? 'Balcão' : 'Entrega'}
-                        </button>
-                      ))}</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {storeConfig.tablesEnabled && (
+                          <button onClick={() => setOrderType('table')} className={`py-4 rounded-2xl text-[9px] border-2 transition-all ${orderType === 'table' ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>Na Mesa</button>
+                        )}
+                        {storeConfig.counterEnabled && (
+                          <button onClick={() => setOrderType('takeaway')} className={`py-4 rounded-2xl text-[9px] border-2 transition-all ${orderType === 'takeaway' ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>Balcão</button>
+                        )}
+                        {storeConfig.deliveryEnabled && (
+                          <button onClick={() => setOrderType('delivery')} className={`py-4 rounded-2xl text-[9px] border-2 transition-all ${orderType === 'delivery' ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>Entrega</button>
+                        )}
+                      </div>
                     </div>
 
                     {orderType === 'table' && (
@@ -212,6 +198,11 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                       <div className="grid grid-cols-3 gap-2">{(['Pix', 'Dinheiro', 'Cartão'] as const).map(method => (
                         <button key={method} onClick={() => setPaymentMethod(method)} className={`py-4 rounded-2xl text-[9px] border-2 transition-all ${paymentMethod === method ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>{method}</button>
                       ))}</div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-[8px] tracking-[0.2em] text-gray-400 ml-2">Observações</p>
+                      <textarea value={observation} onChange={(e) => setObservation(e.target.value)} placeholder="EX: SEM CEBOLA, CAPRICHA NO MOLHO..." className="w-full bg-white border-2 rounded-2xl px-6 py-4 text-xs outline-none h-24 resize-none shadow-sm focus:border-yellow-400 transition-all"/>
                     </div>
 
                     <div className="flex gap-3 pt-2">

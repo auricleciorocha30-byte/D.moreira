@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Table, Order, Product, Category, Coupon, LoyaltyConfig, LoyaltyUser, OrderStatus } from '../types';
+import { Table, Order, Product, Category, Coupon, LoyaltyConfig, LoyaltyUser, OrderStatus, StoreConfig } from '../types';
 import { CloseIcon, TrashIcon, VolumeIcon, PrinterIcon, EditIcon } from './Icons';
 import { supabase } from '../lib/supabase';
 import { STORE_INFO } from '../constants';
@@ -13,12 +13,14 @@ interface AdminPanelProps {
   onToggleAudio: () => void;
   onTestSound: () => void;
   onUpdateTable: (tableId: number, status: 'free' | 'occupied', order?: Order | null) => void;
-  onAddToOrder: (tableId: number, product: Product) => void;
+  onAddToOrder: (tableId: number, product: Product, observation?: string) => void;
   onRefreshData: () => void;
   onLogout: () => void;
   onSaveProduct: (product: Partial<Product>) => void;
   onDeleteProduct: (id: string) => void;
   dbStatus: 'loading' | 'ok';
+  storeConfig: StoreConfig;
+  onUpdateStoreConfig: (newCfg: StoreConfig) => void;
 }
 
 const STATUS_CFG: Record<string, any> = {
@@ -30,13 +32,15 @@ const STATUS_CFG: Record<string, any> = {
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
   tables = [], menuItems = [], categories = [], audioEnabled, onToggleAudio, onTestSound,
-  onUpdateTable, onRefreshData, onLogout, onSaveProduct, onDeleteProduct, dbStatus, onAddToOrder 
+  onUpdateTable, onRefreshData, onLogout, onSaveProduct, onDeleteProduct, dbStatus, onAddToOrder,
+  storeConfig, onUpdateStoreConfig
 }) => {
-  const [activeTab, setActiveTab] = useState<'tables' | 'delivery' | 'menu' | 'marketing'>('tables');
+  const [activeTab, setActiveTab] = useState<'tables' | 'delivery' | 'menu' | 'marketing' | 'setup'>('tables');
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [loyaltySearch, setLoyaltySearch] = useState('');
   const [productSearchForTable, setProductSearchForTable] = useState('');
+  const [currentObservation, setCurrentObservation] = useState('');
   
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
@@ -78,9 +82,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       
       const { data: lUsers } = await supabase.from('loyalty_users').select('*').order('accumulated', { ascending: false });
       if (lUsers) setLoyaltyUsers(lUsers);
-    } catch (e) { 
-      console.error("Error fetching marketing data", e); 
-    }
+    } catch (e) { console.error("Error fetching marketing data", e); }
   };
 
   const handleUpdateLoyalty = async (updates: Partial<LoyaltyConfig>) => {
@@ -156,7 +158,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     return (loyalty.scopeValue || "").split(',').filter(Boolean);
   }, [loyalty.scopeValue]);
 
-  // Filtro de produtos para adicionar à mesa
   const filteredProductsForTable = useMemo(() => {
     if (!productSearchForTable.trim()) return menuItems.filter(p => p.isAvailable).slice(0, 8);
     return menuItems.filter(p => 
@@ -180,10 +181,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         </div>
 
-        <nav className="flex bg-gray-900 p-1 rounded-xl gap-1">
-          {(['tables', 'delivery', 'menu', 'marketing'] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2.5 rounded-lg text-[9px] font-black uppercase transition-all ${activeTab === tab ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-500 hover:text-white'}`}>
-              {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Externo' : tab === 'menu' ? 'Menu' : 'Marketing'}
+        <nav className="flex bg-gray-900 p-1 rounded-xl gap-1 overflow-x-auto no-scrollbar max-w-full">
+          {(['tables', 'delivery', 'menu', 'marketing', 'setup'] as const).map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2.5 rounded-lg text-[9px] font-black uppercase transition-all whitespace-nowrap ${activeTab === tab ? 'bg-yellow-400 text-black shadow-lg scale-105' : 'text-gray-500 hover:text-white'}`}>
+              {tab === 'tables' ? 'Mesas' : tab === 'delivery' ? 'Externo' : tab === 'menu' ? 'Menu' : tab === 'marketing' ? 'Marketing' : 'Setup'}
             </button>
           ))}
         </nav>
@@ -197,9 +198,40 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       </div>
 
       <div className="animate-in fade-in duration-500">
+        {activeTab === 'setup' && (
+          <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-gray-100 max-w-2xl mx-auto">
+            <h3 className="text-2xl font-black italic uppercase mb-8 tracking-tighter">Disponibilidade de Serviços</h3>
+            <div className="space-y-6">
+              {[
+                { key: 'tablesEnabled', label: 'Atendimento nas Mesas', icon: '🪑' },
+                { key: 'deliveryEnabled', label: 'Serviço de Entrega', icon: '🚚' },
+                { key: 'counterEnabled', label: 'Retirada no Balcão', icon: '🏪' }
+              ].map(opt => (
+                <div key={opt.key} className="flex items-center justify-between p-6 bg-gray-50 rounded-[2rem] border border-gray-100 hover:border-yellow-400 transition-all">
+                  <div className="flex items-center gap-4">
+                    <span className="text-2xl">{opt.icon}</span>
+                    <span className="font-black text-[11px] uppercase tracking-wider">{opt.label}</span>
+                  </div>
+                  <button 
+                    onClick={() => onUpdateStoreConfig({ ...storeConfig, [opt.key]: !storeConfig[opt.key as keyof StoreConfig] })}
+                    className={`w-16 h-8 rounded-full transition-all relative ${storeConfig[opt.key as keyof StoreConfig] ? 'bg-green-500' : 'bg-gray-300'}`}
+                  >
+                    <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-md ${storeConfig[opt.key as keyof StoreConfig] ? 'left-9' : 'left-1'}`} />
+                  </button>
+                </div>
+              ))}
+              
+              {!storeConfig.tablesEnabled && !storeConfig.deliveryEnabled && !storeConfig.counterEnabled && (
+                <div className="mt-8 p-6 bg-red-50 rounded-[2rem] border-2 border-red-100 text-center">
+                  <p className="text-red-600 font-black uppercase text-[10px] tracking-widest">⚠️ Loja fechada para clientes online</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {activeTab === 'marketing' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Fidelidade */}
             <div className="lg:col-span-2 bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col h-auto min-h-[600px]">
               <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
                 <h3 className="text-xl font-black italic uppercase">💎 Ranking de Fidelidade</h3>
@@ -262,7 +294,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* Cupons */}
             <div className="lg:col-span-1 bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col h-auto min-h-[600px]">
               <div className="flex justify-between items-center mb-8">
                 <h3 className="text-xl font-black italic uppercase">🎫 Cupons</h3>
@@ -371,8 +402,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* MODAL DETALHES PEDIDO */}
       {selectedTable && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => { setSelectedTableId(null); setProductSearchForTable(''); }} />
-          <div className="relative bg-white w-full max-w-5xl h-[92vh] rounded-[3rem] flex flex-col overflow-hidden shadow-2xl border-t-8 border-yellow-400 animate-in zoom-in duration-300">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => { setSelectedTableId(null); setProductSearchForTable(''); setCurrentObservation(''); }} />
+          <div className="relative bg-white w-full max-w-6xl h-[92vh] rounded-[3rem] flex flex-col overflow-hidden shadow-2xl border-t-8 border-yellow-400 animate-in zoom-in duration-300">
             <div className="p-6 border-b flex justify-between items-center bg-white shadow-sm sticky top-0 z-10">
               <div>
                 <h3 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
@@ -382,11 +413,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   ID: #{selectedTable.currentOrder?.id} • <span className={STATUS_CFG[selectedTable.currentOrder?.status || 'pending'].color}>{STATUS_CFG[selectedTable.currentOrder?.status || 'pending'].label}</span>
                 </p>
               </div>
-              <button onClick={() => { setSelectedTableId(null); setProductSearchForTable(''); }} className="p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
+              <button onClick={() => { setSelectedTableId(null); setProductSearchForTable(''); setCurrentObservation(''); }} className="p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
             </div>
             
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-               {/* Coluna Lateral: Status e Ações */}
                <div className="w-full md:w-64 bg-gray-50 p-6 border-b md:border-b-0 md:border-r overflow-y-auto no-scrollbar shrink-0">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Mudar Status</h4>
                   <div className="grid grid-cols-2 md:grid-cols-1 gap-2">
@@ -403,34 +433,40 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                </div>
 
-               {/* Coluna Central: Itens do Pedido */}
                <div className="flex-1 p-6 overflow-y-auto space-y-6 no-scrollbar bg-white">
                   <div className="bg-yellow-50 p-6 rounded-[2.5rem] border-2 border-yellow-100 shadow-sm">
                     <div className="flex justify-between items-start mb-4 text-black">
                       <div className="flex flex-col"><p className="text-[8px] font-black text-yellow-700 uppercase tracking-widest">Cliente</p><p className="font-black text-lg uppercase tracking-tight">{selectedTable.currentOrder?.customerName}</p></div>
                       <div className="text-right"><p className="text-[8px] font-black text-yellow-700 uppercase tracking-widest">A Pagar</p><p className="text-2xl font-black italic text-black">R$ {(selectedTable.currentOrder?.finalTotal || 0).toFixed(2).replace('.', ',')}</p></div>
                     </div>
-                    {selectedTable.currentOrder?.address && <div className="bg-white/60 p-4 rounded-2xl border border-yellow-200"><p className="text-[8px] font-black text-yellow-800 uppercase mb-1">Endereço de Entrega</p><p className="text-[11px] font-black uppercase leading-tight italic">📍 {selectedTable.currentOrder.address}</p></div>}
+                    {selectedTable.currentOrder?.address && <div className="bg-white/60 p-4 rounded-2xl border border-yellow-200 mb-4"><p className="text-[8px] font-black text-yellow-800 uppercase mb-1">Endereço de Entrega</p><p className="text-[11px] font-black uppercase leading-tight italic">📍 {selectedTable.currentOrder.address}</p></div>}
+                    {selectedTable.currentOrder?.observation && (
+                      <div className="bg-black/5 p-4 rounded-2xl border border-black/5">
+                        <p className="text-[8px] font-black text-gray-500 uppercase mb-1">Observação do Cliente</p>
+                        <p className="text-[11px] font-bold italic">💬 {selectedTable.currentOrder.observation}</p>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-3">
                     <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Itens Solicitados</h4>
                     {selectedTable.currentOrder?.items.map((item, i) => (
-                      <div key={i} className="flex gap-4 bg-white p-4 rounded-3xl border border-gray-100 items-center shadow-sm">
-                        <img src={item.image} className="w-14 h-14 rounded-xl object-cover shrink-0" />
-                        <div className="flex-1"><h4 className="text-xs font-black uppercase leading-none truncate">{item.name}</h4><p className="text-[9px] text-gray-400 font-bold uppercase mt-1">{item.category}</p></div>
-                        <div className="text-right font-black"><p className="text-[10px] text-gray-400">{item.quantity}x</p><p className="text-sm italic">R$ {(item.price * item.quantity).toFixed(2)}</p></div>
+                      <div key={i} className="flex flex-col gap-2 bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm">
+                        <div className="flex gap-4 items-center">
+                          <img src={item.image} className="w-14 h-14 rounded-xl object-cover shrink-0" />
+                          <div className="flex-1"><h4 className="text-xs font-black uppercase leading-none truncate">{item.name}</h4><p className="text-[9px] text-gray-400 font-bold uppercase mt-1">{item.category}</p></div>
+                          <div className="text-right font-black"><p className="text-[10px] text-gray-400">{item.quantity}x</p><p className="text-sm italic">R$ {(item.price * item.quantity).toFixed(2)}</p></div>
+                        </div>
+                        {item.observation && (
+                          <div className="bg-gray-50 px-4 py-2 rounded-xl text-[9px] font-bold text-gray-500 border-l-4 border-yellow-400">Obs: {item.observation}</div>
+                        )}
                       </div>
                     ))}
-                    {(!selectedTable.currentOrder?.items || selectedTable.currentOrder.items.length === 0) && (
-                      <p className="text-center py-10 text-gray-300 font-black uppercase text-[10px]">Sem itens no pedido</p>
-                    )}
                   </div>
                </div>
 
-               {/* Coluna Direita: Adicionar Produtos com Busca */}
                <div className="w-full md:w-80 bg-gray-50 p-6 border-l overflow-y-auto no-scrollbar shrink-0">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Adicionar ao Pedido</h4>
-                  <div className="relative mb-6">
+                  <div className="space-y-4 mb-6">
                     <input 
                       type="text" 
                       value={productSearchForTable} 
@@ -438,18 +474,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       placeholder="BUSCAR PRODUTO..." 
                       className="w-full bg-white border-2 rounded-2xl px-5 py-3 text-[10px] font-black outline-none uppercase focus:border-yellow-400 transition-all shadow-sm" 
                     />
-                    {productSearchForTable && (
-                      <button onClick={() => setProductSearchForTable('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black">
-                        <CloseIcon size={16} />
-                      </button>
-                    )}
+                    <textarea 
+                      value={currentObservation} 
+                      onChange={e => setCurrentObservation(e.target.value)} 
+                      placeholder="ADICIONAR OBSERVAÇÃO AO ITEM..." 
+                      className="w-full bg-white border-2 rounded-2xl px-5 py-3 text-[9px] font-black outline-none uppercase h-20 resize-none focus:border-yellow-400 transition-all shadow-sm"
+                    />
                   </div>
                   
                   <div className="space-y-2">
                     {filteredProductsForTable.map(p => (
                       <button 
                         key={p.id} 
-                        onClick={() => onAddToOrder(selectedTable.id, p)} 
+                        onClick={() => {
+                          onAddToOrder(selectedTable.id, p, currentObservation);
+                          setCurrentObservation('');
+                        }} 
                         className="w-full bg-white p-3 rounded-2xl border border-gray-100 flex gap-3 items-center hover:border-black transition-all active:scale-[0.98] shadow-sm group"
                       >
                         <img src={p.image} className="w-10 h-10 rounded-lg object-cover" />
@@ -460,9 +500,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <span className="bg-yellow-400 text-black w-6 h-6 rounded-lg flex items-center justify-center font-black text-sm group-hover:scale-110 transition-transform">+</span>
                       </button>
                     ))}
-                    {filteredProductsForTable.length === 0 && (
-                      <p className="text-center py-10 text-gray-300 font-black uppercase text-[10px]">Nenhum produto encontrado</p>
-                    )}
                   </div>
                </div>
             </div>
@@ -470,7 +507,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* MODAL CUPOM */}
+      {/* MODAIS RESTANTES (CUPOM, CATEGORIA, PRODUTO, NOVO PEDIDO) PERMANECEM IGUAIS... */}
       {isCouponModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-md rounded-[3.5rem] p-10 relative shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -499,7 +536,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Outros modais restaurados... */}
       {isNewOrderModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-sm rounded-[3.5rem] p-10 relative shadow-2xl">
