@@ -145,7 +145,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         const d = content.data;
         
-        // Executa as restaurações em ordem
         if (d.categories?.length) await supabase.from('categories').upsert(d.categories);
         if (d.products?.length) await supabase.from('products').upsert(d.products);
         if (d.coupons?.length) await supabase.from('coupons').upsert(d.coupons);
@@ -279,7 +278,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       <div className="animate-in fade-in duration-500">
         {activeTab === 'setup' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-            {/* Disponibilidade */}
             <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-gray-100">
               <h3 className="text-xl font-black italic uppercase mb-8 tracking-tighter">Serviços Ativos</h3>
               <div className="space-y-4">
@@ -304,7 +302,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* Backups */}
             <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
               <h3 className="text-xl font-black italic uppercase mb-8 tracking-tighter text-gray-400">Dados do Sistema</h3>
               <div className="space-y-4 flex-1">
@@ -321,18 +318,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </button>
 
                 <div className="relative">
-                  <input 
-                    type="file" 
-                    accept=".json" 
-                    ref={fileInputRef}
-                    onChange={handleImportBackup}
-                    className="hidden" 
-                  />
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isDataProcessing}
-                    className="w-full p-6 bg-gray-100 text-black border-2 border-dashed border-gray-300 rounded-[2rem] flex items-center justify-between hover:border-black transition-all active:scale-95 disabled:opacity-50"
-                  >
+                  <input type="file" accept=".json" ref={fileInputRef} onChange={handleImportBackup} className="hidden" />
+                  <button onClick={() => fileInputRef.current?.click()} disabled={isDataProcessing} className="w-full p-6 bg-gray-100 text-black border-2 border-dashed border-gray-300 rounded-[2rem] flex items-center justify-between hover:border-black transition-all active:scale-95 disabled:opacity-50">
                     <div className="text-left">
                       <p className="font-black text-sm uppercase leading-none mb-1">Restaurar</p>
                       <p className="text-[9px] uppercase font-bold text-gray-400 tracking-widest">Carregar arquivo de backup</p>
@@ -340,19 +327,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <RestoreIcon size={24} />
                   </button>
                 </div>
-
-                {isDataProcessing && (
-                  <div className="flex items-center justify-center gap-2 py-4">
-                    <span className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce"></span>
-                    <span className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                    <span className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
-                    <span className="text-[8px] font-black uppercase tracking-widest ml-2">Processando...</span>
-                  </div>
-                )}
               </div>
-              <p className="mt-6 text-[8px] text-gray-300 font-bold uppercase tracking-[0.2em] text-center leading-relaxed">
-                Recomendamos fazer backup semanalmente para garantir a segurança do seu catálogo.
-              </p>
             </div>
           </div>
         )}
@@ -385,19 +360,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </select>
                   </div>
                 </div>
-                {loyalty.scopeType !== 'all' && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto no-scrollbar p-2 bg-white/50 rounded-xl">
-                    {loyalty.scopeType === 'category' ? categories?.map(cat => (
-                      <button key={cat.id} onClick={() => toggleLoyaltyItem(cat.name)} className={`p-2 rounded-lg border-2 text-[8px] font-black uppercase transition-all ${loyaltyScopeItems.includes(cat.name) ? 'bg-yellow-400 border-black' : 'bg-white border-transparent'}`}>
-                        {cat.name}
-                      </button>
-                    )) : menuItems?.map(prod => (
-                      <button key={prod.id} onClick={() => toggleLoyaltyItem(prod.id)} className={`p-2 rounded-lg border-2 text-[8px] font-black uppercase transition-all ${loyaltyScopeItems.includes(prod.id) ? 'bg-yellow-400 border-black' : 'bg-white border-transparent'}`}>
-                        {prod.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
 
               <div className="flex-1 overflow-y-auto no-scrollbar space-y-3">
@@ -418,30 +380,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   );
                 }) : <div className="text-center py-10 text-gray-400 font-black uppercase text-[10px]">Nenhum cliente fidelizado encontrado</div>}
-              </div>
-            </div>
-
-            <div className="lg:col-span-1 bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col h-auto min-h-[600px]">
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="text-xl font-black italic uppercase">🎫 Cupons</h3>
-                <button onClick={() => { setEditingCoupon(null); setCouponForm({ code: '', percentage: '', scopeType: 'all', selectedItems: [] }); setIsCouponModalOpen(true); }} className="bg-black text-yellow-400 px-4 py-2 rounded-xl font-black text-[9px] uppercase shadow-lg hover:scale-105 transition-all">+ Novo</button>
-              </div>
-              <div className="flex-1 space-y-4 overflow-y-auto no-scrollbar">
-                {coupons.length > 0 ? coupons.map(c => (
-                  <div key={c.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 group">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="bg-black text-yellow-400 px-3 py-1 rounded-lg font-black text-[10px] tracking-widest">{c.code}</span>
-                      <span className="text-green-600 font-black text-xs">{c.percentage}% OFF</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className={`text-[8px] font-black uppercase px-2 py-1 rounded ${c.isActive ? 'text-green-500 bg-green-50' : 'text-gray-400 bg-gray-100'}`}>{c.isActive ? 'Ativo' : 'Pausado'}</span>
-                      <div className="flex gap-2">
-                        <button onClick={async () => { await supabase.from('coupons').update({ is_active: !c.isActive }).eq('id', c.id); fetchMarketing(); }} className="p-2 bg-white rounded-lg shadow-sm hover:bg-yellow-50 transition-colors"><VolumeIcon size={14} muted={!c.isActive} /></button>
-                        <button onClick={async () => { if(confirm('Excluir cupom?')) { await supabase.from('coupons').delete().eq('id', c.id); fetchMarketing(); } }} className="p-2 bg-white rounded-lg shadow-sm text-red-500 hover:bg-red-50 transition-colors"><TrashIcon size={14} /></button>
-                      </div>
-                    </div>
-                  </div>
-                )) : <div className="text-center py-10 text-gray-400 font-black uppercase text-[10px]">Nenhum cupom cadastrado</div>}
               </div>
             </div>
           </div>
@@ -526,7 +464,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </div>
 
-      {/* MODAL DETALHES PEDIDO */}
+      {/* MODAL DETALHES PEDIDO DA MESA */}
       {selectedTable && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => { setSelectedTableId(null); setProductSearchForTable(''); setCurrentObservation(''); }} />
@@ -566,7 +504,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       <div className="flex flex-col"><p className="text-[8px] font-black text-yellow-700 uppercase tracking-widest">Cliente</p><p className="font-black text-lg uppercase tracking-tight">{selectedTable.currentOrder?.customerName}</p></div>
                       <div className="text-right"><p className="text-[8px] font-black text-yellow-700 uppercase tracking-widest">A Pagar</p><p className="text-2xl font-black italic text-black">R$ {(selectedTable.currentOrder?.finalTotal || 0).toFixed(2).replace('.', ',')}</p></div>
                     </div>
-                    {selectedTable.currentOrder?.address && <div className="bg-white/60 p-4 rounded-2xl border border-yellow-200 mb-4"><p className="text-[8px] font-black text-yellow-800 uppercase mb-1">Endereço de Entrega</p><p className="text-[11px] font-black uppercase leading-tight italic">📍 {selectedTable.currentOrder.address}</p></div>}
                     {selectedTable.currentOrder?.observation && (
                       <div className="bg-black/5 p-4 rounded-2xl border border-black/5">
                         <p className="text-[8px] font-black text-gray-500 uppercase mb-1">Observação Geral</p>
@@ -591,7 +528,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                         {item.observation && (
                           <div className="mt-2 bg-yellow-50 px-4 py-2 rounded-xl text-[9px] font-bold text-yellow-800 border-l-4 border-yellow-400">
-                             {item.observation}
+                             Obs: {item.observation}
                           </div>
                         )}
                       </div>
@@ -602,42 +539,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                <div className="w-full md:w-80 bg-gray-50 p-6 border-l overflow-y-auto no-scrollbar shrink-0">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Adicionar ao Pedido</h4>
                   <div className="space-y-4 mb-6">
-                    <div className="relative">
-                      <input 
-                        type="text" 
-                        value={productSearchForTable} 
-                        onChange={e => setProductSearchForTable(e.target.value)} 
-                        placeholder="BUSCAR PRODUTO..." 
-                        className="w-full bg-white border-2 rounded-2xl px-5 py-3 text-[10px] font-black outline-none uppercase focus:border-yellow-400 transition-all shadow-sm" 
-                      />
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-black text-gray-400 uppercase ml-2 mb-1">OBSERVAÇÃO DO ITEM</p>
-                      <textarea 
-                        value={currentObservation} 
-                        onChange={e => setCurrentObservation(e.target.value)} 
-                        placeholder="EX: SEM GELO, MAL PASSADO..." 
-                        className="w-full bg-white border-2 rounded-2xl px-5 py-3 text-[9px] font-black outline-none uppercase h-20 resize-none focus:border-yellow-400 transition-all shadow-sm"
-                      />
-                    </div>
+                    <input type="text" value={productSearchForTable} onChange={e => setProductSearchForTable(e.target.value)} placeholder="BUSCAR PRODUTO..." className="w-full bg-white border-2 rounded-2xl px-5 py-3 text-[10px] font-black outline-none uppercase focus:border-yellow-400 transition-all shadow-sm" />
+                    <textarea value={currentObservation} onChange={e => setCurrentObservation(e.target.value)} placeholder="ADICIONAR OBSERVAÇÃO AO ITEM..." className="w-full bg-white border-2 rounded-2xl px-5 py-3 text-[9px] font-black outline-none uppercase h-20 resize-none focus:border-yellow-400 transition-all shadow-sm" />
                   </div>
-                  
                   <div className="space-y-2">
                     {filteredProductsForTable.map(p => (
-                      <button 
-                        key={p.id} 
-                        onClick={() => {
-                          onAddToOrder(selectedTable.id, p, currentObservation);
-                          setCurrentObservation('');
-                        }} 
-                        className="w-full bg-white p-3 rounded-2xl border border-gray-100 flex gap-3 items-center hover:border-black transition-all active:scale-[0.98] shadow-sm group"
-                      >
+                      <button key={p.id} onClick={() => { onAddToOrder(selectedTable.id, p, currentObservation); setCurrentObservation(''); }} className="w-full bg-white p-3 rounded-2xl border border-gray-100 flex gap-3 items-center hover:border-black transition-all active:scale-[0.98] shadow-sm group">
                         <img src={p.image} className="w-10 h-10 rounded-lg object-cover" />
                         <div className="flex-1 text-left">
                           <p className="text-[9px] font-black uppercase leading-none truncate mb-1">{p.name}</p>
                           <p className="text-[8px] font-black text-yellow-700 italic">R$ {p.price.toFixed(2)}</p>
                         </div>
-                        <span className="bg-yellow-400 text-black w-6 h-6 rounded-lg flex items-center justify-center font-black text-sm group-hover:scale-110 transition-transform">+</span>
+                        <span className="bg-yellow-400 text-black w-6 h-6 rounded-lg flex items-center justify-center font-black text-sm">+</span>
                       </button>
                     ))}
                   </div>
@@ -647,7 +560,87 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* MODAL CUPOM, CATEGORIA, PRODUTO E NOVO PEDIDO (MANTIDOS) */}
+      {/* MODAL NOVO PEDIDO EXTERNO */}
+      {isNewOrderModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
+          <div className="bg-white w-full max-w-sm rounded-[3.5rem] p-10 relative shadow-2xl">
+             <button onClick={() => setIsNewOrderModalOpen(false)} className="absolute top-8 right-8 p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
+             <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">Lançar Pedido</h3>
+             <form onSubmit={async (e) => {
+               e.preventDefault();
+               if (!newOrderForm.customerName) return;
+               const range = newOrderForm.type === 'delivery' ? [900, 949] : [950, 999];
+               const free = (tables || []).find(t => t.id >= range[0] && t.id <= range[1] && t.status === 'free');
+               if (!free) return alert('Sem vagas disponíveis.');
+               const newOrder: Order = {
+                 id: Math.random().toString(36).substr(2, 6).toUpperCase(), customerName: newOrderForm.customerName, items: [], total: 0, finalTotal: 0, paymentMethod: newOrderForm.paymentMethod, timestamp: new Date().toISOString(), tableId: free.id, status: 'pending', orderType: newOrderForm.type === 'takeaway' ? 'counter' : 'delivery', address: newOrderForm.type === 'delivery' ? newOrderForm.address : undefined
+               };
+               await onUpdateTable(free.id, 'occupied', newOrder);
+               setIsNewOrderModalOpen(false);
+               setSelectedTableId(free.id);
+             }} className="space-y-4">
+                <input type="text" value={newOrderForm.customerName} onChange={e => setNewOrderForm({...newOrderForm, customerName: e.target.value})} placeholder="NOME DO CLIENTE" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none uppercase focus:border-yellow-400 transition-all" required />
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setNewOrderForm({...newOrderForm, type: 'delivery'})} className={`py-3 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${newOrderForm.type === 'delivery' ? 'bg-black text-white' : 'bg-white text-gray-400'}`}>Entrega</button>
+                  <button type="button" onClick={() => setNewOrderForm({...newOrderForm, type: 'takeaway'})} className={`py-3 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${newOrderForm.type === 'takeaway' ? 'bg-black text-white' : 'bg-white text-gray-400'}`}>Balcão</button>
+                </div>
+                {newOrderForm.type === 'delivery' && (
+                  <textarea value={newOrderForm.address} onChange={e => setNewOrderForm({...newOrderForm, address: e.target.value})} placeholder="ENDEREÇO" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none h-24 resize-none focus:border-yellow-400 transition-all" required />
+                )}
+                <button type="submit" className="w-full bg-yellow-400 text-black py-5 rounded-2xl font-black text-[10px] uppercase shadow-xl hover:brightness-110 transition-all">Criar Pedido</button>
+             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL NOVA CATEGORIA */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
+          <div className="bg-white w-full max-w-sm rounded-[3.5rem] p-10 relative shadow-2xl">
+             <button onClick={() => setIsCategoryModalOpen(false)} className="absolute top-8 right-8 p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
+             <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">Nova Categoria</h3>
+             <form onSubmit={async (e) => {
+               e.preventDefault();
+               if (!newCategoryName) return;
+               await supabase.from('categories').insert([{ id: 'cat_' + Date.now(), name: newCategoryName }]);
+               setNewCategoryName('');
+               setIsCategoryModalOpen(false);
+               onRefreshData();
+             }} className="space-y-6">
+                <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="NOME" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none uppercase focus:border-yellow-400 transition-all" required />
+                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-sm uppercase shadow-xl hover:brightness-125 transition-all">Criar</button>
+             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL NOVO/EDITAR PRODUTO */}
+      {isProductModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl">
+          <div className="bg-white w-full max-w-2xl rounded-[3rem] p-10 relative shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar">
+             <button onClick={() => setIsProductModalOpen(false)} className="absolute top-8 right-8 p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
+             <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">{editingProduct?.id ? 'Editar' : 'Novo'} Item</h3>
+             <form onSubmit={(e) => { e.preventDefault(); onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price || 0) }); setIsProductModalOpen(false); }} className="space-y-6">
+                <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="NOME" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none uppercase focus:border-yellow-400 transition-all" required />
+                <div className="grid grid-cols-2 gap-4">
+                    <input type="number" step="0.01" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} placeholder="PREÇO" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none focus:border-yellow-400 transition-all" required />
+                    <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none uppercase focus:border-yellow-400 transition-all">
+                      <option value="">CATEGORIA</option>
+                      {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
+                    </select>
+                </div>
+                <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} placeholder="LINK DA IMAGEM" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none focus:border-yellow-400 transition-all" />
+                <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
+                   <input type="checkbox" checked={editingProduct?.isAvailable ?? true} onChange={e => setEditingProduct({...editingProduct!, isAvailable: e.target.checked})} className="w-5 h-5 rounded-md accent-yellow-400" id="avail_check" />
+                   <label htmlFor="avail_check" className="font-black text-[10px] uppercase">Disponível no Cardápio</label>
+                </div>
+                <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-2xl font-black text-sm uppercase shadow-2xl active:scale-95 transition-all hover:brightness-125">Salvar Produto</button>
+             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CUPOM */}
       {isCouponModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-md rounded-[3.5rem] p-10 relative shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
