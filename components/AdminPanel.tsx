@@ -144,7 +144,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         if (!content.data) throw new Error("Formato inválido");
 
         const d = content.data;
-        
         if (d.categories?.length) await supabase.from('categories').upsert(d.categories);
         if (d.products?.length) await supabase.from('products').upsert(d.products);
         if (d.coupons?.length) await supabase.from('coupons').upsert(d.coupons);
@@ -174,12 +173,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       scope_value: next.scopeValue 
     });
     fetchMarketing();
-  };
-
-  const toggleLoyaltyItem = (val: string) => {
-    const currentItems = loyalty.scopeValue ? loyalty.scopeValue.split(',').filter(Boolean) : [];
-    const nextItems = currentItems.includes(val) ? currentItems.filter(i => i !== val) : [...currentItems, val];
-    handleUpdateLoyalty({ scopeValue: nextItems.join(',') });
   };
 
   const handleSaveCoupon = async (e: React.FormEvent) => {
@@ -231,10 +224,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const activeDeliveries = tables.filter(t => t.id >= 900 && t.id <= 999 && t.status === 'occupied');
   const selectedTable = tables.find(t => t.id === selectedTableId) || null;
   const filteredMenu = (menuItems || []).filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
-
-  const loyaltyScopeItems = useMemo(() => {
-    return (loyalty.scopeValue || "").split(',').filter(Boolean);
-  }, [loyalty.scopeValue]);
 
   const filteredProductsForTable = useMemo(() => {
     if (!productSearchForTable.trim()) return menuItems.filter(p => p.isAvailable).slice(0, 8);
@@ -382,6 +371,30 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 }) : <div className="text-center py-10 text-gray-400 font-black uppercase text-[10px]">Nenhum cliente fidelizado encontrado</div>}
               </div>
             </div>
+
+            <div className="lg:col-span-1 bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col h-auto min-h-[600px]">
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-xl font-black italic uppercase">🎫 Cupons</h3>
+                <button onClick={() => { setEditingCoupon(null); setCouponForm({ code: '', percentage: '', scopeType: 'all', selectedItems: [] }); setIsCouponModalOpen(true); }} className="bg-black text-yellow-400 px-4 py-2 rounded-xl font-black text-[9px] uppercase shadow-lg hover:scale-105 transition-all">+ Novo</button>
+              </div>
+              <div className="flex-1 space-y-4 overflow-y-auto no-scrollbar">
+                {coupons.length > 0 ? coupons.map(c => (
+                  <div key={c.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 group">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="bg-black text-yellow-400 px-3 py-1 rounded-lg font-black text-[10px] tracking-widest">{c.code}</span>
+                      <span className="text-green-600 font-black text-xs">{c.percentage}% OFF</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className={`text-[8px] font-black uppercase px-2 py-1 rounded ${c.isActive ? 'text-green-500 bg-green-50' : 'text-gray-400 bg-gray-100'}`}>{c.isActive ? 'Ativo' : 'Pausado'}</span>
+                      <div className="flex gap-2">
+                        <button onClick={async () => { await supabase.from('coupons').update({ is_active: !c.isActive }).eq('id', c.id); fetchMarketing(); }} className="p-2 bg-white rounded-lg shadow-sm hover:bg-yellow-50 transition-colors"><VolumeIcon size={14} muted={!c.isActive} /></button>
+                        <button onClick={async () => { if(confirm('Excluir cupom?')) { await supabase.from('coupons').delete().eq('id', c.id); fetchMarketing(); } }} className="p-2 bg-white rounded-lg shadow-sm text-red-500 hover:bg-red-50 transition-colors"><TrashIcon size={14} /></button>
+                      </div>
+                    </div>
+                  </div>
+                )) : <div className="text-center py-10 text-gray-400 font-black uppercase text-[10px]">Nenhum cupom cadastrado</div>}
+              </div>
+            </div>
           </div>
         )}
 
@@ -424,7 +437,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-50">
               <div className="flex justify-between items-center mb-10">
                 <h3 className="text-2xl font-black italic uppercase">Categorias</h3>
-                <button onClick={() => setIsCategoryModalOpen(true)} className="bg-yellow-400 text-black px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg hover:brightness-110 active:scale-95 transition-all">+ Nova</button>
+                <button onClick={() => { setNewCategoryName(''); setIsCategoryModalOpen(true); }} className="bg-yellow-400 text-black px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg hover:brightness-110 active:scale-95 transition-all">+ Nova</button>
               </div>
               <div className="flex flex-wrap gap-3">
                 {categories.map(cat => (
@@ -504,12 +517,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       <div className="flex flex-col"><p className="text-[8px] font-black text-yellow-700 uppercase tracking-widest">Cliente</p><p className="font-black text-lg uppercase tracking-tight">{selectedTable.currentOrder?.customerName}</p></div>
                       <div className="text-right"><p className="text-[8px] font-black text-yellow-700 uppercase tracking-widest">A Pagar</p><p className="text-2xl font-black italic text-black">R$ {(selectedTable.currentOrder?.finalTotal || 0).toFixed(2).replace('.', ',')}</p></div>
                     </div>
-                    {selectedTable.currentOrder?.observation && (
-                      <div className="bg-black/5 p-4 rounded-2xl border border-black/5">
-                        <p className="text-[8px] font-black text-gray-500 uppercase mb-1">Observação Geral</p>
-                        <p className="text-[11px] font-bold italic">💬 {selectedTable.currentOrder.observation}</p>
-                      </div>
-                    )}
                   </div>
                   <div className="space-y-3">
                     <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Itens Solicitados</h4>
@@ -568,9 +575,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
              <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">Lançar Pedido</h3>
              <form onSubmit={async (e) => {
                e.preventDefault();
-               if (!newOrderForm.customerName) return;
                const range = newOrderForm.type === 'delivery' ? [900, 949] : [950, 999];
-               const free = (tables || []).find(t => t.id >= range[0] && t.id <= range[1] && t.status === 'free');
+               const free = tables.find(t => t.id >= range[0] && t.id <= range[1] && t.status === 'free');
                if (!free) return alert('Sem vagas disponíveis.');
                const newOrder: Order = {
                  id: Math.random().toString(36).substr(2, 6).toUpperCase(), customerName: newOrderForm.customerName, items: [], total: 0, finalTotal: 0, paymentMethod: newOrderForm.paymentMethod, timestamp: new Date().toISOString(), tableId: free.id, status: 'pending', orderType: newOrderForm.type === 'takeaway' ? 'counter' : 'delivery', address: newOrderForm.type === 'delivery' ? newOrderForm.address : undefined
@@ -607,8 +613,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                setIsCategoryModalOpen(false);
                onRefreshData();
              }} className="space-y-6">
-                <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="NOME" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none uppercase focus:border-yellow-400 transition-all" required />
-                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-sm uppercase shadow-xl hover:brightness-125 transition-all">Criar</button>
+                <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="NOME DA CATEGORIA" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none uppercase focus:border-yellow-400 transition-all" required />
+                <button type="submit" className="w-full bg-black text-yellow-400 py-5 rounded-2xl font-black text-sm uppercase shadow-xl hover:brightness-125 transition-all">Criar Categoria</button>
              </form>
           </div>
         </div>
@@ -620,21 +626,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="bg-white w-full max-w-2xl rounded-[3rem] p-10 relative shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar">
              <button onClick={() => setIsProductModalOpen(false)} className="absolute top-8 right-8 p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
              <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">{editingProduct?.id ? 'Editar' : 'Novo'} Item</h3>
-             <form onSubmit={(e) => { e.preventDefault(); onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct.price || 0) }); setIsProductModalOpen(false); }} className="space-y-6">
-                <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct!, name: e.target.value})} placeholder="NOME" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none uppercase focus:border-yellow-400 transition-all" required />
+             <form onSubmit={(e) => { e.preventDefault(); onSaveProduct({ ...editingProduct, price: parseFloat(editingProduct?.price || 0) }); setIsProductModalOpen(false); }} className="space-y-6">
+                <input type="text" value={editingProduct?.name || ''} onChange={e => setEditingProduct({...editingProduct, name: e.target.value})} placeholder="NOME DO PRODUTO" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none uppercase focus:border-yellow-400 transition-all" required />
                 <div className="grid grid-cols-2 gap-4">
-                    <input type="number" step="0.01" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct!, price: e.target.value})} placeholder="PREÇO" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none focus:border-yellow-400 transition-all" required />
-                    <select value={editingProduct?.category} onChange={e => setEditingProduct({...editingProduct!, category: e.target.value})} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none uppercase focus:border-yellow-400 transition-all">
+                    <input type="number" step="0.01" value={editingProduct?.price || ''} onChange={e => setEditingProduct({...editingProduct, price: e.target.value})} placeholder="PREÇO R$" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none focus:border-yellow-400 transition-all" required />
+                    <select value={editingProduct?.category || ''} onChange={e => setEditingProduct({...editingProduct, category: e.target.value})} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none uppercase focus:border-yellow-400 transition-all">
                       <option value="">CATEGORIA</option>
                       {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
                     </select>
                 </div>
-                <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct!, image: e.target.value})} placeholder="LINK DA IMAGEM" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none focus:border-yellow-400 transition-all" />
+                <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({...editingProduct, image: e.target.value})} placeholder="LINK DA IMAGEM (URL)" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none focus:border-yellow-400 transition-all" />
+                <textarea value={editingProduct?.description || ''} onChange={e => setEditingProduct({...editingProduct, description: e.target.value})} placeholder="DESCRIÇÃO / INGREDIENTES" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black outline-none h-24 resize-none focus:border-yellow-400 transition-all" />
                 <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
-                   <input type="checkbox" checked={editingProduct?.isAvailable ?? true} onChange={e => setEditingProduct({...editingProduct!, isAvailable: e.target.checked})} className="w-5 h-5 rounded-md accent-yellow-400" id="avail_check" />
-                   <label htmlFor="avail_check" className="font-black text-[10px] uppercase">Disponível no Cardápio</label>
+                   <input type="checkbox" checked={editingProduct?.isAvailable ?? true} onChange={e => setEditingProduct({...editingProduct, isAvailable: e.target.checked})} className="w-5 h-5 rounded-md accent-yellow-400" id="avail_check" />
+                   <label htmlFor="avail_check" className="font-black text-[10px] uppercase cursor-pointer">Disponível no Cardápio</label>
                 </div>
-                <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-2xl font-black text-sm uppercase shadow-2xl active:scale-95 transition-all hover:brightness-125">Salvar Produto</button>
+                <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-2xl font-black text-sm uppercase shadow-2xl active:scale-95 transition-all hover:brightness-125">Salvar Alterações</button>
              </form>
           </div>
         </div>
