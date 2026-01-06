@@ -120,14 +120,32 @@ const App: React.FC = () => {
     checkInitialSession();
   }, [fetchData]);
 
+  // Canal de Realtime Dedicado
   useEffect(() => {
-    const channel = supabase.channel('dmoreira_realtime_fresh')
+    const channel = supabase.channel('dmoreira_realtime_v2')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (payload) => {
         const newRec = payload.new as any;
+        const oldRec = payload.old as any;
+        
+        // Se a mesa foi deletada (liberada), atualizamos localmente para free
+        if (payload.eventType === 'DELETE' && oldRec) {
+           setTables(current => current.map(t => t.id === oldRec.id ? { id: oldRec.id, status: 'free', currentOrder: null } : t));
+           return;
+        }
+
         if (!newRec) return;
         
-        setTables(current => current.map(t => t.id === newRec.id ? { id: newRec.id, status: newRec.status, currentOrder: newRec.current_order } : t));
+        // Atualiza a mesa no estado global
+        setTables(current => {
+          const exists = current.find(t => t.id === newRec.id);
+          if (exists) {
+            return current.map(t => t.id === newRec.id ? { id: newRec.id, status: newRec.status, currentOrder: newRec.current_order } : t);
+          } else {
+            return [...current, { id: newRec.id, status: newRec.status, currentOrder: newRec.current_order }].sort((a,b) => a.id - b.id);
+          }
+        });
 
+        // Alerta de Novo Pedido (Somente para Admin)
         if (newRec.status === 'occupied' && newRec.current_order) {
           const orderId = newRec.current_order.id;
           const status = newRec.current_order.status;
@@ -153,17 +171,23 @@ const App: React.FC = () => {
           }
         }
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'store_config' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'store_config' }, (payload) => {
         const newCfg = payload.new as any;
-        setStoreConfig({
-          tablesEnabled: newCfg.tables_enabled,
-          deliveryEnabled: newCfg.delivery_enabled,
-          counterEnabled: newCfg.counter_enabled
-        });
+        if (newCfg) {
+          setStoreConfig({
+            tablesEnabled: newCfg.tables_enabled,
+            deliveryEnabled: newCfg.delivery_enabled,
+            counterEnabled: newCfg.counter_enabled
+          });
+        }
       })
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => fetchData(true))
+      .subscribe((status) => {
+        console.log("Supabase Realtime Status:", status);
+      });
+
     return () => { supabase.removeChannel(channel); };
-  }, [audioEnabled, tables]);
+  }, [audioEnabled, fetchData]);
 
   const handlePlaceOrder = async (order: Order) => {
     let targetId = order.tableId;
@@ -238,8 +262,8 @@ const App: React.FC = () => {
               handlePlaceOrder(current ? { ...current, items, total, finalTotal: total - (current.discount || 0) } : { id: Math.random().toString(36).substr(2, 6).toUpperCase(), customerName: tableId >= 950 ? 'Balcão' : tableId >= 900 ? 'Entrega' : `Mesa ${tableId}`, items, total, finalTotal: total, paymentMethod: 'Pendente', timestamp: new Date().toISOString(), tableId, status: 'pending', orderType: tableId >= 950 ? 'counter' : tableId >= 900 ? 'delivery' : 'table' });
             }}
             onRefreshData={() => fetchData()} onLogout={async () => { await supabase.auth.signOut(); setIsLoggedIn(false); setIsAdmin(false); }}
-            onSaveProduct={async (p) => { const data = { id: p.id || 'p_' + Date.now(), name: p.name, price: p.price, category: p.category, description: p.description, image: p.image, is_available: p.isAvailable }; await supabase.from('products').upsert([data], { onConflict: 'id' }); fetchData(true); }}
-            onDeleteProduct={async (id) => { await supabase.from('products').delete().eq('id', id); fetchData(true); }} dbStatus={dbStatus === 'loading' ? 'loading' : 'ok'}
+            onSaveProduct={async (p) => { const data = { id: p.id || 'p_' + Date.now(), name: p.name, price: p.price, category: p.category, description: p.description, image: p.image, is_available: p.isAvailable }; await supabase.from('products').upsert([data], { onConflict: 'id' }); }}
+            onDeleteProduct={async (id) => { await supabase.from('products').delete().eq('id', id); }} dbStatus={dbStatus === 'loading' ? 'loading' : 'ok'}
             storeConfig={storeConfig}
             onUpdateStoreConfig={async (newCfg) => {
               setStoreConfig(newCfg);
@@ -284,8 +308,8 @@ const App: React.FC = () => {
               else alert('Verifique seu login e senha.');
               setIsLoadingLogin(false);
             }} className="space-y-4">
-              <input type="email" placeholder="E-MAIL" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black uppercase outline-none focus:border-yellow-400 transition-all" required />
-              <input type="password" placeholder="SENHA" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black uppercase outline-none focus:border-yellow-400 transition-all" required />
+              <input type="email" placeholder="E-MAIL" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black uppercase outline-none focus:border-yellow-400 transition-all" required />
+              <input type="password" placeholder="SENHA" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black uppercase outline-none focus:border-yellow-400 transition-all" required />
               <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase text-[10px] tracking-widest shadow-lg hover:brightness-110 active:scale-95 transition-all">
                 {isLoadingLogin ? 'Entrando...' : 'Entrar'}
               </button>
