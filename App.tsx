@@ -67,6 +67,7 @@ const App: React.FC = () => {
   const fetchData = useCallback(async (isSilent = false) => {
     try {
       if (!isSilent) setDbStatus('loading');
+      
       const [catRes, coupRes, prodRes, tableRes, configRes] = await Promise.all([
         supabase.from('categories').select('*').order('name'),
         supabase.from('coupons').select('*').eq('is_active', true),
@@ -77,18 +78,22 @@ const App: React.FC = () => {
 
       if (configRes.data) {
         setStoreConfig({
-          tablesEnabled: configRes.data.tables_enabled,
-          deliveryEnabled: configRes.data.delivery_enabled,
-          counterEnabled: configRes.data.counter_enabled
+          tablesEnabled: configRes.data.tables_enabled ?? true,
+          deliveryEnabled: configRes.data.delivery_enabled ?? true,
+          counterEnabled: configRes.data.counter_enabled ?? true
         });
       }
 
       if (catRes.data) setCategories(catRes.data);
       if (coupRes.data) setActiveCoupons(coupRes.data.map(c => ({ id: c.id, code: c.code, percentage: c.percentage, isActive: c.is_active, scopeType: c.scope_type, scopeValue: c.scope_value })));
-      if (prodRes.data && prodRes.data.length > 0) setMenuItems(prodRes.data.map(p => ({ id: p.id, name: p.name, description: p.description || '', price: Number(p.price), category: p.category, image: p.image, isAvailable: p.is_available ?? true })));
-      else setMenuItems(STATIC_MENU);
       
-      if (tableRes.data) {
+      if (prodRes.data && prodRes.data.length > 0) {
+        setMenuItems(prodRes.data.map(p => ({ id: p.id, name: p.name, description: p.description || '', price: Number(p.price), category: p.category, image: p.image, isAvailable: p.is_available ?? true })));
+      } else {
+        setMenuItems(STATIC_MENU);
+      }
+      
+      if (tableRes.data && tableRes.data.length > 0) {
         setTables(prev => {
           const merged = [...INITIAL_TABLES];
           tableRes.data.forEach(dbT => {
@@ -100,7 +105,10 @@ const App: React.FC = () => {
         });
       }
       setDbStatus('ok');
-    } catch (err) { setDbStatus('error'); }
+    } catch (err) { 
+      console.error("Fetch error:", err);
+      setDbStatus('error'); 
+    }
   }, []);
 
   useEffect(() => {
@@ -113,12 +121,14 @@ const App: React.FC = () => {
   }, [fetchData]);
 
   useEffect(() => {
-    const channel = supabase.channel('dmoreira_realtime_v9')
+    const channel = supabase.channel('dmoreira_realtime_fresh')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (payload) => {
         const newRec = payload.new as any;
+        if (!newRec) return;
+        
         setTables(current => current.map(t => t.id === newRec.id ? { id: newRec.id, status: newRec.status, currentOrder: newRec.current_order } : t));
 
-        if (newRec && newRec.status === 'occupied' && newRec.current_order) {
+        if (newRec.status === 'occupied' && newRec.current_order) {
           const orderId = newRec.current_order.id;
           const status = newRec.current_order.status;
           const tableType = newRec.id >= 950 ? 'Balcão' : newRec.id >= 900 ? 'Entrega' : 'Mesa';
@@ -141,11 +151,6 @@ const App: React.FC = () => {
             setActiveAlert({ id: newRec.id, type: tableType, msg: `Status: ${statusLabels[status] || status}`, isUpdate: true, timestamp: Date.now() });
             setTimeout(() => setActiveAlert(null), 6000);
           }
-        } else if (newRec && newRec.status === 'free') {
-           if (lastNotifiedOrderId.current && tables.find(t => t.id === newRec.id)?.currentOrder?.id === lastNotifiedOrderId.current) {
-             lastNotifiedOrderId.current = null;
-             lastNotifiedStatus.current = null;
-           }
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'store_config' }, (payload) => {
@@ -162,14 +167,24 @@ const App: React.FC = () => {
 
   const handlePlaceOrder = async (order: Order) => {
     let targetId = order.tableId;
+    
     if (targetId === -900 || targetId === -950) {
       const range = targetId === -900 ? [900, 949] : [950, 999];
       const free = tables.find(t => t.id >= range[0] && t.id <= range[1] && t.status === 'free');
       targetId = free ? free.id : (Math.max(...tables.filter(t => t.id >= range[0] && t.id <= range[1]).map(t => t.id), range[0] - 1) + 1);
     }
-    const { error } = await supabase.from('tables').upsert({ id: targetId, status: 'occupied', current_order: { ...order, tableId: targetId } });
+    
+    const finalTableId = Number(targetId);
+    
+    const { error } = await supabase.from('tables').upsert({ 
+      id: finalTableId, 
+      status: 'occupied', 
+      current_order: { ...order, tableId: finalTableId } 
+    }, { onConflict: 'id' });
+
     if (error) {
-      alert("Erro ao enviar pedido.");
+      console.error("Order error:", error);
+      alert(`❌ Erro: ${error.message}`);
       return false;
     } else {
       setCartItems([]);
@@ -209,39 +224,26 @@ const App: React.FC = () => {
           <AdminPanel 
             tables={tables} menuItems={menuItems} categories={categories} audioEnabled={audioEnabled} onToggleAudio={() => setAudioEnabled(!audioEnabled)} onTestSound={testSound}
             onUpdateTable={async (id, status, ord) => { 
-              if (status === 'free') await supabase.from('tables').update({ status: 'free', current_order: null }).eq('id', id);
-              else await supabase.from('tables').upsert({ id, status, current_order: ord || null });
+              if (status === 'free') await supabase.from('tables').delete().eq('id', id);
+              else await supabase.from('tables').upsert({ id, status, current_order: ord || null }, { onConflict: 'id' });
             }}
             onAddToOrder={(tableId, product, observation) => {
               const table = tables.find(t => t.id === tableId);
               let current = table?.currentOrder;
               const items = current ? [...(current.items || [])] : [];
-              
-              // Standard behavior: if observation is different, add as a new line item
-              // If exactly the same, increment quantity
               const ex = items.findIndex(i => i.id === product.id && (i.observation || '') === (observation || ''));
-              
-              if (ex >= 0) {
-                items[ex].quantity += 1;
-              } else {
-                items.push({ ...product, quantity: 1, observation });
-              }
-              
+              if (ex >= 0) items[ex].quantity += 1;
+              else items.push({ ...product, quantity: 1, observation });
               const total = items.reduce((a, b) => a + (b.price * b.quantity), 0);
               handlePlaceOrder(current ? { ...current, items, total, finalTotal: total - (current.discount || 0) } : { id: Math.random().toString(36).substr(2, 6).toUpperCase(), customerName: tableId >= 950 ? 'Balcão' : tableId >= 900 ? 'Entrega' : `Mesa ${tableId}`, items, total, finalTotal: total, paymentMethod: 'Pendente', timestamp: new Date().toISOString(), tableId, status: 'pending', orderType: tableId >= 950 ? 'counter' : tableId >= 900 ? 'delivery' : 'table' });
             }}
             onRefreshData={() => fetchData()} onLogout={async () => { await supabase.auth.signOut(); setIsLoggedIn(false); setIsAdmin(false); }}
-            onSaveProduct={async (p) => { const data = { name: p.name, price: p.price, category: p.category, description: p.description, image: p.image, is_available: p.isAvailable }; if (p.id) await supabase.from('products').update(data).eq('id', p.id); else await supabase.from('products').insert([{ id: 'p_' + Date.now(), ...data }]); fetchData(true); }}
+            onSaveProduct={async (p) => { const data = { id: p.id || 'p_' + Date.now(), name: p.name, price: p.price, category: p.category, description: p.description, image: p.image, is_available: p.isAvailable }; await supabase.from('products').upsert([data], { onConflict: 'id' }); fetchData(true); }}
             onDeleteProduct={async (id) => { await supabase.from('products').delete().eq('id', id); fetchData(true); }} dbStatus={dbStatus === 'loading' ? 'loading' : 'ok'}
             storeConfig={storeConfig}
             onUpdateStoreConfig={async (newCfg) => {
               setStoreConfig(newCfg);
-              await supabase.from('store_config').upsert({ 
-                id: 1, 
-                tables_enabled: newCfg.tablesEnabled, 
-                delivery_enabled: newCfg.deliveryEnabled, 
-                counter_enabled: newCfg.counterEnabled 
-              });
+              await supabase.from('store_config').upsert({ id: 1, tables_enabled: newCfg.tablesEnabled, delivery_enabled: newCfg.deliveryEnabled, counter_enabled: newCfg.counterEnabled }, { onConflict: 'id' });
             }}
           />
         ) : (
@@ -252,7 +254,7 @@ const App: React.FC = () => {
                   <CloseIcon size={48} />
                 </div>
                 <h2 className="text-4xl font-black italic uppercase tracking-tighter mb-4">Loja Fechada</h2>
-                <p className="text-gray-400 font-bold uppercase tracking-widest text-xs max-w-xs mx-auto">No momento não estamos aceitando pedidos online. Por favor, volte mais tarde!</p>
+                <p className="text-gray-400 font-bold uppercase tracking-widest text-xs max-w-xs mx-auto">No momento não estamos aceitando pedidos online. Por favor, visite-nos!</p>
               </div>
             ) : (
               <>
@@ -279,15 +281,15 @@ const App: React.FC = () => {
               handleUnlockAudio();
               const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPass });
               if (!error && data.session) { setIsLoggedIn(true); setIsAdmin(true); setShowLogin(false); fetchData(); }
-              else alert('Credenciais inválidas.');
+              else alert('Verifique seu login e senha.');
               setIsLoadingLogin(false);
             }} className="space-y-4">
               <input type="email" placeholder="E-MAIL" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black uppercase outline-none focus:border-yellow-400 transition-all" required />
               <input type="password" placeholder="SENHA" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-[10px] font-black uppercase outline-none focus:border-yellow-400 transition-all" required />
               <button type="submit" disabled={isLoadingLogin} className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase text-[10px] tracking-widest shadow-lg hover:brightness-110 active:scale-95 transition-all">
-                {isLoadingLogin ? 'Acessando...' : 'Entrar'}
+                {isLoadingLogin ? 'Entrando...' : 'Entrar'}
               </button>
-              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-2 hover:text-black transition-colors">Voltar para a Loja</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="text-[10px] font-black text-gray-400 uppercase mt-2 hover:text-black transition-colors">Voltar</button>
             </form>
           </div>
         </div>
@@ -298,7 +300,7 @@ const App: React.FC = () => {
           <button onClick={() => { setIsCartOpen(true); handleUnlockAudio(); }} className="w-full max-w-md bg-black text-white rounded-[2.5rem] p-5 flex items-center justify-between shadow-2xl ring-4 ring-yellow-400/30 active:scale-95 transition-all">
             <div className="flex items-center gap-4">
               <div className="bg-yellow-400 text-black w-9 h-9 flex items-center justify-center rounded-2xl text-xs font-black">{cartItems.reduce((a,b)=>a+b.quantity,0)}</div>
-              <span className="font-black text-xs uppercase tracking-widest">Ver Minha Sacola</span>
+              <span className="font-black text-xs uppercase tracking-widest">Minha Sacola</span>
             </div>
             <span className="font-black text-yellow-400 text-xl italic">R$ {cartItems.reduce((a,b)=>a+(b.price*b.quantity),0).toFixed(2).replace('.', ',')}</span>
           </button>
