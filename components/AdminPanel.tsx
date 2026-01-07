@@ -63,7 +63,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const fetchMarketing = async () => {
     try {
-      const { data: cData } = await supabase.from('coupons').select('*').order('created_at', { ascending: false });
+      const { data: cData } = await supabase.from('coupons').select('*').order('code', { ascending: true });
       if (cData) setCoupons(cData.map(c => ({ 
         id: c.id, 
         code: c.code, 
@@ -86,6 +86,55 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       const { data: lUsers } = await supabase.from('loyalty_users').select('*').order('accumulated', { ascending: false });
       if (lUsers) setLoyaltyUsers(lUsers);
     } catch (e) { console.error("Error fetching marketing data", e); }
+  };
+
+  const handleSaveCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanCode = couponForm.code.toUpperCase().trim();
+    if (!cleanCode || !couponForm.percentage) return;
+    
+    setIsDataProcessing(true);
+    const scopeValue = couponForm.scopeType === 'all' ? '' : couponForm.selectedItems.join(',');
+    const couponData = { 
+      code: cleanCode, 
+      percentage: Number(couponForm.percentage), 
+      is_active: true, 
+      scope_type: couponForm.scopeType, 
+      scope_value: scopeValue
+    };
+
+    try {
+      let error;
+      if (editingCoupon?.id) {
+        const { error: err } = await supabase.from('coupons').update(couponData).eq('id', editingCoupon.id);
+        error = err;
+      } else {
+        const { error: err } = await supabase.from('coupons').insert([{ id: 'c_'+Date.now(), ...couponData }]); 
+        error = err;
+      }
+      
+      if (error) throw error;
+      
+      setIsCouponModalOpen(false);
+      fetchMarketing();
+      alert('Cupom salvo com sucesso!');
+    } catch (err: any) {
+      console.error("Erro ao salvar cupom:", err);
+      alert(`Erro ao salvar cupom: ${err.message}`);
+    } finally {
+      setIsDataProcessing(false);
+    }
+  };
+
+  const startEditCoupon = (coupon: Coupon) => {
+    setEditingCoupon(coupon);
+    setCouponForm({
+      code: coupon.code,
+      percentage: coupon.percentage.toString(),
+      scopeType: coupon.scopeType,
+      selectedItems: coupon.scopeValue ? coupon.scopeValue.split(',').filter(Boolean) : []
+    });
+    setIsCouponModalOpen(true);
   };
 
   const handleExportBackup = async () => {
@@ -179,30 +228,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const currentItems = loyalty.scopeValue ? loyalty.scopeValue.split(',').filter(Boolean) : [];
     const nextItems = currentItems.includes(val) ? currentItems.filter(i => i !== val) : [...currentItems, val];
     handleUpdateLoyalty({ scopeValue: nextItems.join(',') });
-  };
-
-  const handleSaveCoupon = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanCode = couponForm.code.toUpperCase().trim();
-    if (!cleanCode || !couponForm.percentage) return;
-    
-    const scopeValue = couponForm.scopeType === 'all' ? '' : couponForm.selectedItems.join(',');
-    const couponData = { 
-      code: cleanCode, 
-      percentage: Number(couponForm.percentage), 
-      is_active: true, 
-      scope_type: couponForm.scopeType, 
-      scope_value: scopeValue
-    };
-
-    if (editingCoupon?.id) {
-      await supabase.from('coupons').update(couponData).eq('id', editingCoupon.id);
-    } else {
-      await supabase.from('coupons').insert([{ id: 'c_'+Date.now(), ...couponData }]); 
-    }
-    
-    setIsCouponModalOpen(false);
-    fetchMarketing();
   };
 
   const toggleCouponItem = (val: string) => {
@@ -410,6 +435,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="flex justify-between items-center">
                       <span className={`text-[8px] font-black uppercase px-2 py-1 rounded ${c.isActive ? 'text-green-500 bg-green-50' : 'text-gray-400 bg-gray-100'}`}>{c.isActive ? 'Ativo' : 'Pausado'}</span>
                       <div className="flex gap-2">
+                        <button onClick={() => startEditCoupon(c)} className="p-2 bg-white rounded-lg shadow-sm hover:bg-yellow-50 transition-colors"><EditIcon size={14} /></button>
                         <button onClick={async () => { await supabase.from('coupons').update({ is_active: !c.isActive }).eq('id', c.id); fetchMarketing(); }} className="p-2 bg-white rounded-lg shadow-sm hover:bg-yellow-50 transition-colors"><VolumeIcon size={14} muted={!c.isActive} /></button>
                         <button onClick={async () => { if(confirm('Excluir cupom?')) { await supabase.from('coupons').delete().eq('id', c.id); fetchMarketing(); } }} className="p-2 bg-white rounded-lg shadow-sm text-red-500 hover:bg-red-50 transition-colors"><TrashIcon size={14} /></button>
                       </div>
@@ -694,7 +720,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-md rounded-[3.5rem] p-10 relative shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <button onClick={() => setIsCouponModalOpen(false)} className="absolute top-8 right-8 p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><CloseIcon size={20}/></button>
-            <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">Novo Cupom</h3>
+            <h3 className="text-2xl font-black italic mb-8 uppercase tracking-tighter">{editingCoupon ? 'Editar' : 'Novo'} Cupom</h3>
             <form onSubmit={handleSaveCoupon} className="space-y-6 overflow-y-auto no-scrollbar">
               <input value={couponForm.code} onChange={e => setCouponForm({...couponForm, code: e.target.value})} placeholder="CÓDIGO (EX: NATAL10)" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none uppercase focus:border-yellow-400 transition-all" required />
               <input type="number" value={couponForm.percentage} onChange={e => setCouponForm({...couponForm, percentage: e.target.value})} placeholder="DESCONTO %" className="w-full bg-gray-50 border-2 rounded-2xl px-6 py-4 text-xs font-black outline-none focus:border-yellow-400 transition-all" required />
@@ -712,7 +738,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   ))}
                 </div>
               )}
-              <button type="submit" className="w-full bg-black text-yellow-400 py-6 rounded-2xl font-black text-sm uppercase shadow-xl hover:brightness-125 transition-all">Salvar Cupom</button>
+              <button type="submit" disabled={isDataProcessing} className="w-full bg-black text-yellow-400 py-6 rounded-2xl font-black text-sm uppercase shadow-xl hover:brightness-125 transition-all disabled:opacity-50">
+                {isDataProcessing ? 'Salvando...' : 'Salvar Cupom'}
+              </button>
             </form>
           </div>
         </div>
