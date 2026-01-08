@@ -137,6 +137,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     setIsCouponModalOpen(true);
   };
 
+  const handleDeleteLoyaltyUser = async (phone: string) => {
+    if (!confirm('Deseja realmente remover este participante do ranking de fidelidade? Esta ação não pode ser desfeita.')) return;
+    
+    try {
+      const { error } = await supabase.from('loyalty_users').delete().eq('phone', phone);
+      if (error) throw error;
+      fetchMarketing();
+    } catch (err) {
+      console.error("Erro ao deletar usuário fidelidade:", err);
+      alert('Erro ao remover participante.');
+    }
+  };
+
   const handleExportBackup = async () => {
     setIsDataProcessing(true);
     try {
@@ -403,17 +416,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 {filteredLoyaltyUsers.length > 0 ? filteredLoyaltyUsers.map((u, i) => {
                   const progress = Math.min(100, (u.accumulated / (loyalty.spendingGoal || 1)) * 100);
                   return (
-                    <div key={u.phone} className={`flex items-center gap-4 p-4 rounded-2xl border ${i < 3 ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-transparent'}`}>
-                      <span className="text-xl">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '👤'}</span>
-                      <div className="flex-1">
+                    <div key={u.phone} className={`flex items-center gap-4 p-4 rounded-2xl border ${i < 3 ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-transparent'} group`}>
+                      <span className="text-xl shrink-0">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '👤'}</span>
+                      <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-end mb-1">
-                          <p className="font-black text-[10px] uppercase truncate">{u.name || "Sem Nome"}</p>
-                          <p className="text-yellow-700 font-black italic text-xs">R$ {(u.accumulated || 0).toFixed(2)}</p>
+                          <p className="font-black text-[10px] uppercase truncate pr-2">{u.name || "Sem Nome"} <span className="text-[8px] text-gray-400 font-bold ml-1">({u.phone})</span></p>
+                          <p className="text-yellow-700 font-black italic text-xs shrink-0">R$ {(u.accumulated || 0).toFixed(2)}</p>
                         </div>
                         <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
                           <div className={`h-full transition-all duration-1000 ${progress >= 100 ? 'bg-green-500' : 'bg-yellow-400'}`} style={{ width: `${progress}%` }} />
                         </div>
                       </div>
+                      <button 
+                        onClick={() => handleDeleteLoyaltyUser(u.phone)} 
+                        className="p-2.5 bg-white text-red-500 rounded-xl shadow-sm border border-transparent hover:border-red-200 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100 shrink-0"
+                        title="Remover Participante"
+                      >
+                        <TrashIcon size={14} />
+                      </button>
                     </div>
                   );
                 }) : <div className="text-center py-10 text-gray-400 font-black uppercase text-[10px]">Nenhum cliente fidelizado encontrado</div>}
